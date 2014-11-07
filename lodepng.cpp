@@ -322,7 +322,7 @@ static void string_set(char** out, const char* in)
   size_t insize = strlen(in);
   if(string_resize(out, insize))
   {
-    for(int i = 0; i != insize; ++i)
+    for(size_t i = 0; i != insize; ++i)
     {
       (*out)[i] = in[i];
     }
