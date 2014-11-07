@@ -814,7 +814,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
         for(i = 0; i + 1 < numprev; i += 2)
         {
           /*merge prev_row[i] and prev_row[i + 1] into new coin*/
-          Coin* coin = &coins[numcoins]++;
+          Coin* coin = &coins[numcoins++];
           coin_copy(coin, &prev_row[i]);
           add_coins(coin, &prev_row[i + 1]);
         }
