@@ -834,7 +834,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
       for(i = 0; i != numpresent - 1; ++i)
       {
         Coin* coin = &coins[i];
-        for(j = 0; j < coin->symbols.size; j++) ++lengths[coin->symbols.data[j]];
+        for(j = 0; j < coin->symbols.size; ++j) ++lengths[coin->symbols.data[j]];
       }
     }
 
@@ -852,7 +852,7 @@ static unsigned HuffmanTree_makeFromFrequencies(HuffmanTree* tree, const unsigne
                                                 size_t mincodes, size_t numcodes, unsigned maxbitlen)
 {
   unsigned error = 0;
-  while(!frequencies[numcodes - 1] && numcodes > mincodes) numcodes--; /*trim zeroes*/
+  while(!frequencies[numcodes - 1] && numcodes > mincodes) --numcodes; /*trim zeroes*/
   tree->maxbitlen = maxbitlen;
   tree->numcodes = (unsigned)numcodes; /*number of symbols*/
   tree->lengths = (unsigned*)lodepng_realloc(tree->lengths, numcodes * sizeof(unsigned));
@@ -1025,7 +1025,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         if(i < HLIT + 1) value = bitlen_ll[i - 1];
         else value = bitlen_d[i - HLIT - 1];
         /*repeat this value in the next lengths*/
-        for(n = 0; n < replength; n++)
+        for(n = 0; n < replength; ++n)
         {
           if(i >= HLIT + HDIST) ERROR_BREAK(13); /*error: i is larger than the amount of codes*/
           if(i < HLIT) bitlen_ll[i] = value;
@@ -1041,7 +1041,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         replength += readBitsFromStream(bp, in, 3);
 
         /*repeat this value in the next lengths*/
-        for(n = 0; n < replength; n++)
+        for(n = 0; n < replength; ++n)
         {
           if(i >= HLIT + HDIST) ERROR_BREAK(14); /*error: i is larger than the amount of codes*/
 
@@ -1058,7 +1058,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         replength += readBitsFromStream(bp, in, 7);
 
         /*repeat this value in the next lengths*/
-        for(n = 0; n < replength; n++)
+        for(n = 0; n < replength; ++n)
         {
           if(i >= HLIT + HDIST) ERROR_BREAK(15); /*error: i is larger than the amount of codes*/
 
@@ -1166,7 +1166,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
       backward = start - distance;
 
       if(!ucvector_resize(out, (*pos) + length)) ERROR_BREAK(83 /*alloc fail*/);
-      for(forward = 0; forward < length; forward++)
+      for(forward = 0; forward < length; ++forward)
       {
         out->data[(*pos)] = out->data[backward];
         ++(*pos);
@@ -1213,7 +1213,7 @@ static unsigned inflateNoCompression(ucvector* out, const unsigned char* in, siz
 
   /*read the literal data: LEN bytes are now stored in the out buffer*/
   if(p + LEN > inlength) return 23; /*error: reading outside of in buffer*/
-  for(n = 0; n < LEN; n++) out->data[(*pos)++] = in[p++];
+  for(n = 0; n < LEN; ++n) out->data[(*pos)++] = in[p++];
 
   (*bp) = p * 8;
 
@@ -1473,7 +1473,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
 
   if(nicematch > MAX_SUPPORTED_DEFLATE_LENGTH) nicematch = MAX_SUPPORTED_DEFLATE_LENGTH;
 
-  for(pos = inpos; pos < insize; pos++)
+  for(pos = inpos; pos < insize; ++pos)
   {
     size_t wpos = pos & (windowsize - 1); /*position for in 'circular' hash buffers*/
     unsigned chainlength = 0;
@@ -1483,7 +1483,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
     if(usezeros && hashval == 0)
     {
       if (numzeros == 0) numzeros = countZeros(in, insize, pos);
-      else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) numzeros--;
+      else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
     }
     else
     {
@@ -1577,7 +1577,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
           offset = lazyoffset;
           hash->head[hashval] = -1; /*the same hashchain update will be done, this ensures no wrong alteration*/
           hash->headz[numzeros] = -1; /*idem*/
-          pos--;
+          --pos;
         }
       }
     }
@@ -1605,7 +1605,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
         if(usezeros && hashval == 0)
         {
           if (numzeros == 0) numzeros = countZeros(in, insize, pos);
-          else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) numzeros--;
+          else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
         }
         else
         {
@@ -1649,7 +1649,7 @@ static unsigned deflateNoCompression(ucvector* out, const unsigned char* data, s
     ucvector_push_back(out, (unsigned char)(NLEN / 256));
 
     /*Decompressed data*/
-    for(j = 0; j < 65535 && datapos < datasize; j++)
+    for(j = 0; j < 65535 && datapos < datasize; ++j)
     {
       ucvector_push_back(out, data[datapos++]);
     }
@@ -1802,7 +1802,7 @@ static unsigned deflateDynamic(ucvector* out, size_t* bp, Hash* hash,
 
       if(bitlen_lld.data[i] == 0 && j >= 2) /*repeat code for zeroes*/
       {
-        j++; /*include the first zero*/
+        ++j; /*include the first zero*/
         if(j <= 10) /*repeat code 17 supports max 10 zeroes*/
         {
           uivector_push_back(&bitlen_lld_e, 17);
@@ -1821,7 +1821,7 @@ static unsigned deflateDynamic(ucvector* out, size_t* bp, Hash* hash,
         size_t k;
         unsigned num = j / 6, rest = j % 6;
         uivector_push_back(&bitlen_lld_e, bitlen_lld.data[i]);
-        for(k = 0; k < num; k++)
+        for(k = 0; k < num; ++k)
         {
           uivector_push_back(&bitlen_lld_e, 16);
           uivector_push_back(&bitlen_lld_e, 6 - 3);
@@ -1845,10 +1845,10 @@ static unsigned deflateDynamic(ucvector* out, size_t* bp, Hash* hash,
     if(!uivector_resizev(&frequencies_cl, NUM_CODE_LENGTH_CODES, 0)) ERROR_BREAK(83 /*alloc fail*/);
     for(i = 0; i != bitlen_lld_e.size; ++i)
     {
-      frequencies_cl.data[bitlen_lld_e.data[i]]++;
+      ++frequencies_cl.data[bitlen_lld_e.data[i]];
       /*after a repeat code come the bits that specify the number of repetitions,
       those don't need to be in the frequencies_cl calculation*/
-      if(bitlen_lld_e.data[i] >= 16) i++;
+      if(bitlen_lld_e.data[i] >= 16) ++i;
     }
 
     error = HuffmanTree_makeFromFrequencies(&tree_cl, frequencies_cl.data,
@@ -1892,7 +1892,7 @@ static unsigned deflateDynamic(ucvector* out, size_t* bp, Hash* hash,
     HDIST = (unsigned)(numcodes_d - 1);
     HCLEN = (unsigned)bitlen_cl.size - 4;
     /*trim zeroes for HCLEN. HLIT and HDIST were already trimmed at tree creation*/
-    while(!bitlen_cl.data[HCLEN + 4 - 1] && HCLEN > 0) HCLEN--;
+    while(!bitlen_cl.data[HCLEN + 4 - 1] && HCLEN > 0) --HCLEN;
     addBitsToStream(bp, out, HLIT, 5);
     addBitsToStream(bp, out, HDIST, 5);
     addBitsToStream(bp, out, HCLEN, 4);
@@ -2070,7 +2070,7 @@ static unsigned update_adler32(unsigned adler, const unsigned char* data, unsign
     {
       s1 += (*data++);
       s2 += s1;
-      amount--;
+      --amount;
     }
     s1 %= 65521;
     s2 %= 65521;
@@ -2326,7 +2326,7 @@ unsigned lodepng_crc32(const unsigned char* buf, size_t len)
   unsigned c = 0xffffffffL;
   size_t n;
 
-  for(n = 0; n < len; n++)
+  for(n = 0; n < len; ++n)
   {
     c = lodepng_crc32_table[(c ^ buf[n]) & 0xff] ^ (c >> 8);
   }
@@ -2340,7 +2340,7 @@ unsigned lodepng_crc32(const unsigned char* buf, size_t len)
 static unsigned char readBitFromReversedStream(size_t* bitpointer, const unsigned char* bitstream)
 {
   unsigned char result = (unsigned char)((bitstream[(*bitpointer) >> 3] >> (7 - ((*bitpointer) & 0x7))) & 1);
-  (*bitpointer)++;
+  ++(*bitpointer);
   return result;
 }
 
@@ -2363,7 +2363,7 @@ static void setBitOfReversedStream0(size_t* bitpointer, unsigned char* bitstream
     /*earlier bit of huffman code is in a lesser significant bit of an earlier byte*/
     bitstream[(*bitpointer) >> 3] |= (bit << (7 - ((*bitpointer) & 0x7)));
   }
-  (*bitpointer)++;
+  ++(*bitpointer);
 }
 #endif /*LODEPNG_COMPILE_DECODER*/
 
@@ -2372,7 +2372,7 @@ static void setBitOfReversedStream(size_t* bitpointer, unsigned char* bitstream,
   /*the current bit in bitstream may be 0 or 1 for this to work*/
   if(bit == 0) bitstream[(*bitpointer) >> 3] &=  (unsigned char)(~(1 << (7 - ((*bitpointer) & 0x7))));
   else         bitstream[(*bitpointer) >> 3] |=  (1 << (7 - ((*bitpointer) & 0x7)));
-  (*bitpointer)++;
+  ++(*bitpointer);
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
@@ -2613,7 +2613,7 @@ unsigned lodepng_palette_add(LodePNGColorMode* info,
   info->palette[4 * info->palettesize + 1] = g;
   info->palette[4 * info->palettesize + 2] = b;
   info->palette[4 * info->palettesize + 3] = a;
-  info->palettesize++;
+  ++info->palettesize;
   return 0;
 }
 
@@ -2708,7 +2708,7 @@ static unsigned LodePNGUnknownChunks_copy(LodePNGInfo* dest, const LodePNGInfo* 
     dest->unknown_chunks_size[i] = src->unknown_chunks_size[i];
     dest->unknown_chunks_data[i] = (unsigned char*)lodepng_malloc(src->unknown_chunks_size[i]);
     if(!dest->unknown_chunks_data[i] && dest->unknown_chunks_size[i]) return 83; /*alloc fail*/
-    for(j = 0; j < src->unknown_chunks_size[i]; j++)
+    for(j = 0; j < src->unknown_chunks_size[i]; ++j)
     {
       dest->unknown_chunks_data[i][j] = src->unknown_chunks_data[i][j];
     }
@@ -2767,7 +2767,7 @@ unsigned lodepng_add_text(LodePNGInfo* info, const char* key, const char* str)
     return 83; /*alloc fail*/
   }
 
-  info->text_num++;
+  ++info->text_num;
   info->text_keys = new_keys;
   info->text_strings = new_strings;
 
@@ -2844,7 +2844,7 @@ unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langt
     return 83; /*alloc fail*/
   }
 
-  info->itext_num++;
+  ++info->itext_num;
   info->itext_keys = new_keys;
   info->itext_langtags = new_langtags;
   info->itext_transkeys = new_transkeys;
@@ -2973,7 +2973,7 @@ static void color_tree_cleanup(ColorTree* tree)
 static int color_tree_get(ColorTree* tree, unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
   int bit = 0;
-  for(bit = 0; bit < 8; bit++)
+  for(bit = 0; bit < 8; ++bit)
   {
     int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
     if(!tree->children[i]) return -1;
@@ -2995,7 +2995,7 @@ static void color_tree_add(ColorTree* tree,
                            unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index)
 {
   int bit;
-  for(bit = 0; bit < 8; bit++)
+  for(bit = 0; bit < 8; ++bit)
   {
     int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
     if(!tree->children[i])
@@ -3244,7 +3244,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
   {
     if(mode->bitdepth == 8)
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = buffer[1] = buffer[2] = in[i];
         if(has_alpha) buffer[3] = mode->key_defined && in[i] == mode->key_r ? 0 : 255;
@@ -3252,7 +3252,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
     }
     else if(mode->bitdepth == 16)
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = buffer[1] = buffer[2] = in[i * 2];
         if(has_alpha) buffer[3] = mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r ? 0 : 255;
@@ -3262,7 +3262,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
     {
       unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
       size_t j = 0;
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
         buffer[0] = buffer[1] = buffer[2] = (value * 255) / highest;
@@ -3274,7 +3274,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
   {
     if(mode->bitdepth == 8)
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = in[i * 3 + 0];
         buffer[1] = in[i * 3 + 1];
@@ -3285,7 +3285,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
     }
     else
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = in[i * 6 + 0];
         buffer[1] = in[i * 6 + 2];
@@ -3301,7 +3301,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
   {
     unsigned index;
     size_t j = 0;
-    for(i = 0; i != numpixels; i++, buffer += num_channels)
+    for(i = 0; i != numpixels; ++i, buffer += num_channels)
     {
       if(mode->bitdepth == 8) index = in[i];
       else index = readBitsFromReversedStream(&j, in, mode->bitdepth);
@@ -3326,7 +3326,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
   {
     if(mode->bitdepth == 8)
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = buffer[1] = buffer[2] = in[i * 2 + 0];
         if(has_alpha) buffer[3] = in[i * 2 + 1];
@@ -3334,7 +3334,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
     }
     else
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = buffer[1] = buffer[2] = in[i * 4 + 0];
         if(has_alpha) buffer[3] = in[i * 4 + 2];
@@ -3345,7 +3345,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
   {
     if(mode->bitdepth == 8)
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = in[i * 4 + 0];
         buffer[1] = in[i * 4 + 1];
@@ -3355,7 +3355,7 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
     }
     else
     {
-      for(i = 0; i != numpixels; i++, buffer += num_channels)
+      for(i = 0; i != numpixels; ++i, buffer += num_channels)
       {
         buffer[0] = in[i * 8 + 0];
         buffer[1] = in[i * 8 + 2];
@@ -3638,7 +3638,7 @@ unsigned get_color_profile(LodePNGColorProfile* profile,
             p[n * 4 + 2] = b;
             p[n * 4 + 3] = a;
           }
-          profile->numcolors++;
+          ++profile->numcolors;
           numcolors_done = profile->numcolors >= maxnumcolors;
         }
       }
@@ -3945,7 +3945,7 @@ static unsigned unfilter(unsigned char* out, const unsigned char* in, unsigned w
   size_t bytewidth = (bpp + 7) / 8;
   size_t linebytes = (w * bpp + 7) / 8;
 
-  for(y = 0; y < h; y++)
+  for(y = 0; y < h; ++y)
   {
     size_t outindex = linebytes * y;
     size_t inindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
@@ -3984,12 +3984,12 @@ static void Adam7_deinterlace(unsigned char* out, const unsigned char* in, unsig
     {
       unsigned x, y, b;
       size_t bytewidth = bpp / 8;
-      for(y = 0; y < passh[i]; y++)
-      for(x = 0; x < passw[i]; x++)
+      for(y = 0; y < passh[i]; ++y)
+      for(x = 0; x < passw[i]; ++x)
       {
         size_t pixelinstart = passstart[i] + (y * passw[i] + x) * bytewidth;
         size_t pixeloutstart = ((ADAM7_IY[i] + y * ADAM7_DY[i]) * w + ADAM7_IX[i] + x * ADAM7_DX[i]) * bytewidth;
-        for(b = 0; b < bytewidth; b++)
+        for(b = 0; b < bytewidth; ++b)
         {
           out[pixeloutstart + b] = in[pixelinstart + b];
         }
@@ -4004,12 +4004,12 @@ static void Adam7_deinterlace(unsigned char* out, const unsigned char* in, unsig
       unsigned ilinebits = bpp * passw[i];
       unsigned olinebits = bpp * w;
       size_t obp, ibp; /*bit pointers (for out and in buffer)*/
-      for(y = 0; y < passh[i]; y++)
-      for(x = 0; x < passw[i]; x++)
+      for(y = 0; y < passh[i]; ++y)
+      for(x = 0; x < passw[i]; ++x)
       {
         ibp = (8 * passstart[i]) + (y * ilinebits + x * bpp);
         obp = (ADAM7_IY[i] + y * ADAM7_DY[i]) * olinebits + (ADAM7_IX[i] + x * ADAM7_DX[i]) * bpp;
-        for(b = 0; b < bpp; b++)
+        for(b = 0; b < bpp; ++b)
         {
           unsigned char bit = readBitFromReversedStream(&ibp, in);
           /*note that this function assumes the out buffer is completely 0, use setBitOfReversedStream otherwise*/
@@ -4035,10 +4035,10 @@ static void removePaddingBits(unsigned char* out, const unsigned char* in,
   unsigned y;
   size_t diff = ilinebits - olinebits;
   size_t ibp = 0, obp = 0; /*input and output bit pointers*/
-  for(y = 0; y < h; y++)
+  for(y = 0; y < h; ++y)
   {
     size_t x;
-    for(x = 0; x < olinebits; x++)
+    for(x = 0; x < olinebits; ++x)
     {
       unsigned char bit = readBitFromReversedStream(&ibp, in);
       setBitOfReversedStream(&obp, out, bit);
@@ -4203,7 +4203,7 @@ static unsigned readChunk_tEXt(LodePNGInfo* info, const unsigned char* data, siz
     unsigned length, string2_begin;
 
     length = 0;
-    while(length < chunkLength && data[length] != 0) length++;
+    while(length < chunkLength && data[length] != 0) ++length;
     /*even though it's not allowed by the standard, no error is thrown if
     there's no null termination char, if the text is empty*/
     if(length < 1 || length > 79) CERROR_BREAK(error, 89); /*keyword too short or long*/
@@ -4249,7 +4249,7 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
 
   while(!error) /*not really a while loop, only used to break on error*/
   {
-    for(length = 0; length < chunkLength && data[length] != 0; length++) ;
+    for(length = 0; length < chunkLength && data[length] != 0; ++length) ;
     if(length + 2 >= chunkLength) CERROR_BREAK(error, 75); /*no null termination, corrupt?*/
     if(length < 1 || length > 79) CERROR_BREAK(error, 89); /*keyword too short or long*/
 
@@ -5057,7 +5057,7 @@ static float flog2(float f)
 {
   float result = 0;
   while(f > 32) { result += 4; f /= 16; }
-  while(f > 2) { result++; f /= 2; }
+  while(f > 2) { ++result; f /= 2; }
   return result + 1.442695f * (f * f * f / 3 - 3 * f * f / 2 + 3 * f - 1.83333f);
 }
 
@@ -5100,7 +5100,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
   if(strategy == LFS_ZERO)
   {
-    for(y = 0; y < h; y++)
+    for(y = 0; y < h; ++y)
     {
       size_t outindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
       size_t inindex = linebytes * y;
@@ -5117,7 +5117,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     size_t smallest = 0;
     unsigned char type, bestType = 0;
 
-    for(type = 0; type < 5; type++)
+    for(type = 0; type < 5; ++type)
     {
       ucvector_init(&attempt[type]);
       if(!ucvector_resize(&attempt[type], linebytes)) return 83; /*alloc fail*/
@@ -5125,10 +5125,10 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
     if(!error)
     {
-      for(y = 0; y < h; y++)
+      for(y = 0; y < h; ++y)
       {
         /*try the 5 filter types*/
-        for(type = 0; type < 5; type++)
+        for(type = 0; type < 5; ++type)
         {
           filterScanline(attempt[type].data, &in[y * linebytes], prevline, linebytes, bytewidth, type);
 
@@ -5136,11 +5136,11 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
           sum[type] = 0;
           if(type == 0)
           {
-            for(x = 0; x < linebytes; x++) sum[type] += (unsigned char)(attempt[type].data[x]);
+            for(x = 0; x < linebytes; ++x) sum[type] += (unsigned char)(attempt[type].data[x]);
           }
           else
           {
-            for(x = 0; x < linebytes; x++)
+            for(x = 0; x < linebytes; ++x)
             {
               /*For differences, each byte should be treated as signed, values above 127 are negative
               (converted to signed char). Filtertype 0 isn't a difference though, so use unsigned there.
@@ -5162,11 +5162,11 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
         /*now fill the out values*/
         out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-        for(x = 0; x < linebytes; x++) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+        for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
       }
     }
 
-    for(type = 0; type < 5; type++) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else if(strategy == LFS_ENTROPY)
   {
@@ -5176,23 +5176,23 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     unsigned type, bestType = 0;
     unsigned count[256];
 
-    for(type = 0; type < 5; type++)
+    for(type = 0; type < 5; ++type)
     {
       ucvector_init(&attempt[type]);
       if(!ucvector_resize(&attempt[type], linebytes)) return 83; /*alloc fail*/
     }
 
-    for(y = 0; y < h; y++)
+    for(y = 0; y < h; ++y)
     {
       /*try the 5 filter types*/
-      for(type = 0; type < 5; type++)
+      for(type = 0; type < 5; ++type)
       {
         filterScanline(attempt[type].data, &in[y * linebytes], prevline, linebytes, bytewidth, type);
-        for(x = 0; x < 256; x++) count[x] = 0;
-        for(x = 0; x < linebytes; x++) count[attempt[type].data[x]]++;
-        count[type]++; /*the filter type itself is part of the scanline*/
+        for(x = 0; x < 256; ++x) count[x] = 0;
+        for(x = 0; x < linebytes; ++x) ++count[attempt[type].data[x]];
+        ++count[type]; /*the filter type itself is part of the scanline*/
         sum[type] = 0;
-        for(x = 0; x < 256; x++)
+        for(x = 0; x < 256; ++x)
         {
           float p = count[x] / (float)(linebytes + 1);
           sum[type] += count[x] == 0 ? 0 : flog2(1 / p) * p;
@@ -5209,14 +5209,14 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
       /*now fill the out values*/
       out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x < linebytes; x++) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+      for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
     }
 
-    for(type = 0; type < 5; type++) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else if(strategy == LFS_PREDEFINED)
   {
-    for(y = 0; y < h; y++)
+    for(y = 0; y < h; ++y)
     {
       size_t outindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
       size_t inindex = linebytes * y;
@@ -5246,14 +5246,14 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     images only, so disable it*/
     zlibsettings.custom_zlib = 0;
     zlibsettings.custom_deflate = 0;
-    for(type = 0; type < 5; type++)
+    for(type = 0; type < 5; ++type)
     {
       ucvector_init(&attempt[type]);
       ucvector_resize(&attempt[type], linebytes); /*todo: give error if resize failed*/
     }
-    for(y = 0; y < h; y++) /*try the 5 filter types*/
+    for(y = 0; y < h; ++y) /*try the 5 filter types*/
     {
-      for(type = 0; type < 5; type++)
+      for(type = 0; type < 5; ++type)
       {
         unsigned testsize = attempt[type].size;
         /*if(testsize > 8) testsize /= 8;*/ /*it already works good enough by testing a part of the row*/
@@ -5272,9 +5272,9 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
       }
       prevline = &in[y * linebytes];
       out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x < linebytes; x++) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+      for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
     }
-    for(type = 0; type < 5; type++) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else return 88; /* unknown filter strategy */
 
@@ -5289,17 +5289,17 @@ static void addPaddingBits(unsigned char* out, const unsigned char* in,
   unsigned y;
   size_t diff = olinebits - ilinebits;
   size_t obp = 0, ibp = 0; /*bit pointers*/
-  for(y = 0; y < h; y++)
+  for(y = 0; y < h; ++y)
   {
     size_t x;
-    for(x = 0; x < ilinebits; x++)
+    for(x = 0; x < ilinebits; ++x)
     {
       unsigned char bit = readBitFromReversedStream(&ibp, in);
       setBitOfReversedStream(&obp, out, bit);
     }
     /*obp += diff; --> no, fill in some value in the padding bits too, to avoid
     "Use of uninitialised value of size ###" warning from valgrind*/
-    for(x = 0; x < diff; x++) setBitOfReversedStream(&obp, out, 0);
+    for(x = 0; x < diff; ++x) setBitOfReversedStream(&obp, out, 0);
   }
 }
 
@@ -5328,12 +5328,12 @@ static void Adam7_interlace(unsigned char* out, const unsigned char* in, unsigne
     {
       unsigned x, y, b;
       size_t bytewidth = bpp / 8;
-      for(y = 0; y < passh[i]; y++)
-      for(x = 0; x < passw[i]; x++)
+      for(y = 0; y < passh[i]; ++y)
+      for(x = 0; x < passw[i]; ++x)
       {
         size_t pixelinstart = ((ADAM7_IY[i] + y * ADAM7_DY[i]) * w + ADAM7_IX[i] + x * ADAM7_DX[i]) * bytewidth;
         size_t pixeloutstart = passstart[i] + (y * passw[i] + x) * bytewidth;
-        for(b = 0; b < bytewidth; b++)
+        for(b = 0; b < bytewidth; ++b)
         {
           out[pixeloutstart + b] = in[pixelinstart + b];
         }
@@ -5348,12 +5348,12 @@ static void Adam7_interlace(unsigned char* out, const unsigned char* in, unsigne
       unsigned ilinebits = bpp * passw[i];
       unsigned olinebits = bpp * w;
       size_t obp, ibp; /*bit pointers (for out and in buffer)*/
-      for(y = 0; y < passh[i]; y++)
-      for(x = 0; x < passw[i]; x++)
+      for(y = 0; y < passh[i]; ++y)
+      for(x = 0; x < passw[i]; ++x)
       {
         ibp = (ADAM7_IY[i] + y * ADAM7_DY[i]) * olinebits + (ADAM7_IX[i] + x * ADAM7_DX[i]) * bpp;
         obp = (8 * passstart[i]) + (y * ilinebits + x * bpp);
-        for(b = 0; b < bpp; b++)
+        for(b = 0; b < bpp; ++b)
         {
           unsigned char bit = readBitFromReversedStream(&ibp, in);
           setBitOfReversedStream(&obp, out, bit);
