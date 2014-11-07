@@ -1468,7 +1468,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
   const unsigned char *lastptr, *foreptr, *backptr;
   unsigned hashpos;
 
-  if(windowsize <= 0 || windowsize > 32768) return 60; /*error: windowsize smaller/larger than allowed*/
+  if(windowsize == 0 || windowsize > 32768) return 60; /*error: windowsize smaller/larger than allowed*/
   if((windowsize & (windowsize - 1)) != 0) return 90; /*error: must be power of two*/
 
   if(nicematch > MAX_SUPPORTED_DEFLATE_LENGTH) nicematch = MAX_SUPPORTED_DEFLATE_LENGTH;
