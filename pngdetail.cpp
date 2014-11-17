@@ -338,7 +338,6 @@ void displayPalette(const std::vector<unsigned char>& buffer)
   std::vector<unsigned char> out;
   
   state.decoder.color_convert = 0;
-  state.decoder.fix_png = 1;
 
   lodepng::decode(out, w, h, state, buffer);
 
@@ -386,7 +385,6 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer)
   std::vector<unsigned char> out;
   
   state.decoder.color_convert = 0;
-  state.decoder.fix_png = 1;
 
   lodepng::decode(out, w, h, state, buffer);
 
