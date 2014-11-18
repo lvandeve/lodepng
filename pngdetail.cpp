@@ -304,7 +304,12 @@ Show the filtertypes of each scanline in this PNG image.
 void displayFilterTypes(const std::vector<unsigned char>& buffer)
 {
   std::vector<std::vector<unsigned char> > types;
-  lodepng::getFilterTypesInterlaced(types, buffer);
+  unsigned error = lodepng::getFilterTypesInterlaced(types, buffer);
+  if(error)
+  {
+    std::cout << "Error getting filter types" << std::endl;
+    return;
+  }
 
   if(types.size() == 7)
   {

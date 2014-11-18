@@ -677,7 +677,11 @@ Third byte: must be uppercase
 Fourth byte: uppercase = unsafe to copy, lowercase = safe to copy
 */
 
-/*get the length of the data of the chunk. Total chunk length has 12 bytes more.*/
+/*
+Gets the length of the data of the chunk. Total chunk length has 12 bytes more.
+There must be at least 4 bytes to read from. If the result value is too large,
+it may be corrupt data.
+*/
 unsigned lodepng_chunk_length(const unsigned char* chunk);
 
 /*puts the 4-byte type in null terminated string*/
