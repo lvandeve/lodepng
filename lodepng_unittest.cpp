@@ -497,18 +497,18 @@ void testColor(int r, int g, int b, int a)
 {
   std::cout << "codec test color " << r << " " << g << " " << b << " " << a << std::endl;
   Image image;
-  image.width = 100;
-  image.height = 100;
+  image.width = 20;
+  image.height = 20;
   image.colorType = LCT_RGBA;
   image.bitDepth = 8;
-  image.data.resize(100 * 100 * 4);
-  for(int y = 0; y < 100; y++)
-  for(int x = 0; x < 100; x++)
+  image.data.resize(20 * 20 * 4);
+  for(int y = 0; y < 20; y++)
+  for(int x = 0; x < 20; x++)
   {
-    image.data[100 * 4 * y + 4 * x + 0] = r;
-    image.data[100 * 4 * y + 4 * x + 0] = g;
-    image.data[100 * 4 * y + 4 * x + 0] = b;
-    image.data[100 * 4 * y + 4 * x + 0] = a;
+    image.data[20 * 4 * y + 4 * x + 0] = r;
+    image.data[20 * 4 * y + 4 * x + 0] = g;
+    image.data[20 * 4 * y + 4 * x + 0] = b;
+    image.data[20 * 4 * y + 4 * x + 0] = a;
   }
 
   doCodecTest(image);
