@@ -1,5 +1,5 @@
 /*
-LodePNG version 20140823
+LodePNG version 20141119
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -37,7 +37,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #include <fstream>
 #endif /*LODEPNG_COMPILE_CPP*/
 
-#define VERSION_STRING "20140823"
+#define VERSION_STRING "20141119"
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -3679,7 +3679,10 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   if(error) return error;
   mode_out->key_defined = 0;
 
-  if(prof.key && w * h <= 16) prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
+  if(prof.key && w * h <= 16) {
+    prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
+    if(prof.bits < 8) prof.bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
+  }
   grey_ok = !prof.colored && !prof.alpha; /*grey without alpha, with potentially low bits*/
   n = prof.numcolors;
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));

@@ -476,6 +476,68 @@ void testOtherPattern2()
   doCodecTest(image1);
 }
 
+void testSinglePixel(int r, int g, int b, int a)
+{
+  std::cout << "codec single pixel " << r << " " << g << " " << b << " " << a << std::endl;
+  Image pixel;
+  pixel.width = 1;
+  pixel.height = 1;
+  pixel.colorType = LCT_RGBA;
+  pixel.bitDepth = 8;
+  pixel.data.resize(4);
+  pixel.data[0] = r;
+  pixel.data[1] = g;
+  pixel.data[2] = b;
+  pixel.data[3] = a;
+
+  doCodecTest(pixel);
+}
+
+void testColor(int r, int g, int b, int a)
+{
+  std::cout << "codec test color " << r << " " << g << " " << b << " " << a << std::endl;
+  Image image;
+  image.width = 100;
+  image.height = 100;
+  image.colorType = LCT_RGBA;
+  image.bitDepth = 8;
+  image.data.resize(100 * 100 * 4);
+  for(int y = 0; y < 100; y++)
+  for(int x = 0; x < 100; x++)
+  {
+    image.data[100 * 4 * y + 4 * x + 0] = r;
+    image.data[100 * 4 * y + 4 * x + 0] = g;
+    image.data[100 * 4 * y + 4 * x + 0] = b;
+    image.data[100 * 4 * y + 4 * x + 0] = a;
+  }
+
+  doCodecTest(image);
+
+  Image image2 = image;
+  image2.data[3] = 0; //one fully transparent pixel
+  doCodecTest(image2);
+  image2.data[3] = 128; //one semi transparent pixel
+  doCodecTest(image2);
+
+  Image image3 = image;
+  // add 255 different colors
+  for(int i = 0; i < 255; i++) {
+    image.data[i * 4 + 0] = i;
+    image.data[i * 4 + 1] = i;
+    image.data[i * 4 + 2] = i;
+    image.data[i * 4 + 3] = 255;
+  }
+  doCodecTest(image3);
+  // a 256th color
+  image.data[255 * 4 + 0] = 255;
+  image.data[255 * 4 + 1] = 255;
+  image.data[255 * 4 + 2] = 255;
+  image.data[255 * 4 + 3] = 255;
+  doCodecTest(image3);
+
+  testSinglePixel(r, g, b, a);
+}
+
 void testPNGCodec()
 {
   codecTest(1, 1);
@@ -487,6 +549,28 @@ void testPNGCodec()
 
   testOtherPattern1();
   testOtherPattern2();
+
+  testColor(255, 255, 255, 255);
+  testColor(0, 0, 0, 255);
+  testColor(1, 2, 3, 255);
+  testColor(255, 0, 0, 255);
+  testColor(0, 255, 0, 255);
+  testColor(0, 0, 255, 255);
+  testColor(0, 0, 0, 255);
+  testColor(1, 1, 1, 255);
+  testColor(1, 1, 1, 1);
+  testColor(0, 0, 0, 128);
+  testColor(255, 0, 0, 128);
+  testColor(127, 127, 127, 255);
+  testColor(128, 128, 128, 255);
+  testColor(127, 127, 127, 128);
+  testColor(128, 128, 128, 128);
+  //transparent single pixels
+  testColor(255, 0, 0, 0);
+  testColor(1, 2, 3, 0);
+  testColor(255, 255, 255, 0);
+  testColor(254, 254, 254, 0);
+  testColor(0, 0, 0, 0);
 }
 
 //Tests some specific color conversions with specific color bit combinations
