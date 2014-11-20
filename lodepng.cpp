@@ -967,7 +967,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   unsigned* bitlen_cl = 0;
   HuffmanTree tree_cl; /*the code tree for code length codes (the huffman tree for compressed huffman trees)*/
 
-  if((*bp) >> 3 >= inlength - 2) return 49; /*error: the bit pointer is or will go past the memory*/
+  if((*bp) + 14 > (inlength << 3)) return 49; /*error: the bit pointer is or will go past the memory*/
 
   /*number of literal/length codes + 257. Unlike the spec, the value 257 is added to it here already*/
   HLIT =  readBitsFromStream(bp, in, 5) + 257;
@@ -975,6 +975,8 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   HDIST = readBitsFromStream(bp, in, 5) + 1;
   /*number of code length codes. Unlike the spec, the value 4 is added to it here already*/
   HCLEN = readBitsFromStream(bp, in, 4) + 4;
+
+  if((*bp) + HCLEN * 3 > (inlength << 3)) return 50; /*error: the bit pointer is or will go past the memory*/
 
   HuffmanTree_init(&tree_cl);
 
@@ -1017,9 +1019,9 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         unsigned replength = 3; /*read in the 2 bits that indicate repeat length (3-6)*/
         unsigned value; /*set value to the previous code*/
 
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         if (i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
 
+        if((*bp + 2) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 2);
 
         if(i < HLIT + 1) value = bitlen_ll[i - 1];
@@ -1036,8 +1038,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
       else if(code == 17) /*repeat "0" 3-10 times*/
       {
         unsigned replength = 3; /*read in the bits that indicate repeat length*/
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
-
+        if((*bp + 3) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 3);
 
         /*repeat this value in the next lengths*/
@@ -1053,8 +1054,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
       else if(code == 18) /*repeat "0" 11-138 times*/
       {
         unsigned replength = 11; /*read in the bits that indicate repeat length*/
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
-
+        if((*bp + 7) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 7);
 
         /*repeat this value in the next lengths*/
@@ -1136,7 +1136,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
 
       /*part 2: get extra bits and add the value of that to length*/
       numextrabits_l = LENGTHEXTRA[code_ll - FIRST_LENGTH_CODE_INDEX];
-      if(*bp >= inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+      if((*bp + numextrabits_l) > inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       length += readBitsFromStream(bp, in, numextrabits_l);
 
       /*part 3: get distance code*/
@@ -1156,8 +1156,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
 
       /*part 4: get extra bits from distance*/
       numextrabits_d = DISTANCEEXTRA[code_d];
-      if(*bp >= inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
-
+      if((*bp + numextrabits_d) > inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       distance += readBitsFromStream(bp, in, numextrabits_d);
 
       /*part 5: fill in all the out[n] values based on the length and dist*/
@@ -1182,7 +1181,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
     {
       /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
       (10=no endcode, 11=wrong jump outside of tree)*/
-      error = (*bp) > inlength * 8 ? 10 : 11;
+      error = ((*bp) > inlength * 8) ? 10 : 11;
       break;
     }
   }
