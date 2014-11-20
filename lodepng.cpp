@@ -4564,22 +4564,40 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
 
   ucvector_init(&scanlines);
   /*predict output size, to allocate exact size for output buffer to avoid more dynamic allocation.
-  The prediction is currently not correct for interlaced PNG images.*/
-  predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color) + *h;
+  If the decompressed size does not match the prediction, the image must be corrupt.*/
+  if(state->info_png.interlace_method == 0)
+  {
+    /*The extra *h is added because this are the filter bytes every scanline starts with*/
+    predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color) + *h;
+  }
+  else
+  {
+    /*Adam-7 interlaced: predicted size is the sum of the 7 sub-images sizes*/
+    const LodePNGColorMode* color = &state->info_png.color;
+    predict = 0;
+    predict += lodepng_get_raw_size_idat((*w + 7) / 8, (*h + 7) / 8, color) + (*h + 7) / 8;
+    if(*w > 4) predict += lodepng_get_raw_size_idat((*w + 3) / 8, (*h + 7) / 8, color) + (*h + 7) / 8;
+    predict += lodepng_get_raw_size_idat((*w + 3) / 4, (*h + 3) / 8, color) + (*h + 3) / 8;
+    if(*w > 2) predict += lodepng_get_raw_size_idat((*w + 1) / 4, (*h + 3) / 4, color) + (*h + 3) / 4;
+    predict += lodepng_get_raw_size_idat((*w + 1) / 2, (*h + 1) / 4, color) + (*h + 1) / 4;
+    if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) / 2, (*h + 1) / 2, color) + (*h + 1) / 2;
+    predict += lodepng_get_raw_size_idat((*w + 0) / 1, (*h + 0) / 2, color) + (*h + 0) / 2;
+  }
   if(!state->error && !ucvector_reserve(&scanlines, predict)) state->error = 83; /*alloc fail*/
   if(!state->error)
   {
     state->error = zlib_decompress(&scanlines.data, &scanlines.size, idat.data,
                                    idat.size, &state->decoder.zlibsettings);
+    if(!state->error && scanlines.size != predict) state->error = 91; /*decompressed size doesn't match prediction*/
   }
   ucvector_cleanup(&idat);
 
   if(!state->error)
   {
+    size_t outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
     ucvector outv;
     ucvector_init(&outv);
-    if(!ucvector_resizev(&outv,
-        lodepng_get_raw_size(*w, *h, &state->info_png.color), 0)) state->error = 83; /*alloc fail*/
+    if(!ucvector_resizev(&outv, outsize, 0)) state->error = 83; /*alloc fail*/
     if(!state->error) state->error = postProcessScanlines(outv.data, scanlines.data, *w, *h, &state->info_png);
     *out = outv.data;
   }
@@ -5861,6 +5879,7 @@ const char* lodepng_error_text(unsigned code)
     case 89: return "text chunk keyword too short or long: must have size 1-79";
     /*the windowsize in the LodePNGCompressSettings. Requiring POT(==> & instead of %) makes encoding 12% faster.*/
     case 90: return "windowsize must be a power of two";
+    case 91: return "invalid decompressed idat size";
   }
   return "unknown error code";
 }

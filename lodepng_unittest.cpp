@@ -355,11 +355,44 @@ void doCodecTestCPP(Image& image)
   assertPixels(image, &decoded[0], "Pixels C++");
 }
 
+//Test LodePNG encoding and decoding the encoded result, using the C++ interface, with interlace
+void doCodecTestInterlaced(Image& image)
+{
+  std::vector<unsigned char> encoded;
+  std::vector<unsigned char> decoded;
+  unsigned decoded_w;
+  unsigned decoded_h;
+
+  lodepng::State state;
+  state.info_png.interlace_method = 1;
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+
+  unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
+
+  assertNoPNGError(error_enc, "encoder error C++");
+
+  //if the image is large enough, compressing it should result in smaller size
+  if(image.data.size() > 512) assertTrue(encoded.size() < image.data.size(), "compressed size");
+
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+  unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, state, encoded);
+
+  assertNoPNGError(error_dec, "decoder error C++");
+
+  ASSERT_EQUALS(image.width, decoded_w);
+  ASSERT_EQUALS(image.height, decoded_h);
+  ASSERT_EQUALS(image.data.size(), decoded.size());
+  assertPixels(image, &decoded[0], "Pixels C++");
+}
+
 //Test LodePNG encoding and decoding the encoded result
 void doCodecTest(Image& image)
 {
   doCodecTestC(image);
   doCodecTestCPP(image);
+  doCodecTestInterlaced(image);
 }
 
 
@@ -538,6 +571,27 @@ void testColor(int r, int g, int b, int a)
   testSinglePixel(r, g, b, a);
 }
 
+void testSize(int w, int h)
+{
+  std::cout << "codec test size " << w << " " << h << std::endl;
+  Image image;
+  image.width = w;
+  image.height = h;
+  image.colorType = LCT_RGBA;
+  image.bitDepth = 8;
+  image.data.resize(w * h * 4);
+  for(int y = 0; y < h; y++)
+  for(int x = 0; x < w; x++)
+  {
+    image.data[w * 4 * y + 4 * x + 0] = x % 256;
+    image.data[w * 4 * y + 4 * x + 0] = y % 256;
+    image.data[w * 4 * y + 4 * x + 0] = 255;
+    image.data[w * 4 * y + 4 * x + 0] = 255;
+  }
+
+  doCodecTest(image);
+}
+
 void testPNGCodec()
 {
   codecTest(1, 1);
@@ -566,11 +620,18 @@ void testPNGCodec()
   testColor(127, 127, 127, 128);
   testColor(128, 128, 128, 128);
   //transparent single pixels
+  testColor(0, 0, 0, 0);
   testColor(255, 0, 0, 0);
   testColor(1, 2, 3, 0);
   testColor(255, 255, 255, 0);
   testColor(254, 254, 254, 0);
-  testColor(0, 0, 0, 0);
+
+  // This is mainly to test the Adam7 interlacing
+  for(int h = 1; h < 12; h++)
+  for(int w = 1; w < 12; w++)
+  {
+    testSize(w, h);
+  }
 }
 
 //Tests some specific color conversions with specific color bit combinations
