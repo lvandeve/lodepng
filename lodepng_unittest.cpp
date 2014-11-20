@@ -1166,20 +1166,23 @@ void testFuzzing()
   std::vector<unsigned char> result;
   std::map<unsigned, unsigned> errors;
   unsigned w, h;
+  lodepng::State state;
+  state.decoder.ignore_crc = 1;
+  state.decoder.zlibsettings.ignore_adler32 = 1;
   for(size_t i = 0; i < png.size(); i++)
   {
     result.clear();
     broken[i] = ~png[i];
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     broken[i] = 0;
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     for(int j = 0; j < 8; j++)
     {
       broken[i] = flipBit(png[i], j);
-      errors[lodepng::decode(result, w, h, broken)]++;
+      errors[lodepng::decode(result, w, h, state, broken)]++;
     }
     broken[i] = 255;
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     broken[i] = png[i]; //fix it again for the next test
   }
   std::cout << "testFuzzing shrinking" << std::endl;
@@ -1187,7 +1190,7 @@ void testFuzzing()
   while(broken.size() > 0)
   {
     broken.resize(broken.size() - 1);
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
   }
 
   //For fun, print the number of each error

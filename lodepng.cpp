@@ -4438,6 +4438,13 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
   if(state->error) return;
 
+  size_t numpixels = *w * *h;
+  if(*h != 0 && numpixels / *h != *w)
+  {
+    state->error = 92; /*multiplication overflow*/
+    return;
+  }
+
   ucvector_init(&idat);
   chunk = &in[33]; /*first byte of the first chunk after the header*/
 
@@ -5880,6 +5887,7 @@ const char* lodepng_error_text(unsigned code)
     /*the windowsize in the LodePNGCompressSettings. Requiring POT(==> & instead of %) makes encoding 12% faster.*/
     case 90: return "windowsize must be a power of two";
     case 91: return "invalid decompressed idat size";
+    case 92: return "too many pixels, not supported";
   }
   return "unknown error code";
 }
