@@ -568,9 +568,9 @@ typedef struct LodePNGColorProfile
 void lodepng_color_profile_init(LodePNGColorProfile* profile);
 
 /*Get a LodePNGColorProfile of the image.*/
-unsigned get_color_profile(LodePNGColorProfile* profile,
-                           const unsigned char* image, unsigned w, unsigned h,
-                           const LodePNGColorMode* mode_in);
+unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
+                                   const unsigned char* image, unsigned w, unsigned h,
+                                   const LodePNGColorMode* mode_in);
 /*The function LodePNG uses internally to decide the PNG color with auto_convert.
 Chooses an optimal color model, e.g. grey if only grey pixels, palette if < 256 colors, ...*/
 unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
