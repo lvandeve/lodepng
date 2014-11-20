@@ -3494,7 +3494,7 @@ void lodepng_color_profile_init(LodePNGColorProfile* profile)
 }*/
 
 /*Returns how many bits needed to represent given value (max 8 bit)*/
-unsigned getValueRequiredBits(unsigned char value)
+static unsigned getValueRequiredBits(unsigned char value)
 {
   if(value == 0 || value == 255) return 1;
   /*The scaling of 2-bit and 4-bit values uses multiples of 85 and 17*/
@@ -3531,7 +3531,8 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
     for(i = 0; i < numpixels; i++)
     {
       getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode);
-      if(r % 257u != 0 || g % 257u != 0 || b % 257u != 0 || a % 257u != 0) /*first and second byte differ*/
+      if((r & 255u) != ((r >> 8) & 255u) || (g & 255u) != ((g >> 8) & 255u) ||
+         (b & 255u) != ((b >> 8) & 255u) || (a & 255u) != ((a >> 8) & 255u)) /*first and second byte differ*/
       {
         sixteen = 1;
         break;
@@ -3652,9 +3653,9 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
     }
 
     /*make the profile's key always 16-bit for consistency - repeat each byte twice*/
-    profile->key_r *= 257;
-    profile->key_g *= 257;
-    profile->key_b *= 257;
+    profile->key_r += (profile->key_r << 8);
+    profile->key_g += (profile->key_g << 8);
+    profile->key_b += (profile->key_b << 8);
   }
 
   color_tree_cleanup(&tree);

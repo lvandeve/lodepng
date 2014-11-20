@@ -1754,6 +1754,10 @@ void testAutoColorModels()
   std::vector<unsigned char> not16;
   addColor16(not16, 257, 257, 257, 0);
   testAutoColorModel(not16, 16, LCT_PALETTE, 1, false);
+
+  std::vector<unsigned char> alpha16;
+  addColor16(alpha16, 257, 0, 0, 10000);
+  testAutoColorModel(alpha16, 16, LCT_RGBA, 16, false);
 }
 
 void doMain()
