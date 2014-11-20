@@ -3504,9 +3504,9 @@ unsigned getValueRequiredBits(unsigned char value)
 
 /*profile must already have been inited with mode.
 It's ok to set some parameters of profile to done already.*/
-unsigned get_color_profile(LodePNGColorProfile* profile,
-                           const unsigned char* in, unsigned w, unsigned h,
-                           const LodePNGColorMode* mode)
+unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
+                                   const unsigned char* in, unsigned w, unsigned h,
+                                   const LodePNGColorMode* mode)
 {
   unsigned error = 0;
   size_t i;
@@ -3675,7 +3675,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   unsigned i, n, palettebits, grey_ok, palette_ok;
 
   lodepng_color_profile_init(&prof);
-  error = get_color_profile(&prof, image, w, h, mode_in);
+  error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
   if(error) return error;
   mode_out->key_defined = 0;
 
