@@ -232,7 +232,7 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer)
     {
       const unsigned char* cdata = lodepng_chunk_data_const(chunk);
       unsigned clength = lodepng_chunk_length(chunk);
-      if(chunk + clength >= end) {
+      if(chunk + clength + 12 > end) {
         std::cout << "invalid chunk length" << std::endl;
         return;
       }
