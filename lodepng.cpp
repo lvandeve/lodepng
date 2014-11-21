@@ -1,5 +1,5 @@
 /*
-LodePNG version 20141119
+LodePNG version 20141120
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -37,7 +37,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #include <fstream>
 #endif /*LODEPNG_COMPILE_CPP*/
 
-#define VERSION_STRING "20141119"
+#define VERSION_STRING "20141120"
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -4425,6 +4425,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   ucvector idat; /*the data from idat chunks*/
   ucvector scanlines;
   size_t predict;
+  size_t numpixels;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
@@ -4438,7 +4439,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
   if(state->error) return;
 
-  size_t numpixels = *w * *h;
+  numpixels = *w * *h;
   if(*h != 0 && numpixels / *h != *w)
   {
     state->error = 92; /*multiplication overflow*/
