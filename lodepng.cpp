@@ -629,7 +629,7 @@ static unsigned HuffmanTree_makeFromLengths2(HuffmanTree* tree)
     /*step 3: generate all the codes*/
     for(unsigned n = 0; n != tree->numcodes; ++n)
     {
-      if(tree->lengths[n] != 0) tree->tree1d[n] = ++nextcode.data[tree->lengths[n]];
+      if(tree->lengths[n] != 0) tree->tree1d[n] = nextcode.data[tree->lengths[n]]++;
     }
   }
 
