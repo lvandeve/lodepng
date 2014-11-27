@@ -5129,7 +5129,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
   if(strategy == LFS_ZERO)
   {
-    for(y = 0; y < h; ++y)
+    for(y = 0; y != h; ++y)
     {
       size_t outindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
       size_t inindex = linebytes * y;
@@ -5146,7 +5146,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     size_t smallest = 0;
     unsigned char type, bestType = 0;
 
-    for(type = 0; type < 5; ++type)
+    for(type = 0; type != 5; ++type)
     {
       ucvector_init(&attempt[type]);
       if(!ucvector_resize(&attempt[type], linebytes)) return 83; /*alloc fail*/
@@ -5154,10 +5154,10 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
     if(!error)
     {
-      for(y = 0; y < h; ++y)
+      for(y = 0; y != h; ++y)
       {
         /*try the 5 filter types*/
-        for(type = 0; type < 5; ++type)
+        for(type = 0; type != 5; ++type)
         {
           filterScanline(attempt[type].data, &in[y * linebytes], prevline, linebytes, bytewidth, type);
 
@@ -5165,11 +5165,11 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
           sum[type] = 0;
           if(type == 0)
           {
-            for(x = 0; x < linebytes; ++x) sum[type] += (unsigned char)(attempt[type].data[x]);
+            for(x = 0; x != linebytes; ++x) sum[type] += (unsigned char)(attempt[type].data[x]);
           }
           else
           {
-            for(x = 0; x < linebytes; ++x)
+            for(x = 0; x != linebytes; ++x)
             {
               /*For differences, each byte should be treated as signed, values above 127 are negative
               (converted to signed char). Filtertype 0 isn't a difference though, so use unsigned there.
@@ -5191,11 +5191,11 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
         /*now fill the out values*/
         out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-        for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+        for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
       }
     }
 
-    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type != 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else if(strategy == LFS_ENTROPY)
   {
@@ -5205,23 +5205,23 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     unsigned type, bestType = 0;
     unsigned count[256];
 
-    for(type = 0; type < 5; ++type)
+    for(type = 0; type != 5; ++type)
     {
       ucvector_init(&attempt[type]);
       if(!ucvector_resize(&attempt[type], linebytes)) return 83; /*alloc fail*/
     }
 
-    for(y = 0; y < h; ++y)
+    for(y = 0; y != h; ++y)
     {
       /*try the 5 filter types*/
-      for(type = 0; type < 5; ++type)
+      for(type = 0; type != 5; ++type)
       {
         filterScanline(attempt[type].data, &in[y * linebytes], prevline, linebytes, bytewidth, type);
-        for(x = 0; x < 256; ++x) count[x] = 0;
-        for(x = 0; x < linebytes; ++x) ++count[attempt[type].data[x]];
+        for(x = 0; x != 256; ++x) count[x] = 0;
+        for(x = 0; x != linebytes; ++x) ++count[attempt[type].data[x]];
         ++count[type]; /*the filter type itself is part of the scanline*/
         sum[type] = 0;
-        for(x = 0; x < 256; ++x)
+        for(x = 0; x != 256; ++x)
         {
           float p = count[x] / (float)(linebytes + 1);
           sum[type] += count[x] == 0 ? 0 : flog2(1 / p) * p;
@@ -5238,14 +5238,14 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
       /*now fill the out values*/
       out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+      for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
     }
 
-    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type != 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else if(strategy == LFS_PREDEFINED)
   {
-    for(y = 0; y < h; ++y)
+    for(y = 0; y != h; ++y)
     {
       size_t outindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
       size_t inindex = linebytes * y;
@@ -5275,14 +5275,14 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     images only, so disable it*/
     zlibsettings.custom_zlib = 0;
     zlibsettings.custom_deflate = 0;
-    for(type = 0; type < 5; ++type)
+    for(type = 0; type != 5; ++type)
     {
       ucvector_init(&attempt[type]);
       ucvector_resize(&attempt[type], linebytes); /*todo: give error if resize failed*/
     }
-    for(y = 0; y < h; ++y) /*try the 5 filter types*/
+    for(y = 0; y != h; ++y) /*try the 5 filter types*/
     {
-      for(type = 0; type < 5; ++type)
+      for(type = 0; type != 5; ++type)
       {
         unsigned testsize = attempt[type].size;
         /*if(testsize > 8) testsize /= 8;*/ /*it already works good enough by testing a part of the row*/
@@ -5301,9 +5301,9 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
       }
       prevline = &in[y * linebytes];
       out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x < linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
+      for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType].data[x];
     }
-    for(type = 0; type < 5; ++type) ucvector_cleanup(&attempt[type]);
+    for(type = 0; type != 5; ++type) ucvector_cleanup(&attempt[type]);
   }
   else return 88; /* unknown filter strategy */
 
@@ -5318,7 +5318,7 @@ static void addPaddingBits(unsigned char* out, const unsigned char* in,
   unsigned y;
   size_t diff = olinebits - ilinebits;
   size_t obp = 0, ibp = 0; /*bit pointers*/
-  for(y = 0; y < h; ++y)
+  for(y = 0; y != h; ++y)
   {
     size_t x;
     for(x = 0; x < ilinebits; ++x)
@@ -5328,7 +5328,7 @@ static void addPaddingBits(unsigned char* out, const unsigned char* in,
     }
     /*obp += diff; --> no, fill in some value in the padding bits too, to avoid
     "Use of uninitialised value of size ###" warning from valgrind*/
-    for(x = 0; x < diff; ++x) setBitOfReversedStream(&obp, out, 0);
+    for(x = 0; x != diff; ++x) setBitOfReversedStream(&obp, out, 0);
   }
 }
 
