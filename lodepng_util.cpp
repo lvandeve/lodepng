@@ -51,8 +51,10 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
     lodepng_chunk_type(type, chunk);
     if(std::string(type).size() != 4) return 1;
 
+    unsigned length = lodepng_chunk_length(chunk);
+    if(chunk + length + 12 > end) return 1;
     names.push_back(type);
-    sizes.push_back(lodepng_chunk_length(chunk));
+    sizes.push_back(length);
 
     chunk = lodepng_chunk_next_const(chunk);
   }
@@ -180,6 +182,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
     {
       const unsigned char* cdata = lodepng_chunk_data_const(chunk);
       unsigned clength = lodepng_chunk_length(chunk);
+      if(chunk + clength + 12 > end) return 1; // corrupt chunk length
 
       for(unsigned i = 0; i < clength; i++)
       {

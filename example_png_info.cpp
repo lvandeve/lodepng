@@ -232,6 +232,10 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer)
     {
       const unsigned char* cdata = lodepng_chunk_data_const(chunk);
       unsigned clength = lodepng_chunk_length(chunk);
+      if(chunk + clength + 12 > end) {
+        std::cout << "invalid chunk length" << std::endl;
+        return;
+      }
 
       for(unsigned i = 0; i < clength; i++)
       {
@@ -276,12 +280,18 @@ Main
 */
 int main(int argc, char *argv[]) /*list the chunks*/
 {
-  if(argc < 2)
+  bool ignore_checksums = false;
+  std::string filename = "";
+  for (int i = 1; i < argc; i++)
+  {
+    if(std::string(argv[i]) == "--ignore_checksums") ignore_checksums = true;
+    else filename = argv[i];
+  }
+  if(filename == "")
   {
     std::cout << "Please provide a filename to preview" << std::endl;
     return 0;
   }
-  const char* filename = argv[1];
 
   std::vector<unsigned char> buffer;
   std::vector<unsigned char> image;
@@ -290,6 +300,12 @@ int main(int argc, char *argv[]) /*list the chunks*/
   lodepng::load_file(buffer, filename); //load the image file with given filename
 
   lodepng::State state;
+  if(ignore_checksums)
+  {
+    state.decoder.ignore_crc = 1;
+    state.decoder.zlibsettings.ignore_adler32 = 1;
+  }
+
   unsigned error = lodepng::decode(image, w, h, state, buffer);
 
   if(error)

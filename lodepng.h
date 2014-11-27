@@ -1,5 +1,5 @@
 /*
-LodePNG version 20140823
+LodePNG version 20141120
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -568,9 +568,9 @@ typedef struct LodePNGColorProfile
 void lodepng_color_profile_init(LodePNGColorProfile* profile);
 
 /*Get a LodePNGColorProfile of the image.*/
-unsigned get_color_profile(LodePNGColorProfile* profile,
-                           const unsigned char* image, unsigned w, unsigned h,
-                           const LodePNGColorMode* mode_in);
+unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
+                                   const unsigned char* image, unsigned w, unsigned h,
+                                   const LodePNGColorMode* mode_in);
 /*The function LodePNG uses internally to decide the PNG color with auto_convert.
 Chooses an optimal color model, e.g. grey if only grey pixels, palette if < 256 colors, ...*/
 unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
@@ -677,7 +677,11 @@ Third byte: must be uppercase
 Fourth byte: uppercase = unsafe to copy, lowercase = safe to copy
 */
 
-/*get the length of the data of the chunk. Total chunk length has 12 bytes more.*/
+/*
+Gets the length of the data of the chunk. Total chunk length has 12 bytes more.
+There must be at least 4 bytes to read from. If the result value is too large,
+it may be corrupt data.
+*/
 unsigned lodepng_chunk_length(const unsigned char* chunk);
 
 /*puts the 4-byte type in null terminated string*/

@@ -355,11 +355,44 @@ void doCodecTestCPP(Image& image)
   assertPixels(image, &decoded[0], "Pixels C++");
 }
 
+//Test LodePNG encoding and decoding the encoded result, using the C++ interface, with interlace
+void doCodecTestInterlaced(Image& image)
+{
+  std::vector<unsigned char> encoded;
+  std::vector<unsigned char> decoded;
+  unsigned decoded_w;
+  unsigned decoded_h;
+
+  lodepng::State state;
+  state.info_png.interlace_method = 1;
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+
+  unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
+
+  assertNoPNGError(error_enc, "encoder error C++");
+
+  //if the image is large enough, compressing it should result in smaller size
+  if(image.data.size() > 512) assertTrue(encoded.size() < image.data.size(), "compressed size");
+
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+  unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, state, encoded);
+
+  assertNoPNGError(error_dec, "decoder error C++");
+
+  ASSERT_EQUALS(image.width, decoded_w);
+  ASSERT_EQUALS(image.height, decoded_h);
+  ASSERT_EQUALS(image.data.size(), decoded.size());
+  assertPixels(image, &decoded[0], "Pixels C++");
+}
+
 //Test LodePNG encoding and decoding the encoded result
 void doCodecTest(Image& image)
 {
   doCodecTestC(image);
   doCodecTestCPP(image);
+  doCodecTestInterlaced(image);
 }
 
 
@@ -476,6 +509,89 @@ void testOtherPattern2()
   doCodecTest(image1);
 }
 
+void testSinglePixel(int r, int g, int b, int a)
+{
+  std::cout << "codec single pixel " << r << " " << g << " " << b << " " << a << std::endl;
+  Image pixel;
+  pixel.width = 1;
+  pixel.height = 1;
+  pixel.colorType = LCT_RGBA;
+  pixel.bitDepth = 8;
+  pixel.data.resize(4);
+  pixel.data[0] = r;
+  pixel.data[1] = g;
+  pixel.data[2] = b;
+  pixel.data[3] = a;
+
+  doCodecTest(pixel);
+}
+
+void testColor(int r, int g, int b, int a)
+{
+  std::cout << "codec test color " << r << " " << g << " " << b << " " << a << std::endl;
+  Image image;
+  image.width = 20;
+  image.height = 20;
+  image.colorType = LCT_RGBA;
+  image.bitDepth = 8;
+  image.data.resize(20 * 20 * 4);
+  for(int y = 0; y < 20; y++)
+  for(int x = 0; x < 20; x++)
+  {
+    image.data[20 * 4 * y + 4 * x + 0] = r;
+    image.data[20 * 4 * y + 4 * x + 0] = g;
+    image.data[20 * 4 * y + 4 * x + 0] = b;
+    image.data[20 * 4 * y + 4 * x + 0] = a;
+  }
+
+  doCodecTest(image);
+
+  Image image2 = image;
+  image2.data[3] = 0; //one fully transparent pixel
+  doCodecTest(image2);
+  image2.data[3] = 128; //one semi transparent pixel
+  doCodecTest(image2);
+
+  Image image3 = image;
+  // add 255 different colors
+  for(int i = 0; i < 255; i++) {
+    image.data[i * 4 + 0] = i;
+    image.data[i * 4 + 1] = i;
+    image.data[i * 4 + 2] = i;
+    image.data[i * 4 + 3] = 255;
+  }
+  doCodecTest(image3);
+  // a 256th color
+  image.data[255 * 4 + 0] = 255;
+  image.data[255 * 4 + 1] = 255;
+  image.data[255 * 4 + 2] = 255;
+  image.data[255 * 4 + 3] = 255;
+  doCodecTest(image3);
+
+  testSinglePixel(r, g, b, a);
+}
+
+void testSize(int w, int h)
+{
+  std::cout << "codec test size " << w << " " << h << std::endl;
+  Image image;
+  image.width = w;
+  image.height = h;
+  image.colorType = LCT_RGBA;
+  image.bitDepth = 8;
+  image.data.resize(w * h * 4);
+  for(int y = 0; y < h; y++)
+  for(int x = 0; x < w; x++)
+  {
+    image.data[w * 4 * y + 4 * x + 0] = x % 256;
+    image.data[w * 4 * y + 4 * x + 0] = y % 256;
+    image.data[w * 4 * y + 4 * x + 0] = 255;
+    image.data[w * 4 * y + 4 * x + 0] = 255;
+  }
+
+  doCodecTest(image);
+}
+
 void testPNGCodec()
 {
   codecTest(1, 1);
@@ -487,6 +603,35 @@ void testPNGCodec()
 
   testOtherPattern1();
   testOtherPattern2();
+
+  testColor(255, 255, 255, 255);
+  testColor(0, 0, 0, 255);
+  testColor(1, 2, 3, 255);
+  testColor(255, 0, 0, 255);
+  testColor(0, 255, 0, 255);
+  testColor(0, 0, 255, 255);
+  testColor(0, 0, 0, 255);
+  testColor(1, 1, 1, 255);
+  testColor(1, 1, 1, 1);
+  testColor(0, 0, 0, 128);
+  testColor(255, 0, 0, 128);
+  testColor(127, 127, 127, 255);
+  testColor(128, 128, 128, 255);
+  testColor(127, 127, 127, 128);
+  testColor(128, 128, 128, 128);
+  //transparent single pixels
+  testColor(0, 0, 0, 0);
+  testColor(255, 0, 0, 0);
+  testColor(1, 2, 3, 0);
+  testColor(255, 255, 255, 0);
+  testColor(254, 254, 254, 0);
+
+  // This is mainly to test the Adam7 interlacing
+  for(int h = 1; h < 12; h++)
+  for(int w = 1; w < 12; w++)
+  {
+    testSize(w, h);
+  }
 }
 
 //Tests some specific color conversions with specific color bit combinations
@@ -1021,20 +1166,23 @@ void testFuzzing()
   std::vector<unsigned char> result;
   std::map<unsigned, unsigned> errors;
   unsigned w, h;
+  lodepng::State state;
+  state.decoder.ignore_crc = 1;
+  state.decoder.zlibsettings.ignore_adler32 = 1;
   for(size_t i = 0; i < png.size(); i++)
   {
     result.clear();
     broken[i] = ~png[i];
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     broken[i] = 0;
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     for(int j = 0; j < 8; j++)
     {
       broken[i] = flipBit(png[i], j);
-      errors[lodepng::decode(result, w, h, broken)]++;
+      errors[lodepng::decode(result, w, h, state, broken)]++;
     }
     broken[i] = 255;
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
     broken[i] = png[i]; //fix it again for the next test
   }
   std::cout << "testFuzzing shrinking" << std::endl;
@@ -1042,7 +1190,7 @@ void testFuzzing()
   while(broken.size() > 0)
   {
     broken.resize(broken.size() - 1);
-    errors[lodepng::decode(result, w, h, broken)]++;
+    errors[lodepng::decode(result, w, h, state, broken)]++;
   }
 
   //For fun, print the number of each error
@@ -1606,6 +1754,10 @@ void testAutoColorModels()
   std::vector<unsigned char> not16;
   addColor16(not16, 257, 257, 257, 0);
   testAutoColorModel(not16, 16, LCT_PALETTE, 1, false);
+
+  std::vector<unsigned char> alpha16;
+  addColor16(alpha16, 257, 0, 0, 10000);
+  testAutoColorModel(alpha16, 16, LCT_RGBA, 16, false);
 }
 
 void doMain()

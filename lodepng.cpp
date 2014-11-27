@@ -1,5 +1,5 @@
 /*
-LodePNG version 20140823
+LodePNG version 20141120
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -37,7 +37,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #include <fstream>
 #endif /*LODEPNG_COMPILE_CPP*/
 
-#define VERSION_STRING "20140823"
+#define VERSION_STRING "20141120"
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -967,7 +967,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   unsigned* bitlen_cl = 0;
   HuffmanTree tree_cl; /*the code tree for code length codes (the huffman tree for compressed huffman trees)*/
 
-  if((*bp) >> 3 >= inlength - 2) return 49; /*error: the bit pointer is or will go past the memory*/
+  if((*bp) + 14 > (inlength << 3)) return 49; /*error: the bit pointer is or will go past the memory*/
 
   /*number of literal/length codes + 257. Unlike the spec, the value 257 is added to it here already*/
   HLIT =  readBitsFromStream(bp, in, 5) + 257;
@@ -975,6 +975,8 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   HDIST = readBitsFromStream(bp, in, 5) + 1;
   /*number of code length codes. Unlike the spec, the value 4 is added to it here already*/
   HCLEN = readBitsFromStream(bp, in, 4) + 4;
+
+  if((*bp) + HCLEN * 3 > (inlength << 3)) return 50; /*error: the bit pointer is or will go past the memory*/
 
   HuffmanTree_init(&tree_cl);
 
@@ -1017,9 +1019,9 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         unsigned replength = 3; /*read in the 2 bits that indicate repeat length (3-6)*/
         unsigned value; /*set value to the previous code*/
 
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         if (i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
 
+        if((*bp + 2) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 2);
 
         if(i < HLIT + 1) value = bitlen_ll[i - 1];
@@ -1036,8 +1038,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
       else if(code == 17) /*repeat "0" 3-10 times*/
       {
         unsigned replength = 3; /*read in the bits that indicate repeat length*/
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
-
+        if((*bp + 3) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 3);
 
         /*repeat this value in the next lengths*/
@@ -1053,8 +1054,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
       else if(code == 18) /*repeat "0" 11-138 times*/
       {
         unsigned replength = 11; /*read in the bits that indicate repeat length*/
-        if(*bp >= inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
-
+        if((*bp + 7) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 7);
 
         /*repeat this value in the next lengths*/
@@ -1136,7 +1136,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
 
       /*part 2: get extra bits and add the value of that to length*/
       numextrabits_l = LENGTHEXTRA[code_ll - FIRST_LENGTH_CODE_INDEX];
-      if(*bp >= inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+      if((*bp + numextrabits_l) > inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       length += readBitsFromStream(bp, in, numextrabits_l);
 
       /*part 3: get distance code*/
@@ -1156,8 +1156,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
 
       /*part 4: get extra bits from distance*/
       numextrabits_d = DISTANCEEXTRA[code_d];
-      if(*bp >= inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
-
+      if((*bp + numextrabits_d) > inbitlength) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       distance += readBitsFromStream(bp, in, numextrabits_d);
 
       /*part 5: fill in all the out[n] values based on the length and dist*/
@@ -1182,7 +1181,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
     {
       /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
       (10=no endcode, 11=wrong jump outside of tree)*/
-      error = (*bp) > inlength * 8 ? 10 : 11;
+      error = ((*bp) > inlength * 8) ? 10 : 11;
       break;
     }
   }
@@ -3489,7 +3488,7 @@ void lodepng_color_profile_init(LodePNGColorProfile* profile)
 }*/
 
 /*Returns how many bits needed to represent given value (max 8 bit)*/
-unsigned getValueRequiredBits(unsigned char value)
+static unsigned getValueRequiredBits(unsigned char value)
 {
   if(value == 0 || value == 255) return 1;
   /*The scaling of 2-bit and 4-bit values uses multiples of 85 and 17*/
@@ -3499,9 +3498,9 @@ unsigned getValueRequiredBits(unsigned char value)
 
 /*profile must already have been inited with mode.
 It's ok to set some parameters of profile to done already.*/
-unsigned get_color_profile(LodePNGColorProfile* profile,
-                           const unsigned char* in, unsigned w, unsigned h,
-                           const LodePNGColorMode* mode)
+unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
+                                   const unsigned char* in, unsigned w, unsigned h,
+                                   const LodePNGColorMode* mode)
 {
   unsigned error = 0;
   size_t i;
@@ -3526,7 +3525,8 @@ unsigned get_color_profile(LodePNGColorProfile* profile,
     for(i = 0; i != numpixels; ++i)
     {
       getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode);
-      if(r % 257u != 0 || g % 257u != 0 || b % 257u != 0 || a % 257u != 0) /*first and second byte differ*/
+      if((r & 255u) != ((r >> 8) & 255u) || (g & 255u) != ((g >> 8) & 255u) ||
+         (b & 255u) != ((b >> 8) & 255u) || (a & 255u) != ((a >> 8) & 255u)) /*first and second byte differ*/
       {
         sixteen = 1;
         break;
@@ -3647,9 +3647,9 @@ unsigned get_color_profile(LodePNGColorProfile* profile,
     }
 
     /*make the profile's key always 16-bit for consistency - repeat each byte twice*/
-    profile->key_r *= 257;
-    profile->key_g *= 257;
-    profile->key_b *= 257;
+    profile->key_r += (profile->key_r << 8);
+    profile->key_g += (profile->key_g << 8);
+    profile->key_b += (profile->key_b << 8);
   }
 
   color_tree_cleanup(&tree);
@@ -3670,11 +3670,14 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   unsigned n, palettebits, grey_ok, palette_ok;
 
   lodepng_color_profile_init(&prof);
-  error = get_color_profile(&prof, image, w, h, mode_in);
+  error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
   if(error) return error;
   mode_out->key_defined = 0;
 
-  if(prof.key && w * h <= 16) prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
+  if(prof.key && w * h <= 16) {
+    prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
+    if(prof.bits < 8) prof.bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
+  }
   grey_ok = !prof.colored && !prof.alpha; /*grey without alpha, with potentially low bits*/
   n = prof.numcolors;
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));
@@ -4416,6 +4419,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   ucvector idat; /*the data from idat chunks*/
   ucvector scanlines;
   size_t predict;
+  size_t numpixels;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
@@ -4428,6 +4432,13 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
 
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
   if(state->error) return;
+
+  numpixels = *w * *h;
+  if(*h != 0 && numpixels / *h != *w)
+  {
+    state->error = 92; /*multiplication overflow*/
+    return;
+  }
 
   ucvector_init(&idat);
   chunk = &in[33]; /*first byte of the first chunk after the header*/
@@ -4555,22 +4566,40 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
 
   ucvector_init(&scanlines);
   /*predict output size, to allocate exact size for output buffer to avoid more dynamic allocation.
-  The prediction is currently not correct for interlaced PNG images.*/
-  predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color) + *h;
+  If the decompressed size does not match the prediction, the image must be corrupt.*/
+  if(state->info_png.interlace_method == 0)
+  {
+    /*The extra *h is added because this are the filter bytes every scanline starts with*/
+    predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color) + *h;
+  }
+  else
+  {
+    /*Adam-7 interlaced: predicted size is the sum of the 7 sub-images sizes*/
+    const LodePNGColorMode* color = &state->info_png.color;
+    predict = 0;
+    predict += lodepng_get_raw_size_idat((*w + 7) / 8, (*h + 7) / 8, color) + (*h + 7) / 8;
+    if(*w > 4) predict += lodepng_get_raw_size_idat((*w + 3) / 8, (*h + 7) / 8, color) + (*h + 7) / 8;
+    predict += lodepng_get_raw_size_idat((*w + 3) / 4, (*h + 3) / 8, color) + (*h + 3) / 8;
+    if(*w > 2) predict += lodepng_get_raw_size_idat((*w + 1) / 4, (*h + 3) / 4, color) + (*h + 3) / 4;
+    predict += lodepng_get_raw_size_idat((*w + 1) / 2, (*h + 1) / 4, color) + (*h + 1) / 4;
+    if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) / 2, (*h + 1) / 2, color) + (*h + 1) / 2;
+    predict += lodepng_get_raw_size_idat((*w + 0) / 1, (*h + 0) / 2, color) + (*h + 0) / 2;
+  }
   if(!state->error && !ucvector_reserve(&scanlines, predict)) state->error = 83; /*alloc fail*/
   if(!state->error)
   {
     state->error = zlib_decompress(&scanlines.data, &scanlines.size, idat.data,
                                    idat.size, &state->decoder.zlibsettings);
+    if(!state->error && scanlines.size != predict) state->error = 91; /*decompressed size doesn't match prediction*/
   }
   ucvector_cleanup(&idat);
 
   if(!state->error)
   {
+    size_t outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
     ucvector outv;
     ucvector_init(&outv);
-    if(!ucvector_resizev(&outv,
-        lodepng_get_raw_size(*w, *h, &state->info_png.color), 0)) state->error = 83; /*alloc fail*/
+    if(!ucvector_resizev(&outv, outsize, 0)) state->error = 83; /*alloc fail*/
     if(!state->error) state->error = postProcessScanlines(outv.data, scanlines.data, *w, *h, &state->info_png);
     *out = outv.data;
   }
@@ -5850,6 +5879,8 @@ const char* lodepng_error_text(unsigned code)
     case 89: return "text chunk keyword too short or long: must have size 1-79";
     /*the windowsize in the LodePNGCompressSettings. Requiring POT(==> & instead of %) makes encoding 12% faster.*/
     case 90: return "windowsize must be a power of two";
+    case 91: return "invalid decompressed idat size";
+    case 92: return "too many pixels, not supported";
   }
   return "unknown error code";
 }
