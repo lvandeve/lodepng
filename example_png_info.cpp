@@ -100,7 +100,7 @@ Display the names and sizes of all chunks in the PNG file.
 void displayChunkNames(const std::vector<unsigned char>& buffer)
 {
   // Listing chunks is based on the original file, not the decoded png info.
-  const unsigned char *chunk, *begin, *end;
+  const unsigned char *chunk, *begin, *end, *next;
   end = &buffer.back() + 1;
   begin = chunk = &buffer.front() + 8;
 
@@ -126,7 +126,9 @@ void displayChunkNames(const std::vector<unsigned char>& buffer)
 
     std::cout << lodepng_chunk_length(chunk) << ", ";
 
-    chunk = lodepng_chunk_next_const(chunk);
+    next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) break; // integer overflow
+    chunk = next;
   }
   std::cout << std::endl;
 }
@@ -212,7 +214,7 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer)
   }
 
   //Read literal data from all IDAT chunks
-  const unsigned char *chunk, *begin, *end;
+  const unsigned char *chunk, *begin, *end, *next;
   end = &buffer.back() + 1;
   begin = chunk = &buffer.front() + 8;
 
@@ -243,7 +245,9 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer)
       }
     }
 
-    chunk = lodepng_chunk_next_const(chunk);
+    next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) break; // integer overflow
+    chunk = next;
   }
 
   //Decompress all IDAT data

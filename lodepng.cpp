@@ -1,5 +1,5 @@
 /*
-LodePNG version 20141120
+LodePNG version 20141126
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -37,7 +37,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #include <fstream>
 #endif /*LODEPNG_COMPILE_CPP*/
 
-#define VERSION_STRING "20141120"
+#define VERSION_STRING "20141126"
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -117,6 +117,13 @@ Example: if(!uivector_resizev(&frequencies_ll, 286, 0)) ERROR_BREAK(83);
 {\
   unsigned error = call;\
   if(error) return error;\
+}
+
+/*Set error var to the error code, and return from the void function.*/
+#define CERROR_RETURN(errorvar, code)\
+{\
+  errorvar = code;\
+  return;\
 }
 
 /*
@@ -566,7 +573,8 @@ static unsigned HuffmanTree_make2DTree(HuffmanTree* tree)
     for(i = 0; i < tree->lengths[n]; i++) /*the bits for this code*/
     {
       unsigned char bit = (unsigned char)((tree->tree1d[n] >> (tree->lengths[n] - i - 1)) & 1);
-      if(treepos > tree->numcodes - 2) return 55; /*oversubscribed, see comment in lodepng_error_text*/
+      /*oversubscribed, see comment in lodepng_error_text*/
+      if(treepos > 2147483647 || treepos + 2 > tree->numcodes) return 55;
       if(tree->tree2d[2 * treepos + bit] == 32767) /*not yet filled in*/
       {
         if(i + 1 == tree->lengths[n]) /*last bit*/
@@ -831,7 +839,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
     if(!error)
     {
       /*calculate the lenghts of each symbol, as the amount of times a coin of each symbol is used*/
-      for(i = 0; i < numpresent - 1; i++)
+      for(i = 0; i + 1 < numpresent; i++)
       {
         Coin* coin = &coins[i];
         for(j = 0; j < coin->symbols.size; j++) lengths[coin->symbols.data[j]]++;
@@ -1194,14 +1202,15 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
 
 static unsigned inflateNoCompression(ucvector* out, const unsigned char* in, size_t* bp, size_t* pos, size_t inlength)
 {
-  /*go to first boundary of byte*/
   size_t p;
   unsigned LEN, NLEN, n, error = 0;
+
+  /*go to first boundary of byte*/
   while(((*bp) & 0x7) != 0) (*bp)++;
   p = (*bp) / 8; /*byte position*/
 
   /*read LEN (2 bytes) and NLEN (2 bytes)*/
-  if(p >= inlength - 4) return 52; /*error, bit pointer will jump past memory*/
+  if(p + 4 >= inlength) return 52; /*error, bit pointer will jump past memory*/
   LEN = in[p] + 256u * in[p + 1]; p += 2;
   NLEN = in[p] + 256u * in[p + 1]; p += 2;
 
@@ -1541,7 +1550,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
       }
 
       if(hashpos == hash->chain[hashpos]) break;
-      
+
       if(numzeros >= 3 && length > numzeros) {
         hashpos = hash->chainz[hashpos];
         if(hash->zeros[hashpos] != numzeros) break;
@@ -3548,7 +3557,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
     for(i = 0; i < numpixels; i++)
     {
       getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode);
-      
+
       if(!colored_done && (r != g || r != b))
       {
         profile->colored = 1;
@@ -3813,7 +3822,7 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   {
     CERROR_RETURN_ERROR(state->error, 48); /*error: the given data is empty*/
   }
-  if(insize < 29)
+  if(insize < 33)
   {
     CERROR_RETURN_ERROR(state->error, 27); /*error: the data length is smaller than the length of a PNG header*/
   }
@@ -3840,6 +3849,11 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   info->compression_method = in[26];
   info->filter_method = in[27];
   info->interlace_method = in[28];
+
+  if(*w == 0 || *h == 0)
+  {
+    CERROR_RETURN_ERROR(state->error, 93);
+  }
 
   if(!state->decoder.ignore_crc)
   {
@@ -4440,11 +4454,12 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   if(state->error) return;
 
   numpixels = *w * *h;
-  if(*h != 0 && numpixels / *h != *w)
-  {
-    state->error = 92; /*multiplication overflow*/
-    return;
-  }
+
+  /*multiplication overflow*/
+  if(*h != 0 && numpixels / *h != *w) CERROR_RETURN(state->error, 92);
+  /*multiplication overflow possible further below. Allows up to 2^31-1 pixel
+  bytes with 16-bit RGBA, the rest is room for filter bytes.*/
+  if(numpixels > 268435455) CERROR_RETURN(state->error, 92);
 
   ucvector_init(&idat);
   chunk = &in[33]; /*first byte of the first chunk after the header*/
@@ -5889,6 +5904,7 @@ const char* lodepng_error_text(unsigned code)
     case 90: return "windowsize must be a power of two";
     case 91: return "invalid decompressed idat size";
     case 92: return "too many pixels, not supported";
+    case 93: return "zero width or height is invalid";
   }
   return "unknown error code";
 }

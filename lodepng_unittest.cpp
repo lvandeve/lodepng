@@ -43,7 +43,7 @@ mv lodepng.cpp lodepng.c ; gcc lodepng.c example*.c -W -Wall -ansi -pedantic -O3
 
 *) Check pngdetail.cpp:
 g++ lodepng.cpp lodepng_util.cpp pngdetail.cpp -W -Wall -ansi -pedantic -O3 -o pngdetail
-./pnginfo testdata/PngSuite/basi0g01.png
+./pngdetail testdata/PngSuite/basi0g01.png
 
 *) Test compiling with some code sections with #defines disabled, for unused static function warnings etc...
 g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_ZLIB
@@ -69,7 +69,7 @@ clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 
 *) check for memory leaks and vulnerabilities with valgrind
 comment out the large files tests because they're slow with valgrind
-g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -g3
+g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3
 valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
@@ -85,7 +85,7 @@ g++ lodepng.cpp example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showp
 // ./showpng testdata/PngSuite/*.png
 /*
 
-*) strip trailing spaces
+*) strip trailing spaces and ensure consistent newlines
 
 *) check diff of lodepng.cpp and lodepng.h before submitting
 

@@ -41,7 +41,7 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
                       const std::vector<unsigned char>& png)
 {
   // Listing chunks is based on the original file, not the decoded png info.
-  const unsigned char *chunk, *begin, *end;
+  const unsigned char *chunk, *begin, *end, *next;
   end = &png.back() + 1;
   begin = chunk = &png.front() + 8;
 
@@ -56,7 +56,9 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
     names.push_back(type);
     sizes.push_back(length);
 
-    chunk = lodepng_chunk_next_const(chunk);
+    next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) return 1; // integer overflow
+    chunk = next;
   }
   return 0;
 }
@@ -79,6 +81,7 @@ unsigned getChunks(std::vector<std::string> names[3],
     if(name.size() != 4) return 1;
 
     next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) return 1; // integer overflow
 
     if(name == "IHDR")
     {
@@ -123,6 +126,7 @@ unsigned insertChunks(std::vector<unsigned char>& png,
     if(name.size() != 4) return 1;
 
     next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) return 1; // integer overflow
 
     if(name == "PLTE")
     {
@@ -166,7 +170,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
   if(error) return 1;
 
   //Read literal data from all IDAT chunks
-  const unsigned char *chunk, *begin, *end;
+  const unsigned char *chunk, *begin, *end, *next;
   end = &png.back() + 1;
   begin = chunk = &png.front() + 8;
 
@@ -190,7 +194,9 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
       }
     }
 
-    chunk = lodepng_chunk_next_const(chunk);
+    next = lodepng_chunk_next_const(chunk);
+    if (next <= chunk) return 1; // integer overflow
+    chunk = next;
   }
 
   //Decompress all IDAT data
