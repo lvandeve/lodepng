@@ -320,9 +320,16 @@ static void string_cleanup(char** out)
 static void string_set(char** out, const char* in)
 {
   size_t insize = strlen(in);
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
   if(string_resize(out, insize))
   {
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = 0; i != insize; ++i)
+#else
+    for(i = 0; i != insize; ++i)
+#endif
     {
       (*out)[i] = in[i];
     }
@@ -606,6 +613,9 @@ static unsigned HuffmanTree_makeFromLengths2(HuffmanTree* tree)
   uivector blcount;
   uivector nextcode;
   unsigned error = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  unsigned bits, n;
+#endif
 
   uivector_init(&blcount);
   uivector_init(&nextcode);
@@ -620,14 +630,26 @@ static unsigned HuffmanTree_makeFromLengths2(HuffmanTree* tree)
   if(!error)
   {
     /*step 1: count number of instances of each code length*/
+#if __STDC_VERSION__ >= 199901L
     for(unsigned bits = 0; bits != tree->numcodes; ++bits) ++blcount.data[tree->lengths[bits]];
+#else
+    for(bits = 0; bits != tree->numcodes; ++bits) ++blcount.data[tree->lengths[bits]];
+#endif
     /*step 2: generate the nextcode values*/
+#if __STDC_VERSION__ >= 199901L
     for(unsigned bits = 1; bits <= tree->maxbitlen; ++bits)
+#else
+    for(bits = 1; bits <= tree->maxbitlen; ++bits)
+#endif
     {
       nextcode.data[bits] = (nextcode.data[bits - 1] + blcount.data[bits - 1]) << 1;
     }
     /*step 3: generate all the codes*/
+#if __STDC_VERSION__ >= 199901L
     for(unsigned n = 0; n != tree->numcodes; ++n)
+#else
+    for(n = 0; n != tree->numcodes; ++n)
+#endif
     {
       if(tree->lengths[n] != 0) tree->tree1d[n] = nextcode.data[tree->lengths[n]]++;
     }
@@ -1946,6 +1968,9 @@ static unsigned deflateFixed(ucvector* out, size_t* bp, Hash* hash,
 
   unsigned BFINAL = final;
   unsigned error = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
 
   HuffmanTree_init(&tree_ll);
   HuffmanTree_init(&tree_d);
@@ -1968,7 +1993,11 @@ static unsigned deflateFixed(ucvector* out, size_t* bp, Hash* hash,
   }
   else /*no LZ77, but still will be Huffman compressed*/
   {
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = datapos; i < dataend; ++i)
+#else
+    for(i = datapos; i < dataend; ++i)
+#endif
     {
       addHuffmanSymbol(bp, out, HuffmanTree_getCode(&tree_ll, data[i]), HuffmanTree_getLength(&tree_ll, data[i]));
     }
@@ -2161,6 +2190,9 @@ unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsig
   unsigned error;
   unsigned char* deflatedata = 0;
   size_t deflatesize = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
 
   /*zlib data: 1 byte CMF (CM+CINFO), 1 byte FLG, deflate data, 4 byte ADLER32 checksum of the Decompressed data*/
   unsigned CMF = 120; /*0b01111000: CM 8, CINFO 7. With CINFO 7, any window size up to 32768 can be used.*/
@@ -2181,7 +2213,11 @@ unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsig
   if(!error)
   {
     unsigned ADLER32 = adler32(in, (unsigned)insize);
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = 0; i != deflatesize; ++i) ucvector_push_back(&outv, deflatedata[i]);
+#else
+    for(i = 0; i != deflatesize; ++i) ucvector_push_back(&outv, deflatedata[i]);
+#endif
     lodepng_free(deflatedata);
     lodepng_add32bitInt(&outv, ADLER32);
   }
@@ -2346,7 +2382,12 @@ static unsigned char readBitFromReversedStream(size_t* bitpointer, const unsigne
 static unsigned readBitsFromReversedStream(size_t* bitpointer, const unsigned char* bitstream, size_t nbits)
 {
   unsigned result = 0;
+#if __STDC_VERSION__ >= 199901L
   for(size_t i = nbits - 1; i < nbits; --i)
+#else
+  size_t i;
+  for(i = nbits - 1; i < nbits; --i)
+#endif
   {
     result += (unsigned)readBitFromReversedStream(bitpointer, bitstream) << i;
   }
@@ -2557,13 +2598,20 @@ void lodepng_color_mode_cleanup(LodePNGColorMode* info)
 
 unsigned lodepng_color_mode_copy(LodePNGColorMode* dest, const LodePNGColorMode* source)
 {
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
   lodepng_color_mode_cleanup(dest);
   *dest = *source;
   if(source->palette)
   {
     dest->palette = (unsigned char*)lodepng_malloc(1024);
     if(!dest->palette && source->palettesize) return 83; /*alloc fail*/
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = 0; i != source->palettesize * 4; ++i) dest->palette[i] = source->palette[i];
+#else
+    for(i = 0; i != source->palettesize * 4; ++i) dest->palette[i] = source->palette[i];
+#endif
   }
   return 0;
 }
@@ -3668,6 +3716,9 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   LodePNGColorProfile prof;
   unsigned error = 0;
   unsigned n, palettebits, grey_ok, palette_ok;
+#if !(__STDC_VERSION__ >= 199901L)
+  unsigned i;
+#endif
 
   lodepng_color_profile_init(&prof);
   error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
@@ -3689,7 +3740,11 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   {
     unsigned char* p = prof.palette;
     lodepng_palette_clear(mode_out); /*remove potential earlier palette*/
+#if __STDC_VERSION__ >= 199901L
     for(unsigned i = 0; i != prof.numcolors; ++i)
+#else
+    for(i = 0; i != prof.numcolors; ++i)
+#endif
     {
       error = lodepng_palette_add(mode_out, p[i * 4 + 0], p[i * 4 + 1], p[i * 4 + 2], p[i * 4 + 3]);
       if(error) break;
@@ -4106,6 +4161,9 @@ static unsigned postProcessScanlines(unsigned char* out, unsigned char* in,
 static unsigned readChunk_PLTE(LodePNGColorMode* color, const unsigned char* data, size_t chunkLength)
 {
   unsigned pos = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  unsigned i;
+#endif
   if(color->palette) lodepng_free(color->palette);
   color->palettesize = chunkLength / 3;
   color->palette = (unsigned char*)lodepng_malloc(4 * color->palettesize);
@@ -4116,7 +4174,11 @@ static unsigned readChunk_PLTE(LodePNGColorMode* color, const unsigned char* dat
   }
   if(color->palettesize > 256) return 38; /*error: palette too big*/
 
+#if __STDC_VERSION__ >= 199901L
   for(unsigned i = 0; i != color->palettesize; ++i)
+#else
+  for(i = 0; i != color->palettesize; ++i)
+#endif
   {
     color->palette[4 * i + 0] = data[pos++]; /*R*/
     color->palette[4 * i + 1] = data[pos++]; /*G*/
@@ -4129,12 +4191,19 @@ static unsigned readChunk_PLTE(LodePNGColorMode* color, const unsigned char* dat
 
 static unsigned readChunk_tRNS(LodePNGColorMode* color, const unsigned char* data, size_t chunkLength)
 {
+#if !(__STDC_VERSION__ >= 199901L)
+  unsigned i;
+#endif
   if(color->colortype == LCT_PALETTE)
   {
     /*error: more alpha values given than there are palette entries*/
     if(chunkLength > color->palettesize) return 38;
 
+#if __STDC_VERSION__ >= 199901L
     for(unsigned i = 0; i != chunkLength; ++i) color->palette[4 * i + 3] = data[i];
+#else
+    for(i = 0; i != chunkLength; ++i) color->palette[4 * i + 3] = data[i];
+#endif
   }
   else if(color->colortype == LCT_GREY)
   {
@@ -4795,9 +4864,16 @@ static unsigned addChunk_IHDR(ucvector* out, unsigned w, unsigned h,
 static unsigned addChunk_PLTE(ucvector* out, const LodePNGColorMode* info)
 {
   unsigned error = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
   ucvector PLTE;
   ucvector_init(&PLTE);
+#if __STDC_VERSION__ >= 199901L
   for(size_t i = 0; i != info->palettesize * 4; ++i)
+#else
+  for(i = 0; i != info->palettesize * 4; ++i)
+#endif
   {
     /*add all channels except alpha channel*/
     if(i % 4 != 3) ucvector_push_back(&PLTE, info->palette[i]);
@@ -4811,19 +4887,30 @@ static unsigned addChunk_PLTE(ucvector* out, const LodePNGColorMode* info)
 static unsigned addChunk_tRNS(ucvector* out, const LodePNGColorMode* info)
 {
   unsigned error = 0;
+#if !(__STDC_VERSION__ >= 199901L)
+  size_t i;
+#endif
   ucvector tRNS;
   ucvector_init(&tRNS);
   if(info->colortype == LCT_PALETTE)
   {
     size_t amount = info->palettesize;
     /*the tail of palette values that all have 255 as alpha, does not have to be encoded*/
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = info->palettesize; i != 0; --i)
+#else
+    for(i = info->palettesize; i != 0; --i)
+#endif
     {
       if(info->palette[4 * (i - 1) + 3] == 255) --amount;
       else break;
     }
     /*add only alpha channel*/
+#if __STDC_VERSION__ >= 199901L
     for(size_t i = 0; i != amount; ++i) ucvector_push_back(&tRNS, info->palette[4 * i + 3]);
+#else
+    for(i = 0; i != amount; ++i) ucvector_push_back(&tRNS, info->palette[4 * i + 3]);
+#endif
   }
   else if(info->colortype == LCT_GREY)
   {
