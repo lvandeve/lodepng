@@ -75,7 +75,7 @@ valgrind --leak-check=full --track-origins=yes ./a.out
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
 cat lodepng.cpp | grep iostream
 
-*) check version dates in copyright message and "#define VERSION_STRING"
+*) check version dates in copyright message and "#define LODEPNG_VERSION_STRING"
 
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 

@@ -2167,9 +2167,10 @@ unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsig
   /*initially, *out must be NULL and outsize 0, if you just give some random *out
   that's pointing to a non allocated buffer, this'll crash*/
   ucvector outv;
+  size_t i;
   unsigned error;
   unsigned char* deflatedata = 0;
-  size_t deflatesize = 0, i;
+  size_t deflatesize = 0;
 
   /*zlib data: 1 byte CMF (CM+CINFO), 1 byte FLG, deflate data, 4 byte ADLER32 checksum of the Decompressed data*/
   unsigned CMF = 120; /*0b01111000: CM 8, CINFO 7. With CINFO 7, any window size up to 32768 can be used.*/
@@ -3678,7 +3679,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
 {
   LodePNGColorProfile prof;
   unsigned error = 0;
-  unsigned n, i, palettebits, grey_ok, palette_ok;
+  unsigned i, n, palettebits, grey_ok, palette_ok;
 
   lodepng_color_profile_init(&prof);
   error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
