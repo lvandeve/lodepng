@@ -1,5 +1,5 @@
 /*
-LodePNG version 20141126
+LodePNG version 20141130
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -32,6 +32,8 @@ freely, subject to the following restrictions:
 #include <vector>
 #include <string>
 #endif /*__cplusplus*/
+
+#define LODEPNG_VERSION_STRING "20141130"
 
 /*
 The following #defines are used to create code sections. They can be disabled

@@ -1,5 +1,5 @@
 /*
-LodePNG version 20141126
+LodePNG version 20141130
 
 Copyright (c) 2005-2014 Lode Vandevenne
 
@@ -36,8 +36,6 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #ifdef LODEPNG_COMPILE_CPP
 #include <fstream>
 #endif /*LODEPNG_COMPILE_CPP*/
-
-#define VERSION_STRING "20141126"
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -5695,7 +5693,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       }
       if(alread_added_id_text == 0)
       {
-        addChunk_tEXt(&outv, "LodePNG", VERSION_STRING); /*it's shorter as tEXt than as zTXt chunk*/
+        addChunk_tEXt(&outv, "LodePNG", LODEPNG_VERSION_STRING); /*it's shorter as tEXt than as zTXt chunk*/
       }
     }
     /*iTXt*/
