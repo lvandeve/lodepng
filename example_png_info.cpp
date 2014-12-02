@@ -193,10 +193,15 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
 /*
 Show the filtertypes of each scanline in this PNG image.
 */
-void displayFilterTypes(const std::vector<unsigned char>& buffer)
+void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_checksums)
 {
   //Get color type and interlace type
   lodepng::State state;
+  if(ignore_checksums)
+  {
+    state.decoder.ignore_crc = 1;
+    state.decoder.zlibsettings.ignore_adler32 = 1;
+  }
   unsigned w, h;
   unsigned error;
   error = lodepng_inspect(&w, &h, &state, &buffer[0], buffer.size());
@@ -338,7 +343,7 @@ int main(int argc, char *argv[]) /*list the chunks*/
   std::cout << std::endl;
   displayChunkNames(buffer);
   std::cout << std::endl;
-  displayFilterTypes(buffer);
+  displayFilterTypes(buffer, ignore_checksums);
   std::cout << std::endl;
   displayAsciiArt(image, w, h);
 }
