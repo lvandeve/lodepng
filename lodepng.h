@@ -894,8 +894,8 @@ TODO:
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
 [X] better name for the variables "codes", "codesD", "codelengthcodes", "clcl" and "lldl"
 [ ] don't stop decoding on errors like 69, 57, 58 (make warnings)
-[ ] make option to choose if the raw image with non multiple of 8 bits per scanline should have padding bits or not
 [ ] let the C++ wrapper catch exceptions coming from the standard library and return LodePNG error codes
+[ ] allow user to provide custom color conversion functions, e.g. for premultiplied alpha, padding bits or not, ...
 */
 
 #endif /*LODEPNG_H inclusion guard*/
