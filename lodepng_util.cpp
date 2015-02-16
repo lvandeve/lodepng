@@ -186,7 +186,10 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
     {
       const unsigned char* cdata = lodepng_chunk_data_const(chunk);
       unsigned clength = lodepng_chunk_length(chunk);
-      if(chunk + clength + 12 > end) return 1; // corrupt chunk length
+      if(chunk + clength + 12 > end || clength > png.size() || chunk + clength + 12 < begin) {
+        // corrupt chunk length
+        return 1;
+      }
 
       for(unsigned i = 0; i < clength; i++)
       {

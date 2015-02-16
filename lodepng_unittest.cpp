@@ -324,7 +324,7 @@ void doCodecTestC(Image& image)
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
   assertPixels(image, decoded, "Pixels C");
-  
+
   free(decoded);
   free(encoded);
 }
@@ -455,7 +455,7 @@ void colorConvertTest(const std::string& bits_in, LodePNGColorType colorType_in,
   {
     assertEquals((int)expected[i], (int)actual[i], "byte " + valtostr(i));
   }
-  
+
   lodepng_color_mode_cleanup(&mode_in);
   lodepng_color_mode_cleanup(&mode_out);
 }
@@ -535,8 +535,8 @@ void testColor(int r, int g, int b, int a)
   image.colorType = LCT_RGBA;
   image.bitDepth = 8;
   image.data.resize(20 * 20 * 4);
-  for(int y = 0; y < 20; y++)
-  for(int x = 0; x < 20; x++)
+  for(size_t y = 0; y < 20; y++)
+  for(size_t x = 0; x < 20; x++)
   {
     image.data[20 * 4 * y + 4 * x + 0] = r;
     image.data[20 * 4 * y + 4 * x + 0] = g;
@@ -554,7 +554,7 @@ void testColor(int r, int g, int b, int a)
 
   Image image3 = image;
   // add 255 different colors
-  for(int i = 0; i < 255; i++) {
+  for(size_t i = 0; i < 255; i++) {
     image.data[i * 4 + 0] = i;
     image.data[i * 4 + 1] = i;
     image.data[i * 4 + 2] = i;
@@ -571,7 +571,7 @@ void testColor(int r, int g, int b, int a)
   testSinglePixel(r, g, b, a);
 }
 
-void testSize(int w, int h)
+void testSize(unsigned w, unsigned h)
 {
   std::cout << "codec test size " << w << " " << h << std::endl;
   Image image;
@@ -580,8 +580,8 @@ void testSize(int w, int h)
   image.colorType = LCT_RGBA;
   image.bitDepth = 8;
   image.data.resize(w * h * 4);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
+  for(size_t y = 0; y < h; y++)
+  for(size_t x = 0; x < w; x++)
   {
     image.data[w * 4 * y + 4 * x + 0] = x % 256;
     image.data[w * 4 * y + 4 * x + 0] = y % 256;
@@ -627,8 +627,8 @@ void testPNGCodec()
   testColor(254, 254, 254, 0);
 
   // This is mainly to test the Adam7 interlacing
-  for(int h = 1; h < 12; h++)
-  for(int w = 1; w < 12; w++)
+  for(unsigned h = 1; h < 12; h++)
+  for(unsigned w = 1; w < 12; w++)
   {
     testSize(w, h);
   }
@@ -693,7 +693,7 @@ void testColorConvert2()
     LodePNGColorType colortype;
     unsigned bitdepth;
   };
-  
+
   Combo combos[15] =
   {
     { LCT_GREY, 1},
@@ -712,20 +712,20 @@ void testColorConvert2()
     { LCT_RGBA, 8},
     { LCT_RGBA, 16},
   };
-  
+
   lodepng::State state;
   LodePNGColorMode& mode_in = state.info_png.color;
   LodePNGColorMode& mode_out = state.info_raw;
   LodePNGColorMode mode_8;
   lodepng_color_mode_init(&mode_8);
-  
+
   for(size_t i = 0; i < 256; i++)
   {
     size_t j = i == 1 ? 255 : i;
     lodepng_palette_add(&mode_in, j, j, j, 255);
     lodepng_palette_add(&mode_out, j, j, j, 255);
   }
-  
+
   for(size_t i = 0; i < 15; i++)
   {
     mode_in.colortype = combos[i].colortype;
@@ -746,11 +746,11 @@ void testColorConvert2()
       unsigned char out[72]; //custom output color type
       unsigned char eight2[36]; //back in RGBA8 after all conversions to check correctness
       unsigned error = 0;
-      
+
       error |= lodepng_convert(in, eight, &mode_in, &mode_8, 3, 3);
       if(!error) error |= lodepng_convert(out, in, &mode_out, &mode_in, 3, 3); //Test input to output type
       if(!error) error |= lodepng_convert(eight2, out, &mode_8, &mode_out, 3, 3);
-      
+
       if(!error)
       {
         for(size_t k = 0; k < 36; k++)
@@ -1031,7 +1031,7 @@ void testPaletteFilterTypesZero()
 
   std::vector<unsigned char> filterTypes;
   lodepng::getFilterTypes(filterTypes, png);
-  
+
   ASSERT_EQUALS(17, filterTypes.size());
   for(size_t i = 0; i < 17; i++) ASSERT_EQUALS(0, filterTypes[i]);
 }
@@ -1080,11 +1080,11 @@ void doRGBAToPaletteTest(unsigned char* palette, size_t size, LodePNGColorType e
   assertNoPNGError(error);
   ASSERT_EQUALS(image.size(), image2.size());
   for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
-  
+
   ASSERT_EQUALS(expectedType, state.info_png.color.colortype);
   if(expectedType == LCT_PALETTE)
   {
-    
+
     ASSERT_EQUALS(size, state.info_png.color.palettesize);
     for(size_t i = 0; i < size * 4; i++) ASSERT_EQUALS(state.info_png.color.palette[i], image[i]);
   }
@@ -1098,7 +1098,7 @@ void testRGBToPaletteConvert()
   doRGBAToPaletteTest(palette2, 2);
   unsigned char palette3[12] = {1,1,1,255, 20,20,20,255, 20,20,21,255};
   doRGBAToPaletteTest(palette3, 3);
-  
+
   std::vector<unsigned char> palette;
   for(int i = 0; i < 256; i++)
   {
@@ -1131,7 +1131,7 @@ void testColorKeyConvert()
   std::vector<unsigned char> png;
   error = lodepng::encode(png, &image[0], w, h);
   assertNoPNGError(error);
-  
+
   lodepng::State state;
   std::vector<unsigned char> image2;
   error = lodepng::decode(image2, w, h, state, png);
@@ -1142,6 +1142,42 @@ void testColorKeyConvert()
   ASSERT_EQUALS(23, state.info_png.color.key_r);
   ASSERT_EQUALS(0, state.info_png.color.key_g);
   ASSERT_EQUALS(0, state.info_png.color.key_b);
+  ASSERT_EQUALS(image.size(), image2.size());
+  for(size_t i = 0; i < image.size(); i++)
+  {
+    ASSERT_EQUALS(image[i], image2[i]);
+  }
+}
+
+void testNoAutoConvert()
+{
+  std::cout << "testNoAutoConvert" << std::endl;
+  unsigned error;
+  unsigned w = 32, h = 32;
+  std::vector<unsigned char> image(w * h * 4);
+  for(size_t i = 0; i < w * h; i++)
+  {
+    image[i * 4 + 0] = (i % 2) ? 255 : 0;
+    image[i * 4 + 1] = (i % 2) ? 255 : 0;
+    image[i * 4 + 2] = (i % 2) ? 255 : 0;
+    image[i * 4 + 3] = 0;
+  }
+  std::vector<unsigned char> png;
+  lodepng::State state;
+  state.info_png.color.colortype = LCT_RGBA;
+  state.info_png.color.bitdepth = 8;
+  state.encoder.auto_convert = false;
+  error = lodepng::encode(png, &image[0], w, h, state);
+  assertNoPNGError(error);
+
+  lodepng::State state2;
+  std::vector<unsigned char> image2;
+  error = lodepng::decode(image2, w, h, state2, png);
+  assertNoPNGError(error);
+  ASSERT_EQUALS(32, w);
+  ASSERT_EQUALS(32, h);
+  ASSERT_EQUALS(LCT_RGBA, state2.info_png.color.colortype);
+  ASSERT_EQUALS(8, state2.info_png.color.bitdepth);
   ASSERT_EQUALS(image.size(), image2.size());
   for(size_t i = 0; i < image.size(); i++)
   {
@@ -1779,6 +1815,7 @@ void doMain()
   testRGBToPaletteConvert();
   test16bitColorEndianness();
   testAutoColorModels();
+  testNoAutoConvert();
 
   //Zlib
   testCompressZlib();
@@ -1805,6 +1842,6 @@ int main()
   {
     std::cout << "error!" << std::endl;
   }
-  
+
   return 0;
 }

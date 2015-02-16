@@ -3537,8 +3537,8 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
     for(i = 0; i != numpixels; ++i)
     {
       getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode);
-      if((r & 255u) != ((r >> 8) & 255u) || (g & 255u) != ((g >> 8) & 255u) ||
-         (b & 255u) != ((b >> 8) & 255u) || (a & 255u) != ((a >> 8) & 255u)) /*first and second byte differ*/
+      if((r & 255) != ((r >> 8) & 255) || (g & 255) != ((g >> 8) & 255) ||
+         (b & 255) != ((b >> 8) & 255) || (a & 255) != ((a >> 8) & 255)) /*first and second byte differ*/
       {
         sixteen = 1;
         break;
