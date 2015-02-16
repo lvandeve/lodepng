@@ -32,14 +32,14 @@ Testing instructions:
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with pure ISO C90 and all warnings:
-mv lodepng.cpp lodepng.c ; gcc lodepng.c example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
 *) try lodepng_benchmark.cpp
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
 
 *) Check if all examples compile without warnings:
-g++ lodepng.cpp example*.cpp -W -Wall -ansi -pedantic -O3 -c
-mv lodepng.cpp lodepng.c ; gcc lodepng.c example*.c -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp
+g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/''*.c -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp
 
 *) Check pngdetail.cpp:
 g++ lodepng.cpp lodepng_util.cpp pngdetail.cpp -W -Wall -ansi -pedantic -O3 -o pngdetail
@@ -79,11 +79,9 @@ cat lodepng.cpp | grep iostream
 
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 
-*) check example_sdl.cpp with the png test suite images (the "x" ones are expected to show error)
-g++ lodepng.cpp example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng
-*/
-// ./showpng testdata/PngSuite/*.png
-/*
+*) check examples/sdl.cpp with the png test suite images (the "x" ones are expected to show error)
+g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng
+./showpng testdata/PngSuite/''*.png
 
 *) strip trailing spaces and ensure consistent newlines
 
