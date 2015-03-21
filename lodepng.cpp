@@ -1,7 +1,7 @@
 /*
-LodePNG version 20141130
+LodePNG version 20150321
 
-Copyright (c) 2005-2014 Lode Vandevenne
+Copyright (c) 2005-2015 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -41,6 +41,8 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
+
+const char* LODEPNG_VERSION_STRING = "20150321";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -5939,7 +5941,7 @@ void save_file(const std::vector<unsigned char>& buffer, const std::string& file
   std::ofstream file(filename.c_str(), std::ios::out|std::ios::binary);
   file.write(buffer.empty() ? 0 : (char*)&buffer[0], std::streamsize(buffer.size()));
 }
-#endif //LODEPNG_COMPILE_DISK
+#endif /* LODEPNG_COMPILE_DISK */
 
 #ifdef LODEPNG_COMPILE_ZLIB
 #ifdef LODEPNG_COMPILE_DECODER
@@ -5962,7 +5964,7 @@ unsigned decompress(std::vector<unsigned char>& out, const std::vector<unsigned 
 {
   return decompress(out, in.empty() ? 0 : &in[0], in.size(), settings);
 }
-#endif //LODEPNG_COMPILE_DECODER
+#endif /* LODEPNG_COMPILE_DECODER */
 
 #ifdef LODEPNG_COMPILE_ENCODER
 unsigned compress(std::vector<unsigned char>& out, const unsigned char* in, size_t insize,
@@ -5984,8 +5986,8 @@ unsigned compress(std::vector<unsigned char>& out, const std::vector<unsigned ch
 {
   return compress(out, in.empty() ? 0 : &in[0], in.size(), settings);
 }
-#endif //LODEPNG_COMPILE_ENCODER
-#endif //LODEPNG_COMPILE_ZLIB
+#endif /* LODEPNG_COMPILE_ENCODER */
+#endif /* LODEPNG_COMPILE_ZLIB */
 
 
 #ifdef LODEPNG_COMPILE_PNG
@@ -6067,8 +6069,8 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const
   load_file(buffer, filename);
   return decode(out, w, h, buffer, colortype, bitdepth);
 }
-#endif //LODEPNG_COMPILE_DECODER
-#endif //LODEPNG_COMPILE_DISK
+#endif /* LODEPNG_COMPILE_DECODER */
+#endif /* LODEPNG_COMPILE_DISK */
 
 #ifdef LODEPNG_COMPILE_ENCODER
 unsigned encode(std::vector<unsigned char>& out, const unsigned char* in, unsigned w, unsigned h,
@@ -6134,8 +6136,8 @@ unsigned encode(const std::string& filename,
   if(lodepng_get_raw_size_lct(w, h, colortype, bitdepth) > in.size()) return 84;
   return encode(filename, in.empty() ? 0 : &in[0], w, h, colortype, bitdepth);
 }
-#endif //LODEPNG_COMPILE_DISK
-#endif //LODEPNG_COMPILE_ENCODER
-#endif //LODEPNG_COMPILE_PNG
-} //namespace lodepng
+#endif /* LODEPNG_COMPILE_DISK */
+#endif /* LODEPNG_COMPILE_ENCODER */
+#endif /* LODEPNG_COMPILE_PNG */
+} /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/

@@ -34,6 +34,9 @@ g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pe
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
+*) Compile with C with -pedantic but not -ansi flag so it warns about // style comments in C++-only ifdefs
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+
 *) try lodepng_benchmark.cpp
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
 
