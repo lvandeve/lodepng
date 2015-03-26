@@ -435,11 +435,11 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
     {
       std::cout << "Block sizes (uncompressed): ";
       for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << (zlibinfo[i].compressedbits / 8) << " ";
+          std::cout << zlibinfo[i].uncompressedbytes << " ";
       std::cout << std::endl;
       std::cout << "Block sizes (compressed): ";
       for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << zlibinfo[i].uncompressedbytes << " ";
+          std::cout << (zlibinfo[i].compressedbits / 8) << " ";
       std::cout << std::endl;
       std::cout << "Block boundaries (uncompressed): ";
       for(size_t i = 0; i + 1 < boundaries_uncompressed.size(); i++)
