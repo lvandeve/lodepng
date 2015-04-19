@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150321
+LodePNG version 20150418
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -1562,6 +1562,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 18 apr 2015: Boundary PM instead of just package-merge for faster encoding.
 *) 23 aug 2014: Reduced needless memory usage of decoder.
 *) 28 jun 2014: Removed fix_png setting, always support palette OOB for
     simplicity. Made ColorProfile public.

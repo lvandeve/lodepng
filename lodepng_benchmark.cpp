@@ -24,7 +24,7 @@ freely, subject to the following restrictions:
 */
 
 //g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3
-//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && time ./a.out
+//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
 
 #include "lodepng.h"
 
@@ -44,6 +44,9 @@ freely, subject to the following restrictions:
 double total_dec_time = 0;
 double total_enc_time = 0;
 size_t total_enc_size = 0;
+size_t total_in_size = 0; // This is the uncompressed data in the raw color format
+
+bool verbose = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -119,7 +122,7 @@ void doCodecTest(Image& image)
   unsigned decoded_h;
 
   double t_enc0 = getTime();
-  
+
   unsigned error_enc = lodepng_encode_memory(&encoded, &encoded_size, &image.data[0],
                                              image.width, image.height, image.colorType, image.bitDepth);
 
@@ -136,21 +139,27 @@ void doCodecTest(Image& image)
   }
   double t_dec1 = getTime();
 
-  
+
   assertEquals(image.width, decoded_w);
   assertEquals(image.height, decoded_h);
 
-  printValue("encoding time", t_enc1 - t_enc0, "s");
-  std::cout << "compression: " << ((double)(encoded_size) / (double)(image.data.size())) * 100 << "%"
-            << " ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
-            << " size: " << encoded_size << std::endl;
   total_enc_size += encoded_size;
   total_enc_time += (t_enc1 - t_enc0);
-
-  if(NUM_DECODE> 0) printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
   total_dec_time += (t_dec1 - t_dec0);
+  LodePNGColorMode colormode;
+  colormode.colortype = image.colorType;
+  colormode.bitdepth = image.bitDepth;
+  total_in_size += lodepng_get_raw_size(image.width, image.height, &colormode);
 
-  std::cout << std::endl;
+  if(verbose)
+  {
+    printValue("encoding time", t_enc1 - t_enc0, "s");
+    std::cout << "compression: " << ((double)(encoded_size) / (double)(image.data.size())) * 100 << "%"
+              << " ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
+              << " size: " << encoded_size << std::endl;
+    if(NUM_DECODE> 0) printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
+    std::cout << std::endl;
+  }
 
   //LodePNG_saveFile(encoded, encoded_size, "test.png");
 
@@ -162,14 +171,14 @@ static const int IMGSIZE = 4096;
 
 void testPatternSine()
 {
-  std::cout << "sine pattern" << std::endl;
+  if(verbose) std::cout << "sine pattern" << std::endl;
 
   /*
   There's something annoying about this pattern: it encodes worse, slower and with worse compression,
   when adjusting the parameters, while all other images go faster and higher compression, and vice versa.
   It responds opposite to optimizations...
   */
-  
+
   Image image;
   int w = IMGSIZE / 2;
   int h = IMGSIZE / 2;
@@ -193,14 +202,14 @@ void testPatternSine()
 
 void testPatternSineNoAlpha()
 {
-  std::cout << "sine pattern w/o alpha" << std::endl;
+  if(verbose) std::cout << "sine pattern w/o alpha" << std::endl;
 
   /*
   There's something annoying about this pattern: it encodes worse, slower and with worse compression,
   when adjusting the parameters, while all other images go faster and higher compression, and vice versa.
   It responds opposite to optimizations...
   */
-  
+
   Image image;
   int w = IMGSIZE / 2;
   int h = IMGSIZE / 2;
@@ -223,7 +232,7 @@ void testPatternSineNoAlpha()
 
 void testPatternXor()
 {
-  std::cout << "xor pattern" << std::endl;
+  if(verbose) std::cout << "xor pattern" << std::endl;
 
   Image image;
   int w = IMGSIZE;
@@ -257,7 +266,7 @@ unsigned int getRandomUint()
 
 void testPatternPseudoRan()
 {
-  std::cout << "pseudorandom pattern" << std::endl;
+  if(verbose) std::cout << "pseudorandom pattern" << std::endl;
 
   Image image;
   int w = IMGSIZE / 2;
@@ -281,8 +290,8 @@ void testPatternPseudoRan()
 
 void testPatternSineXor()
 {
-  std::cout << "sine+xor pattern" << std::endl;
-  
+  if(verbose) std::cout << "sine+xor pattern" << std::endl;
+
   Image image;
   int w = IMGSIZE / 2;
   int h = IMGSIZE / 2;
@@ -310,8 +319,8 @@ void testPatternSineXor()
 
 void testPatternGreyMandel()
 {
-  std::cout << "grey mandelbrot pattern" << std::endl;
-  
+  if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
+
   Image image;
   int w = IMGSIZE / 2;
   int h = IMGSIZE / 2;
@@ -326,7 +335,7 @@ void testPatternGreyMandel()
   // go to a position in the mandelbrot where there's lots of entropy
   double zoom = 1779.8, moveX = -0.7431533999637661, moveY = -0.1394057861346605;
   int maxIterations = 300;
-  
+
   for(int y = 0; y < h; y++)
   for(int x = 0; x < w; x++)
   {
@@ -350,8 +359,8 @@ void testPatternGreyMandel()
 
 void testPatternGreyMandelSmall()
 {
-  std::cout << "grey mandelbrot pattern" << std::endl;
-  
+  if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
+
   Image image;
   int w = IMGSIZE / 8;
   int h = IMGSIZE / 8;
@@ -366,7 +375,7 @@ void testPatternGreyMandelSmall()
   // go to a position in the mandelbrot where there's lots of entropy
   double zoom = 1779.8, moveX = -0.7431533999637661, moveY = -0.1394057861346605;
   int maxIterations = 300;
-  
+
   for(int y = 0; y < h; y++)
   for(int x = 0; x < w; x++)
   {
@@ -390,7 +399,7 @@ void testPatternGreyMandelSmall()
 
 void testPatternX()
 {
-  std::cout << "x pattern" << std::endl;
+  if(verbose) std::cout << "x pattern" << std::endl;
 
   Image image;
   int w = IMGSIZE;
@@ -411,7 +420,7 @@ void testPatternX()
 
 void testPatternY()
 {
-  std::cout << "y pattern" << std::endl;
+  if(verbose) std::cout << "y pattern" << std::endl;
 
   Image image;
   int w = IMGSIZE;
@@ -432,8 +441,8 @@ void testPatternY()
 
 void testPatternDisk(const std::string& filename)
 {
-  std::cout << "file " << filename << std::endl;
-  
+  if(verbose) std::cout << "file " << filename << std::endl;
+
   Image image;
   image.colorType = LCT_RGB;
   image.bitDepth = 8;
@@ -442,37 +451,58 @@ void testPatternDisk(const std::string& filename)
   doCodecTest(image);
 }
 
-
-int main()
+int main(int argc, char *argv[])
 {
+  verbose = false;
+
+  std::vector<std::string> files;
+
+  for(int i = 1; i < argc; i++)
+  {
+    std::string arg = argv[i];
+    if(arg == "-v") verbose = true;
+    else files.push_back(arg);
+  }
+
   std::cout << "NUM_DECODE: " << NUM_DECODE << std::endl;
 
-  //testPatternDisk("testdata/frymire.png");
-  //testPatternGreyMandel();
+  if(files.empty())
+  {
+    //testPatternDisk("testdata/frymire.png");
+    //testPatternGreyMandel();
 
-  testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
-  testPatternDisk("testdata/ephyse_franco-chon-s-butchery.png");
-  testPatternDisk("testdata/jwbalsley_subway-rats.png");
-  testPatternDisk("testdata/Biomenace_complete.png");
-  testPatternDisk("testdata/frymire.png");
-  testPatternDisk("testdata/lena.png");
-  testPatternDisk("testdata/linedrawing.png");
-  //testPatternSine();
-  //testPatternSineNoAlpha();
-  testPatternXor();
-  testPatternPseudoRan();
-  //testPatternSineXor();
-  testPatternGreyMandel();
-  //testPatternX();
-  //testPatternY();
-  //testPatternDisk("Data/purplesmall.png");
+    testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
+    testPatternDisk("testdata/ephyse_franco-chon-s-butchery.png");
+    testPatternDisk("testdata/jwbalsley_subway-rats.png");
+    testPatternDisk("testdata/Biomenace_complete.png");
+    testPatternDisk("testdata/frymire.png");
+    testPatternDisk("testdata/lena.png");
+    testPatternDisk("testdata/linedrawing.png");
+    //testPatternSine();
+    //testPatternSineNoAlpha();
+    testPatternXor();
+    testPatternPseudoRan();
+    //testPatternSineXor();
+    testPatternGreyMandel();
+    //testPatternX();
+    //testPatternY();
+    //testPatternDisk("Data/purplesmall.png");
 
-  /*testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
-  testPatternSine();*/
+    /*testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
+    testPatternSine();*/
+  }
+  else
+  {
+    for(size_t i = 0; i < files.size(); i++)
+    {
+      testPatternDisk(files[i]);
+    }
+  }
 
   std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s" << std::endl;
   std::cout << "Total encoding time: " << total_enc_time << "s" << std::endl;
-  std::cout << "Total size: " << total_enc_size << std::endl;
+  std::cout << "Total input size  : " << total_in_size << std::endl;
+  std::cout << "Total encoded size: " << total_enc_size << std::endl;
 
-  std::cout << "benchmark done" << std::endl;
+  if(verbose) std::cout << "benchmark done" << std::endl;
 }

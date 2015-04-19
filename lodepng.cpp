@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150321
+LodePNG version 20150418
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -42,7 +42,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20150321";
+const char* LODEPNG_VERSION_STRING = "20150418";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -197,15 +197,6 @@ static unsigned uivector_push_back(uivector* p, unsigned c)
 {
   if(!uivector_resize(p, p->size + 1)) return 0;
   p->data[p->size - 1] = c;
-  return 1;
-}
-
-/*copy q to p, returns 1 if success, 0 if failure ==> nothing done*/
-static unsigned uivector_copy(uivector* p, const uivector* q)
-{
-  size_t i;
-  if(!uivector_resize(p, q->size)) return 0;
-  for(i = 0; i != q->size; ++i) p->data[i] = q->data[i];
   return 1;
 }
 #endif /*LODEPNG_COMPILE_ENCODER*/
@@ -668,101 +659,136 @@ static unsigned HuffmanTree_makeFromLengths(HuffmanTree* tree, const unsigned* b
 
 #ifdef LODEPNG_COMPILE_ENCODER
 
-/*
-A coin, this is the terminology used for the package-merge algorithm and the
-coin collector's problem. This is used to generate the huffman tree.
-A coin can be multiple coins (when they're merged)
-*/
-typedef struct Coin
+/*BPM: Boundary Package Merge, see "A Fast and Space-Economical Algorithm for Length-Limited Coding",
+Jyrki Katajainen, Alistair Moffat, Andrew Turpin, 1995.*/
+
+/*chain node for boundary package merge*/
+typedef struct BPMNode
 {
-  uivector symbols;
-  float weight; /*the sum of all weights in this coin*/
-} Coin;
+  int weight; /*the sum of all weights in this chain*/
+  unsigned index; /*index of this leaf node (called "count" in the paper)*/
+  struct BPMNode* tail; /*the next nodes in this chain (null if last)*/
+  int in_use;
+} BPMNode;
 
-static void coin_init(Coin* c)
+/*lists of chains*/
+typedef struct BPMLists
 {
-  uivector_init(&c->symbols);
-}
+  /*memory pool*/
+  unsigned memsize;
+  BPMNode* memory;
+  unsigned numfree;
+  unsigned nextfree;
+  BPMNode** freelist;
+  /*two heads of lookahead chains per list*/
+  unsigned listsize;
+  BPMNode** chains0;
+  BPMNode** chains1;
+} BPMLists;
 
-/*argument c is void* so that this dtor can be given as function pointer to the vector resize function*/
-static void coin_cleanup(void* c)
-{
-  uivector_cleanup(&((Coin*)c)->symbols);
-}
-
-static void coin_copy(Coin* c1, const Coin* c2)
-{
-  c1->weight = c2->weight;
-  uivector_copy(&c1->symbols, &c2->symbols);
-}
-
-static void add_coins(Coin* c1, const Coin* c2)
-{
-  size_t i;
-  for(i = 0; i != c2->symbols.size; ++i) uivector_push_back(&c1->symbols, c2->symbols.data[i]);
-  c1->weight += c2->weight;
-}
-
-static void init_coins(Coin* coins, size_t num)
-{
-  size_t i;
-  for(i = 0; i != num; ++i) coin_init(&coins[i]);
-}
-
-static void cleanup_coins(Coin* coins, size_t num)
-{
-  size_t i;
-  for(i = 0; i != num; ++i) coin_cleanup(&coins[i]);
-}
-
-static int coin_compare(const void* a, const void* b) {
-  float wa = ((const Coin*)a)->weight;
-  float wb = ((const Coin*)b)->weight;
-  return wa > wb ? 1 : wa < wb ? -1 : 0;
-}
-
-static unsigned append_symbol_coins(Coin* coins, const unsigned* frequencies, unsigned numcodes, size_t sum)
+/*creates a new chain node with the given parameters, from the memory in the lists */
+static BPMNode* bpmnode_create(BPMLists* lists, int weight, unsigned index, BPMNode* tail)
 {
   unsigned i;
-  unsigned j = 0; /*index of present symbols*/
-  for(i = 0; i != numcodes; ++i)
+  BPMNode* result;
+
+  /*memory full, so garbage collect*/
+  if(lists->nextfree >= lists->numfree)
   {
-    if(frequencies[i] != 0) /*only include symbols that are present*/
+    /*mark only those that are in use*/
+    for(i = 0; i != lists->memsize; ++i) lists->memory[i].in_use = 0;
+    for(i = 0; i != lists->listsize; ++i)
     {
-      coins[j].weight = frequencies[i] / (float)sum;
-      uivector_push_back(&coins[j].symbols, i);
-      ++j;
+      BPMNode* node;
+      for(node = lists->chains0[i]; node != 0; node = node->tail) node->in_use = 1;
+      for(node = lists->chains1[i]; node != 0; node = node->tail) node->in_use = 1;
+    }
+    /*collect those that are free*/
+    lists->numfree = 0;
+    for(i = 0; i != lists->memsize; ++i)
+    {
+      if(!lists->memory[i].in_use) lists->freelist[lists->numfree++] = &lists->memory[i];
+    }
+    lists->nextfree = 0;
+  }
+
+  result = lists->freelist[lists->nextfree++];
+  result->weight = weight;
+  result->index = index;
+  result->tail = tail;
+  return result;
+}
+
+static int bpmnode_compare(const void* a, const void* b)
+{
+  int wa = ((const BPMNode*)a)->weight;
+  int wb = ((const BPMNode*)b)->weight;
+  if(wa < wb) return -1;
+  if(wa > wb) return 1;
+  /*make the qsort a stable sort*/
+  return ((const BPMNode*)a)->index < ((const BPMNode*)b)->index ? 1 : -1;
+}
+
+/*Boundary Package Merge step, numpresent is the amount of leaves, and c is the current chain.*/
+static void boundaryPM(BPMLists* lists, BPMNode* leaves, size_t numpresent, int c, int num)
+{
+  unsigned lastindex = lists->chains1[c]->index;
+
+  if(c == 0)
+  {
+    if(lastindex >= numpresent) return;
+    lists->chains0[c] = lists->chains1[c];
+    lists->chains1[c] = bpmnode_create(lists, leaves[lastindex].weight, lastindex + 1, 0);
+  }
+  else
+  {
+    /*sum of the weights of the head nodes of the previous lookahead chains.*/
+    int sum = lists->chains0[c - 1]->weight + lists->chains1[c - 1]->weight;
+    lists->chains0[c] = lists->chains1[c];
+    if(lastindex < numpresent && sum > leaves[lastindex].weight)
+    {
+      lists->chains1[c] = bpmnode_create(lists, leaves[lastindex].weight, lastindex + 1, lists->chains1[c]->tail);
+      return;
+    }
+    lists->chains1[c] = bpmnode_create(lists, sum, lastindex, lists->chains1[c - 1]);
+    /*in the end we are only interested in the chain of the last list, so no
+    need to recurse if we're at the last one (this gives measurable speedup)*/
+    if(num + 1 < (int)(2 * numpresent - 2))
+    {
+      boundaryPM(lists, leaves, numpresent, c - 1, num);
+      boundaryPM(lists, leaves, numpresent, c - 1, num);
     }
   }
-  return 0;
 }
 
 unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequencies,
                                       size_t numcodes, unsigned maxbitlen)
 {
-  unsigned i, j;
-  size_t sum = 0, numpresent = 0;
   unsigned error = 0;
-  Coin* coins; /*the coins of the currently calculated row*/
-  Coin* prev_row; /*the previous row of coins*/
-  size_t numcoins;
-  size_t coinmem;
+  unsigned i;
+  size_t numpresent = 0; /*number of symbols with non-zero frequency*/
+  BPMNode* leaves; /*the symbols, only those with > 0 frequency*/
 
   if(numcodes == 0) return 80; /*error: a tree of 0 symbols is not supposed to be made*/
+  if((1u << maxbitlen) < numcodes) return 80; /*error: represent all symbols*/
+
+  leaves = (BPMNode*)lodepng_malloc(numcodes * sizeof(*leaves));
+  if(!leaves) return 83; /*alloc fail*/
 
   for(i = 0; i != numcodes; ++i)
   {
     if(frequencies[i] > 0)
     {
+      leaves[numpresent].weight = frequencies[i];
+      leaves[numpresent].index = i;
       ++numpresent;
-      sum += frequencies[i];
     }
   }
 
   for(i = 0; i != numcodes; ++i) lengths[i] = 0;
 
   /*ensure at least two present symbols. There should be at least one symbol
-  according to RFC 1951 section 3.2.7. To decoders incorrectly require two. To
+  according to RFC 1951 section 3.2.7. Some decoders incorrectly require two. To
   make these work as well ensure there are at least two symbols. The
   Package-Merge code below also doesn't work correctly if there's only one
   symbol, it'd give it the theoritical 0 bits but in practice zlib wants 1 bit*/
@@ -772,87 +798,55 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
   }
   else if(numpresent == 1)
   {
-    for(i = 0; i != numcodes; ++i)
-    {
-      if(frequencies[i])
-      {
-        lengths[i] = 1;
-        lengths[i == 0 ? 1 : 0] = 1;
-        break;
-      }
-    }
+    lengths[leaves[0].index] = 1;
+    lengths[leaves[0].index == 0 ? 1 : 0] = 1;
   }
   else
   {
-    /*Package-Merge algorithm represented by coin collector's problem
-    For every symbol, maxbitlen coins will be created*/
+    BPMLists lists;
+    BPMNode* node;
 
-    coinmem = numpresent * 2; /*max amount of coins needed with the current algo*/
-    coins = (Coin*)lodepng_malloc(sizeof(Coin) * coinmem);
-    prev_row = (Coin*)lodepng_malloc(sizeof(Coin) * coinmem);
-    if(!coins || !prev_row)
-    {
-      lodepng_free(coins);
-      lodepng_free(prev_row);
-      return 83; /*alloc fail*/
-    }
-    init_coins(coins, coinmem);
-    init_coins(prev_row, coinmem);
+    qsort(leaves, numpresent, sizeof(BPMNode), bpmnode_compare);
 
-    /*first row, lowest denominator*/
-    error = append_symbol_coins(coins, frequencies, numcodes, sum);
-    numcoins = numpresent;
-    qsort(coins, numcoins, sizeof(Coin), coin_compare);
-    if(!error)
-    {
-      unsigned numprev = 0;
-      for(j = 1; j <= maxbitlen && !error; ++j) /*each of the remaining rows*/
-      {
-        unsigned tempnum;
-        Coin* tempcoins;
-        /*swap prev_row and coins, and their amounts*/
-        tempcoins = prev_row; prev_row = coins; coins = tempcoins;
-        tempnum = numprev; numprev = numcoins; numcoins = tempnum;
-
-        cleanup_coins(coins, numcoins);
-        init_coins(coins, numcoins);
-
-        numcoins = 0;
-
-        /*fill in the merged coins of the previous row*/
-        for(i = 0; i + 1 < numprev; i += 2)
-        {
-          /*merge prev_row[i] and prev_row[i + 1] into new coin*/
-          Coin* coin = &coins[numcoins++];
-          coin_copy(coin, &prev_row[i]);
-          add_coins(coin, &prev_row[i + 1]);
-        }
-        /*fill in all the original symbols again*/
-        if(j < maxbitlen)
-        {
-          error = append_symbol_coins(coins + numcoins, frequencies, numcodes, sum);
-          numcoins += numpresent;
-        }
-        qsort(coins, numcoins, sizeof(Coin), coin_compare);
-      }
-    }
+    lists.listsize = maxbitlen;
+    lists.memsize = 2 * maxbitlen * (maxbitlen + 1);
+    lists.nextfree = 0;
+    lists.numfree = lists.memsize;
+    lists.memory = (BPMNode*)lodepng_malloc(lists.memsize * sizeof(*lists.memory));
+    lists.freelist = (BPMNode**)lodepng_malloc(lists.memsize * sizeof(BPMNode*));
+    lists.chains0 = (BPMNode**)lodepng_malloc(lists.listsize * sizeof(BPMNode*));
+    lists.chains1 = (BPMNode**)lodepng_malloc(lists.listsize * sizeof(BPMNode*));
+    if(!lists.memory || !lists.freelist || !lists.chains0 || !lists.chains1) error = 83; /*alloc fail*/
 
     if(!error)
     {
-      /*calculate the lengths of each symbol, as the amount of times a coin of each symbol is used*/
-      for(i = 0; i + 1 < numpresent; ++i)
+      for(i = 0; i != lists.memsize; ++i) lists.freelist[i] = &lists.memory[i];
+
+      bpmnode_create(&lists, leaves[0].weight, 1, 0);
+      bpmnode_create(&lists, leaves[1].weight, 2, 0);
+
+      for(i = 0; i != lists.listsize; ++i)
       {
-        Coin* coin = &coins[i];
-        for(j = 0; j < coin->symbols.size; ++j) ++lengths[coin->symbols.data[j]];
+        lists.chains0[i] = &lists.memory[0];
+        lists.chains1[i] = &lists.memory[1];
+      }
+
+      /*each boundaryPM call adds one chain to the last list, and we need 2 * numpresent - 2 chains.*/
+      for(i = 2; i != 2 * numpresent - 2; ++i) boundaryPM(&lists, leaves, numpresent, maxbitlen - 1, i);
+
+      for(node = lists.chains1[maxbitlen - 1]; node; node = node->tail)
+      {
+        for(i = 0; i != node->index; ++i) ++lengths[leaves[i].index];
       }
     }
 
-    cleanup_coins(coins, coinmem);
-    lodepng_free(coins);
-    cleanup_coins(prev_row, coinmem);
-    lodepng_free(prev_row);
+    lodepng_free(lists.memory);
+    lodepng_free(lists.freelist);
+    lodepng_free(lists.chains0);
+    lodepng_free(lists.chains1);
   }
 
+  lodepng_free(leaves);
   return error;
 }
 
@@ -1028,7 +1022,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         unsigned replength = 3; /*read in the 2 bits that indicate repeat length (3-6)*/
         unsigned value; /*set value to the previous code*/
 
-        if (i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
+        if(i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
 
         if((*bp + 2) > inbitlength) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBitsFromStream(bp, in, 2);
@@ -1404,7 +1398,7 @@ static void hash_cleanup(Hash* hash)
 static unsigned getHash(const unsigned char* data, size_t size, size_t pos)
 {
   unsigned result = 0;
-  if (pos + 2 < size)
+  if(pos + 2 < size)
   {
     /*A simple shift and xor hash is used. Since the data of PNGs is dominated
     by zeroes due to the filters, a better hash does not have a significant
@@ -1428,7 +1422,7 @@ static unsigned countZeros(const unsigned char* data, size_t size, size_t pos)
   const unsigned char* end = start + MAX_SUPPORTED_DEFLATE_LENGTH;
   if(end > data + size) end = data + size;
   data = start;
-  while (data != end && *data == 0) ++data;
+  while(data != end && *data == 0) ++data;
   /*subtracting two addresses returned as 32-bit number (max value is MAX_SUPPORTED_DEFLATE_LENGTH)*/
   return (unsigned)(data - start);
 }
@@ -1491,8 +1485,8 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
 
     if(usezeros && hashval == 0)
     {
-      if (numzeros == 0) numzeros = countZeros(in, insize, pos);
-      else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
+      if(numzeros == 0) numzeros = countZeros(in, insize, pos);
+      else if(pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
     }
     else
     {
@@ -1552,10 +1546,13 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
 
       if(hashpos == hash->chain[hashpos]) break;
 
-      if(numzeros >= 3 && length > numzeros) {
+      if(numzeros >= 3 && length > numzeros)
+      {
         hashpos = hash->chainz[hashpos];
         if(hash->zeros[hashpos] != numzeros) break;
-      } else {
+      }
+      else
+      {
         hashpos = hash->chain[hashpos];
         /*outdated hash value, happens if particular value was not encountered in whole last window*/
         if(hash->val[hashpos] != (int)hashval) break;
@@ -1613,8 +1610,8 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
         hashval = getHash(in, insize, pos);
         if(usezeros && hashval == 0)
         {
-          if (numzeros == 0) numzeros = countZeros(in, insize, pos);
-          else if (pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
+          if(numzeros == 0) numzeros = countZeros(in, insize, pos);
+          else if(pos + numzeros > insize || in[pos + numzeros - 1] != 0) --numzeros;
         }
         else
         {
@@ -2007,8 +2004,10 @@ static unsigned lodepng_deflatev(ucvector* out, const unsigned char* in, size_t 
   else if(settings->btype == 1) blocksize = insize;
   else /*if(settings->btype == 2)*/
   {
+    /*on PNGs, deflate blocks of 65-262k seem to give most dense encoding*/
     blocksize = insize / 8 + 8;
-    if(blocksize < 65535) blocksize = 65535;
+    if(blocksize < 65536) blocksize = 65536;
+    if(blocksize > 262144) blocksize = 262144;
   }
 
   numdeflateblocks = (insize + blocksize - 1) / blocksize;
@@ -2226,7 +2225,7 @@ static unsigned zlib_compress(unsigned char** out, size_t* outsize, const unsign
 static unsigned zlib_decompress(unsigned char** out, size_t* outsize, const unsigned char* in,
                                 size_t insize, const LodePNGDecompressSettings* settings)
 {
-  if (!settings->custom_zlib) return 87; /*no custom zlib function provided */
+  if(!settings->custom_zlib) return 87; /*no custom zlib function provided */
   return settings->custom_zlib(out, outsize, in, insize, settings);
 }
 #endif /*LODEPNG_COMPILE_DECODER*/
@@ -2234,7 +2233,7 @@ static unsigned zlib_decompress(unsigned char** out, size_t* outsize, const unsi
 static unsigned zlib_compress(unsigned char** out, size_t* outsize, const unsigned char* in,
                               size_t insize, const LodePNGCompressSettings* settings)
 {
-  if (!settings->custom_zlib) return 87; /*no custom zlib function provided */
+  if(!settings->custom_zlib) return 87; /*no custom zlib function provided */
   return settings->custom_zlib(out, outsize, in, insize, settings);
 }
 #endif /*LODEPNG_COMPILE_ENCODER*/
@@ -3688,7 +3687,8 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   if(error) return error;
   mode_out->key_defined = 0;
 
-  if(prof.key && w * h <= 16) {
+  if(prof.key && w * h <= 16)
+  {
     prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
     if(prof.bits < 8) prof.bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
   }

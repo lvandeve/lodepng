@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2014 Lode Vandevenne
+Copyright (c) 2005-2015 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -39,6 +39,7 @@ mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedant
 
 *) try lodepng_benchmark.cpp
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
+g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out corpus/''*
 
 *) Check if all examples compile without warnings:
 g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
@@ -77,8 +78,9 @@ valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
 cat lodepng.cpp | grep iostream
+cat lodepng.cpp | grep "#include <"
 
-*) check version dates in copyright message and "#define LODEPNG_VERSION_STRING"
+*) check version dates in copyright message and LODEPNG_VERSION_STRING
 
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 
@@ -1630,7 +1632,7 @@ void testPredefinedFilters() {
   assertNoError(error);
 
   ASSERT_EQUALS(outfilters.size(), h);
-  for (size_t i = 0; i < h; i++) ASSERT_EQUALS(3, outfilters[i]);
+  for(size_t i = 0; i < h; i++) ASSERT_EQUALS(3, outfilters[i]);
 }
 
 void testWrongWindowSizeGivesError() {
