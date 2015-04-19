@@ -1168,12 +1168,14 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
       backward = start - distance;
 
       if(!ucvector_resize(out, (*pos) + length)) ERROR_BREAK(83 /*alloc fail*/);
-      for(forward = 0; forward < length; ++forward)
-      {
-        out->data[(*pos)] = out->data[backward];
-        ++(*pos);
-        ++backward;
-        if(backward >= start) backward = start - distance;
+      if (distance < length) {
+        for(forward = 0; forward < length; ++forward)
+        {
+          out->data[(*pos)++] = out->data[backward++];
+        }
+      } else {
+        memcpy(out->data + *pos, out->data + backward, length);
+        *pos += length;
       }
     }
     else if(code_ll == 256)
