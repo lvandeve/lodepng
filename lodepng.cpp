@@ -5938,10 +5938,12 @@ void load_file(std::vector<unsigned char>& buffer, const std::string& filename)
 }
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
-void save_file(const std::vector<unsigned char>& buffer, const std::string& filename)
+unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename)
 {
   std::ofstream file(filename.c_str(), std::ios::out|std::ios::binary);
+  if(!file) return 79;
   file.write(buffer.empty() ? 0 : (char*)&buffer[0], std::streamsize(buffer.size()));
+  return 0;
 }
 #endif /* LODEPNG_COMPILE_DISK */
 
@@ -6127,7 +6129,7 @@ unsigned encode(const std::string& filename,
 {
   std::vector<unsigned char> buffer;
   unsigned error = encode(buffer, in, w, h, colortype, bitdepth);
-  if(!error) save_file(buffer, filename);
+  if(!error) error = save_file(buffer, filename);
   return error;
 }
 
