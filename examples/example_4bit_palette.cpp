@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 
   //create encoder and set settings and info (optional)
   lodepng::State state;
-  
+
   //generate palette
   for(int i = 0; i < 16; i++)
   {
@@ -63,20 +63,20 @@ int main(int argc, char *argv[])
     unsigned char g = 127 * (1 + std::sin(2 * i * 6.28318531 / 16));
     unsigned char b = 127 * (1 + std::sin(3 * i * 6.28318531 / 16));
     unsigned char a = 63 * (1 + std::sin(8 * i * 6.28318531 / 16)) + 128; /*alpha channel of the palette (tRNS chunk)*/
-    
+
     //palette must be added both to input and output color mode, because in this
     //sample both the raw image and the expected PNG image use that palette.
     lodepng_palette_add(&state.info_png.color, r, g, b, a);
     lodepng_palette_add(&state.info_raw, r, g, b, a);
   }
-  
+
   //both the raw image and the encoded image must get colorType 3 (palette)
   state.info_png.color.colortype = LCT_PALETTE; //if you comment this line, and create the above palette in info_raw instead, then you get the same image in a RGBA PNG.
   state.info_png.color.bitdepth = 4;
   state.info_raw.colortype = LCT_PALETTE;
   state.info_raw.bitdepth = 4;
   state.encoder.auto_convert = 0; //we specify ourselves exactly what output PNG color mode we want
-  
+
   //generate some image
   const unsigned w = 511;
   const unsigned h = 511;
@@ -87,13 +87,13 @@ int main(int argc, char *argv[])
   {
     size_t byte_index = (y * w + x) / 2;
     bool byte_half = (y * w + x) % 2 == 1;
-    
+
     int color = (int)(4 * ((1 + std::sin(2.0 * 6.28318531 * x / (double)w))
                          + (1 + std::sin(2.0 * 6.28318531 * y / (double)h))) );
 
     image[byte_index] |= (unsigned char)(color << (byte_half ? 0 : 4));
   }
-  
+
   //encode and save
   std::vector<unsigned char> buffer;
   unsigned error = lodepng::encode(buffer, image.empty() ? 0 : &image[0], w, h, state);

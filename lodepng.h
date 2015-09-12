@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150418
+LodePNG version 20150912
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -41,6 +41,8 @@ to disable code sections, which can give faster compile time and smaller binary.
 The "NO_COMPILE" defines are designed to be used to pass as defines to the
 compiler command to disable them without modifying this header, e.g.
 -DLODEPNG_NO_COMPILE_ZLIB for gcc.
+In addition to those below, you can also define LODEPNG_NO_COMPILE_CRC to
+allow implementing a custom lodepng_crc32.
 */
 /*deflate & zlib. If disabled, you must specify alternative zlib functions in
 the custom_zlib field of the compress and decompress settings*/

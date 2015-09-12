@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150418
+LodePNG version 20150912
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -42,7 +42,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20150418";
+const char* LODEPNG_VERSION_STRING = "20150912";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2296,6 +2296,8 @@ const LodePNGDecompressSettings lodepng_default_decompress_settings = {0, 0, 0, 
 /* / CRC32                                                                  / */
 /* ////////////////////////////////////////////////////////////////////////// */
 
+
+#ifndef LODEPNG_NO_COMPILE_CRC
 /* CRC polynomial: 0xedb88320 */
 static unsigned lodepng_crc32_table[256] = {
            0u, 1996959894u, 3993919788u, 2567524794u,  124634137u, 1886057615u, 3915621685u, 2657392035u,
@@ -2344,6 +2346,7 @@ unsigned lodepng_crc32(const unsigned char* buf, size_t len)
   }
   return c ^ 0xffffffffL;
 }
+#endif /* !LODEPNG_NO_COMPILE_CRC */
 
 /* ////////////////////////////////////////////////////////////////////////// */
 /* / Reading and writing single bits and bytes from/to stream for LodePNG   / */
