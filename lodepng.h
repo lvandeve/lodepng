@@ -857,7 +857,7 @@ void load_file(std::vector<unsigned char>& buffer, const std::string& filename);
 Save the binary data in an std::vector to a file on disk. The file is overwritten
 without warning.
 */
-void save_file(const std::vector<unsigned char>& buffer, const std::string& filename);
+unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename);
 #endif /* LODEPNG_COMPILE_DISK */
 #endif /* LODEPNG_COMPILE_PNG */
 
