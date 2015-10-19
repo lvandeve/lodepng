@@ -888,7 +888,7 @@ unsigned compress(std::vector<unsigned char>& out, const std::vector<unsigned ch
 /*
 TODO:
 [.] test if there are no memory leaks or security exploits - done a lot but needs to be checked often
-[.] check compatibility with vareous compilers  - done but needs to be redone for every newer version
+[.] check compatibility with various compilers  - done but needs to be redone for every newer version
 [X] converting color to 16-bit per channel types
 [ ] read all public PNG chunk types (but never let the color profile and gamma ones touch RGB values)
 [ ] make sure encoder generates no chunks with size > (2^31)-1
@@ -1624,7 +1624,7 @@ symbol.
 *) 20 jan 2008: support for unknown chunks allowing using LodePNG for an editor.
 *) 18 jan 2008: support for tIME and pHYs chunks added to encoder and decoder.
 *) 17 jan 2008: ability to encode and decode compressed zTXt chunks added
-    Also vareous fixes, such as in the deflate and the padding bits code.
+    Also various fixes, such as in the deflate and the padding bits code.
 *) 13 jan 2008: Added ability to encode Adam7-interlaced images. Improved
     filtering code of encoder.
 *) 07 jan 2008: (!) changed LodePNG to use ISO C90 instead of C++. A
