@@ -25,7 +25,7 @@ freely, subject to the following restrictions:
 
 /*
 This example saves the PNG with the best compression LodePNG can do, and with
-unnecesary chunks removed. It tries out several combinations of settings and
+unnecessary chunks removed. It tries out several combinations of settings and
 keeps the smallest one.
 
 NOTE: This is not as good as a true PNG optimizer like optipng or pngcrush.

@@ -4097,7 +4097,7 @@ static unsigned postProcessScanlines(unsigned char* out, unsigned char* in,
       CERROR_TRY_RETURN(unfilter(in, in, w, h, bpp));
       removePaddingBits(out, in, w * bpp, ((w * bpp + 7) / 8) * 8, h);
     }
-    /*we can immediatly filter into the out buffer, no other steps needed*/
+    /*we can immediately filter into the out buffer, no other steps needed*/
     else CERROR_TRY_RETURN(unfilter(out, in, w, h, bpp));
   }
   else /*interlace_method is 1 (Adam7)*/
@@ -5456,7 +5456,7 @@ static unsigned preProcessScanlines(unsigned char** out, size_t* outsize, const 
       }
       else
       {
-        /*we can immediatly filter into the out buffer, no other steps needed*/
+        /*we can immediately filter into the out buffer, no other steps needed*/
         error = filter(*out, in, w, h, &info_png->color, settings);
       }
     }

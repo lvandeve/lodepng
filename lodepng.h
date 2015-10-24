@@ -540,7 +540,7 @@ typedef enum LodePNGFilterStrategy
 {
   /*every filter at zero*/
   LFS_ZERO,
-  /*Use filter that gives minumum sum, as described in the official PNG filter heuristic.*/
+  /*Use filter that gives minimum sum, as described in the official PNG filter heuristic.*/
   LFS_MINSUM,
   /*Use the filter type that gives smallest Shannon entropy for this scanline. Depending
   on the image, this is better or worse than minsum.*/
@@ -1589,7 +1589,7 @@ symbol.
 *) 22 apr 2012 (!): Made interface more consistent, renaming a lot. Removed
     redundant C++ codec classes. Reduced amount of structs. Everything changed,
     but it is cleaner now imho and functionality remains the same. Also fixed
-    several bugs and shrinked the implementation code. Made new samples.
+    several bugs and shrunk the implementation code. Made new samples.
 *) 6 nov 2011 (!): By default, the encoder now automatically chooses the best
     PNG color model and bit depth, based on the amount and type of colors of the
     raw image. For this, autoLeaveOutAlphaChannel replaced by auto_choose_color.
