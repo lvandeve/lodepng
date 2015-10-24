@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150912
+LodePNG version 20151024
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -508,7 +508,7 @@ For 16-bit per channel colors, uses big endian format like PNG does.
 Return value is LodePNG error code
 */
 unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
-                         LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in,
+                         const LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in,
                          unsigned w, unsigned h);
 
 #ifdef LODEPNG_COMPILE_DECODER
@@ -1564,6 +1564,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 24 okt 2015: Bugfix with decoding to palette output.
 *) 18 apr 2015: Boundary PM instead of just package-merge for faster encoding.
 *) 23 aug 2014: Reduced needless memory usage of decoder.
 *) 28 jun 2014: Removed fix_png setting, always support palette OOB for

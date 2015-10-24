@@ -1799,6 +1799,77 @@ void testAutoColorModels()
   testAutoColorModel(alpha16, 16, LCT_RGBA, 16, false);
 }
 
+void testPaletteToPaletteDecode() {
+  std::cout << "testPaletteToPaletteDecode" << std::endl;
+  // It's a bit big for a 2x2 image... but this tests needs one with 256 palette entries in it.
+  std::string base64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAMAAABFaP0WAAAAA3NCSVQICAjb4U/gAAADAFBMVEUA"
+                       "AAAAADMAAGYAAJkAAMwAAP8AMwAAMzMAM2YAM5kAM8wAM/8AZgAAZjMAZmYAZpkAZswAZv8AmQAA"
+                       "mTMAmWYAmZkAmcwAmf8AzAAAzDMAzGYAzJkAzMwAzP8A/wAA/zMA/2YA/5kA/8wA//8zAAAzADMz"
+                       "AGYzAJkzAMwzAP8zMwAzMzMzM2YzM5kzM8wzM/8zZgAzZjMzZmYzZpkzZswzZv8zmQAzmTMzmWYz"
+                       "mZkzmcwzmf8zzAAzzDMzzGYzzJkzzMwzzP8z/wAz/zMz/2Yz/5kz/8wz//9mAABmADNmAGZmAJlm"
+                       "AMxmAP9mMwBmMzNmM2ZmM5lmM8xmM/9mZgBmZjNmZmZmZplmZsxmZv9mmQBmmTNmmWZmmZlmmcxm"
+                       "mf9mzABmzDNmzGZmzJlmzMxmzP9m/wBm/zNm/2Zm/5lm/8xm//+ZAACZADOZAGaZAJmZAMyZAP+Z"
+                       "MwCZMzOZM2aZM5mZM8yZM/+ZZgCZZjOZZmaZZpmZZsyZZv+ZmQCZmTOZmWaZmZmZmcyZmf+ZzACZ"
+                       "zDOZzGaZzJmZzMyZzP+Z/wCZ/zOZ/2aZ/5mZ/8yZ///MAADMADPMAGbMAJnMAMzMAP/MMwDMMzPM"
+                       "M2bMM5nMM8zMM//MZgDMZjPMZmbMZpnMZszMZv/MmQDMmTPMmWbMmZnMmczMmf/MzADMzDPMzGbM"
+                       "zJnMzMzMzP/M/wDM/zPM/2bM/5nM/8zM////AAD/ADP/AGb/AJn/AMz/AP//MwD/MzP/M2b/M5n/"
+                       "M8z/M///ZgD/ZjP/Zmb/Zpn/Zsz/Zv//mQD/mTP/mWb/mZn/mcz/mf//zAD/zDP/zGb/zJn/zMz/"
+                       "zP///wD//zP//2b//5n//8z///8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABlenwdAAABAHRSTlP/////////////////////////"
+                       "////////////////////////////////////////////////////////////////////////////"
+                       "////////////////////////////////////////////////////////////////////////////"
+                       "////////////////////////////////////////////////////////////////////////////"
+                       "//////////////////////////////////8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                       "AAAAAAAAAAAAG8mZagAAAAlwSFlzAAAOTQAADpwB3vacVwAAAA5JREFUCJlj2CLHwHodAATjAa+k"
+                       "lTE5AAAAAElFTkSuQmCC";
+  std::vector<unsigned char> png;
+  fromBase64(png, base64);
+
+  std::vector<unsigned char> image;
+  unsigned width, height;
+  unsigned error = lodepng::decode(image, width, height, png, LCT_PALETTE, 8);
+  ASSERT_EQUALS(0, error);
+  ASSERT_EQUALS(2, width);
+  ASSERT_EQUALS(2, height);
+  ASSERT_EQUALS(180, image[0]);
+  ASSERT_EQUALS(30, image[1]);
+  ASSERT_EQUALS(5, image[2]);
+  ASSERT_EQUALS(215, image[3]);
+}
+
+//2-bit palette
+void testPaletteToPaletteDecode2() {
+  std::cout << "testPaletteToPaletteDecode2" << std::endl;
+  std::string base64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAADFBMVEX/AAAA/wAAAP/////7AGD2AAAAE0lEQVR4AWMQhAKG3VCALDIqAgDl2WYBCQHY9gAAAABJRU5ErkJggg==";
+  std::vector<unsigned char> png;
+  fromBase64(png, base64);
+
+  std::vector<unsigned char> image;
+  unsigned width, height;
+  unsigned error = lodepng::decode(image, width, height, png, LCT_PALETTE, 8);
+  ASSERT_EQUALS(0, error);
+  ASSERT_EQUALS(32, width);
+  ASSERT_EQUALS(32, height);
+  ASSERT_EQUALS(0, image[0]);
+  ASSERT_EQUALS(1, image[1]);
+
+  //Now add a user-specified output palette, that differs from the input palette. That should give error 82.
+  LodePNGState state;
+  lodepng_state_init(&state);
+  state.info_raw.colortype = LCT_PALETTE;
+  state.info_raw.bitdepth = 8;
+  lodepng_palette_add(&state.info_raw, 0, 0, 0, 255);
+  lodepng_palette_add(&state.info_raw, 1, 1, 1, 255);
+  lodepng_palette_add(&state.info_raw, 2, 2, 2, 255);
+  lodepng_palette_add(&state.info_raw, 3, 3, 3, 255);
+  unsigned char* image2 = 0;
+  unsigned error2 = lodepng_decode(&image2, &width, &height, &state, &png[0], png.size());
+  ASSERT_EQUALS(82, error2);
+  lodepng_state_cleanup(&state);
+  free(image2);
+}
+
 void doMain()
 {
   //PNG
@@ -1809,6 +1880,8 @@ void doMain()
   testPredefinedFilters();
   testFuzzing();
   testWrongWindowSizeGivesError();
+  testPaletteToPaletteDecode();
+  testPaletteToPaletteDecode2();
 
   //Colors
   testColorKeyConvert();

@@ -1,5 +1,5 @@
 /*
-LodePNG version 20150912
+LodePNG version 20151024
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -42,7 +42,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20150912";
+const char* LODEPNG_VERSION_STRING = "20151024";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -779,7 +779,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
   {
     if(frequencies[i] > 0)
     {
-      leaves[numpresent].weight = frequencies[i];
+      leaves[numpresent].weight = (int)frequencies[i];
       leaves[numpresent].index = i;
       ++numpresent;
     }
@@ -832,7 +832,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
       }
 
       /*each boundaryPM call adds one chain to the last list, and we need 2 * numpresent - 2 chains.*/
-      for(i = 2; i != 2 * numpresent - 2; ++i) boundaryPM(&lists, leaves, numpresent, maxbitlen - 1, i);
+      for(i = 2; i != 2 * numpresent - 2; ++i) boundaryPM(&lists, leaves, numpresent, (int)maxbitlen - 1, (int)i);
 
       for(node = lists.chains1[maxbitlen - 1]; node; node = node->tail)
       {
@@ -2598,10 +2598,15 @@ static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColo
     if(a->key_g != b->key_g) return 0;
     if(a->key_b != b->key_b) return 0;
   }
-  if(a->palettesize != b->palettesize) return 0;
-  for(i = 0; i != a->palettesize * 4; ++i)
-  {
-    if(a->palette[i] != b->palette[i]) return 0;
+  /*if one of the palette sizes is 0, then we consider it to be the same as the
+  other: it means that e.g. the palette was not given by the user and should be
+  considered the same as the palette inside the PNG.*/
+  if(1/*a->palettesize != 0 && b->palettesize != 0*/) {
+    if(a->palettesize != b->palettesize) return 0;
+    for(i = 0; i != a->palettesize * 4; ++i)
+    {
+      if(a->palette[i] != b->palette[i]) return 0;
+    }
   }
   return 1;
 }
@@ -3419,7 +3424,7 @@ static void getPixelColorRGBA16(unsigned short* r, unsigned short* g, unsigned s
 }
 
 unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
-                         LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in,
+                         const LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in,
                          unsigned w, unsigned h)
 {
   size_t i;
@@ -3435,12 +3440,21 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
 
   if(mode_out->colortype == LCT_PALETTE)
   {
+    size_t palettesize = mode_out->palettesize;
+    const unsigned char* palette = mode_out->palette;
     size_t palsize = 1u << mode_out->bitdepth;
-    if(mode_out->palettesize < palsize) palsize = mode_out->palettesize;
+    /*if the user specified output palette but did not give the values, assume
+    they want the values of the input color type (assuming that one is palette).
+    Note that we never create a new palette ourselves.*/
+    if(palettesize == 0) {
+      palettesize = mode_in->palettesize;
+      palette = mode_in->palette;
+    }
+    if(palettesize < palsize) palsize = palettesize;
     color_tree_init(&tree);
     for(i = 0; i != palsize; ++i)
     {
-      unsigned char* p = &mode_out->palette[i * 4];
+      const unsigned char* p = &palette[i * 4];
       color_tree_add(&tree, p[0], p[1], p[2], p[3], i);
     }
   }
@@ -3468,7 +3482,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     for(i = 0; i != numpixels; ++i)
     {
       getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
-      rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a);
+      CERROR_TRY_RETURN(rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a));
     }
   }
 
@@ -3477,7 +3491,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     color_tree_cleanup(&tree);
   }
 
-  return 0; /*no error (this function currently never has one, but maybe OOM detection added later.)*/
+  return 0; /*no error*/
 }
 
 #ifdef LODEPNG_COMPILE_ENCODER
