@@ -63,7 +63,7 @@ struct Options
   bool show_filters; //show the PNG filter of each scanline (not supported for interlaced PNGs currently)
   bool zlib_info; //show basic zlib info
   bool zlib_blocks; //show type, tree info, code length summaries and sizes for each zlib block
-  bool zlib_counts; //in addition to the zlib_blocks info, show counts of occurances all symbols
+  bool zlib_counts; //in addition to the zlib_blocks info, show counts of occurrences all symbols
   bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
   bool use_hex; //show some sizes or positions in hexadecimal
 
