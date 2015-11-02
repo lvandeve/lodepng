@@ -549,7 +549,7 @@ static unsigned HuffmanTree_make2DTree(HuffmanTree* tree)
   uninited, a value >= numcodes is an address to another bit, a value < numcodes
   is a code. The 2 rows are the 2 possible bit values (0 or 1), there are as
   many columns as codes - 1.
-  A good huffmann tree has N * 2 - 1 nodes, of which N - 1 are internal nodes.
+  A good huffman tree has N * 2 - 1 nodes, of which N - 1 are internal nodes.
   Here, the internal nodes are stored (what their 0 and 1 option point to).
   There is only memory for such good tree currently, if there are more nodes
   (due to too long length codes), error 55 will happen
