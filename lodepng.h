@@ -1,5 +1,5 @@
 /*
-LodePNG version 20151024
+LodePNG version 20151208
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -848,10 +848,10 @@ unsigned encode(std::vector<unsigned char>& out,
 
 #ifdef LODEPNG_COMPILE_DISK
 /*
-Load a file from disk into an std::vector. If the vector is empty, then either
-the file doesn't exist or is an empty file.
+Load a file from disk into an std::vector.
+return value: error code (0 means ok)
 */
-void load_file(std::vector<unsigned char>& buffer, const std::string& filename);
+unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filename);
 
 /*
 Save the binary data in an std::vector to a file on disk. The file is overwritten
@@ -1564,6 +1564,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 08 dec 2015: Made load_file function return error if file can't be opened.
 *) 24 okt 2015: Bugfix with decoding to palette output.
 *) 18 apr 2015: Boundary PM instead of just package-merge for faster encoding.
 *) 23 aug 2014: Reduced needless memory usage of decoder.

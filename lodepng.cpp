@@ -1,5 +1,5 @@
 /*
-LodePNG version 20151024
+LodePNG version 20151208
 
 Copyright (c) 2005-2015 Lode Vandevenne
 
@@ -42,7 +42,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20151024";
+const char* LODEPNG_VERSION_STRING = "20151208";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -5873,8 +5873,7 @@ const char* lodepng_error_text(unsigned code)
     case 43: return "bKGD chunk has wrong size for palette image";
     case 44: return "bKGD chunk has wrong size for greyscale image";
     case 45: return "bKGD chunk has wrong size for RGB image";
-    /*the input data is empty, maybe a PNG file doesn't exist or is in the wrong path*/
-    case 48: return "empty input or file doesn't exist";
+    case 48: return "empty input buffer given to decoder. Maybe caused by non-existing file?";
     case 49: return "jumped past memory while generating dynamic huffman tree";
     case 50: return "jumped past memory while generating dynamic huffman tree";
     case 51: return "jumped past memory while inflating huffman block";
@@ -5940,9 +5939,10 @@ namespace lodepng
 {
 
 #ifdef LODEPNG_COMPILE_DISK
-void load_file(std::vector<unsigned char>& buffer, const std::string& filename)
+unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filename)
 {
   std::ifstream file(filename.c_str(), std::ios::in|std::ios::binary|std::ios::ate);
+  if(!file) return 78;
 
   /*get filesize*/
   std::streamsize size = 0;
@@ -5952,6 +5952,8 @@ void load_file(std::vector<unsigned char>& buffer, const std::string& filename)
   /*read contents of the file into the vector*/
   buffer.resize(size_t(size));
   if(size > 0) file.read((char*)(&buffer[0]), size);
+
+  return 0; /* OK */
 }
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
@@ -6087,7 +6089,8 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const
                 LodePNGColorType colortype, unsigned bitdepth)
 {
   std::vector<unsigned char> buffer;
-  load_file(buffer, filename);
+  unsigned error = load_file(buffer, filename);
+  if(error) return error;
   return decode(out, w, h, buffer, colortype, bitdepth);
 }
 #endif /* LODEPNG_COMPILE_DECODER */

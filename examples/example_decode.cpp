@@ -58,8 +58,8 @@ void decodeTwoSteps(const char* filename)
   unsigned width, height;
 
   //load and decode
-  lodepng::load_file(png, filename);
-  unsigned error = lodepng::decode(image, width, height, png);
+  unsigned error = lodepng::load_file(png, filename);
+  if(!error) error = lodepng::decode(image, width, height, png);
 
   //if there's an error, display it
   if(error) std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
@@ -76,8 +76,8 @@ void decodeWithState(const char* filename)
   unsigned width, height;
   lodepng::State state; //optionally customize this one
 
-  lodepng::load_file(png, filename); //load the image file with given filename
-  unsigned error = lodepng::decode(image, width, height, state, png);
+  unsigned error = lodepng::load_file(png, filename); //load the image file with given filename
+  if(!error) error = lodepng::decode(image, width, height, state, png);
 
   //if there's an error, display it
   if(error) std::cout << "decoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
