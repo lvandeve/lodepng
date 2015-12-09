@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2013 Lode Vandevenne
+Copyright (c) 2005-2015 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -34,8 +34,11 @@ image, all the zlib compression blocks and symbols, etc...
 compression info:
 ./pngdetail -sfczB image.png
 
-everything:
-./pngdetail -sPlLA@cfzB7 image.png 
+everything, 8-bit:
+./pngdetail -sPlLA#cfzB7 image.png
+
+everything, 16-bit:
+./pngdetail -sPlLA@cfzB7 image.png
 
 everything except huge output:
 ./pngdetail -sPlAcfzB image.png
@@ -195,6 +198,121 @@ void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& 
   }
 }
 
+void RGBtoHSL(unsigned char r, unsigned char g, unsigned char b, unsigned char* h, unsigned char* s, unsigned char* l) {
+  int cmax = std::max<int>(r, std::max<int>(g, b));
+  int cmin = std::min<int>(r, std::min<int>(g, b));
+  if(cmin == cmax) {
+    *h = *s = 0;
+    *l = r;
+  } else {
+    int sum = cmin + cmax;
+    int diff = cmax - cmin;
+    *l = sum / 2;
+    *s = 255 * diff / ((*l < 128) ? sum : (512 - sum));
+    int hi = (r == cmax) ? (255 * (g - b) / diff) : ((g == cmax) ? (512 + 255 * (b - r) / diff) : (1024 + 255 * (r - g) / diff));
+    *h = ((hi / 6) & 255);
+  }
+}
+
+/*
+HCT: Hue, Chroma, Tone: returns a linear combination between a pure hue and a greyscale value.
+*) Chroma: The linear combination factor: 255 for pure hue, 0 for pure greyscale
+*) Tone: greyscale to mix with: 0 = black (shade), 255 = white (tint), in between = grey (tone)
+*/
+void RGBtoHCT(unsigned char r, unsigned char g, unsigned char b, unsigned char* h, unsigned char* c, unsigned char* t) {
+  int cmax = std::max<int>(r, std::max<int>(g, b));
+  int cmin = std::min<int>(r, std::min<int>(g, b));
+  RGBtoHSL(r, g, b, h, c, t);
+  *c = cmax - cmin;
+  *t = *c == 255 ? 0 : 255 * cmin / (255 + cmin - cmax);
+}
+
+// add 32 to get small letter instead of capital
+char HueToLetter(int h) {
+  char hl = 'R';
+  // 12 unique hue letters for 30 degree increment hues.
+  if(h < 11 || h >= 244) hl = 'R';  // red
+  else if(h >= 11 && h < 32) hl = 'O';  // orange
+  else if(h >= 32 && h < 53) hl = 'Y';  // yellow
+  else if(h >= 53 && h < 74) hl = 'L';  // lime (officialy "chartreuse" but c is for cyan)
+  else if(h >= 74 && h < 96) hl = 'G';  // green
+  else if(h >= 96 && h < 117) hl = 'T';  // turquoise (officially "spring green" but that name overlaps green)
+  else if(h >= 117 && h < 138) hl = 'C';  // cyan
+  else if(h >= 138 && h < 159) hl = 'A';  // azure
+  else if(h >= 159 && h < 181) hl = 'B';  // blue
+  else if(h >= 181 && h < 202) hl = 'V';  // violet
+  else if(h >= 202 && h < 223) hl = 'M';  // magenta
+  else if(h >= 223 && h < 244) hl = 'F';  // fuchsia (officially "rose" but r is for red)
+  return hl;
+}
+
+char lightnessToLetter(int l) {
+  int c = ' ';
+  if(l < 16) c = ' ';
+  else if(l < 48) c = '.';
+  else if(l < 80) c = ':';
+  else if(l < 112) c = '-';
+  else if(l < 144) c = '!';
+  else if(l < 176) c = '*';
+  else if(l < 208) c = '+'; // The + looks denser than the * in a terminal...
+  else if(l < 240) c = '=';
+  else c = '#';
+  return c;
+}
+
+// Both v and result are assumed in range 0-255
+// range is the size of an individual bucket. A value in roughly range [-range/2, range/2) can get added to v.
+// E.g. if there are 12 hue letters, give 255/12 = 21 as range
+static inline int applyDither(int v, int range, int x, int y, bool wrap) {
+  // ordered dithering pattern; ranges from 0-15, so multiply with 17 to have 0-255
+  static const int pattern[16] = {0,8,2,10,
+                                  12,4,14,6,
+                                  3,11,1,9,
+                                  15,7,13,5};
+  int d = pattern[(x & 3) + 4 * (y & 3)] * 17 - 128; // range: -128 to 127
+  if(wrap) return (v + d * range / 256) & 255;
+  else return std::max(0, std::min(255, v + d * range / 256));
+}
+
+// x and y are to use for dithering
+// inverted inverts black and white, for in case black text on white background is used (by default it assumes white text on black background)
+char RGBtoLetter(unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned x, unsigned y, bool dither = true, bool inverted = false) {
+  if(a < 255) {
+    r = a * r / 255;
+    g = a * g / 255;
+    b = a * b / 255;
+  }
+
+  if(dither) {
+    unsigned char h, c, t;
+    RGBtoHCT(r, g, b, &h, &c, &t);
+    int l = (std::max(std::max(r, g), b) + std::min(std::min(r, g), b)) / 2;
+    if(inverted) {
+      l = 255 - l;
+      t = 255 - t;
+    }
+    if(applyDither(c, 254, x, y, false) >= 128) {
+      char letter = HueToLetter(applyDither(h, 21, x, y, true));
+      bool smallcaps = applyDither(l, 64, x+2, y+2, false) < 80;
+      return letter + (smallcaps ? 32 : 0);
+    }
+    else return lightnessToLetter(applyDither(l, 31, x, y, false));
+  } else {
+    unsigned char h, s, l;
+    RGBtoHSL(r, g, b, &h, &s, &l);
+    if(inverted) l = 255 - l;
+
+    char hl = HueToLetter(h);
+    char c = ' ';
+    if(l < 24 || l > 232 || s < 64) {
+      c = lightnessToLetter(l);
+    } else {
+      if(l < 128) c = hl + 32;
+      else c = hl;
+    }
+    return c;
+  }
+}
 
 /*
 Show ASCII art preview of the image
@@ -225,25 +343,7 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
         int g = image[y2 * w * 8 + x2 * 8 + 2];
         int b = image[y2 * w * 8 + x2 * 8 + 4];
         int a = image[y2 * w * 8 + x2 * 8 + 6];
-        int lightness = ((r + g + b) / 3) * a / 255;
-        int min = (r < g && r < b) ? r : (g < b ? g : b);
-        int max = (r > g && r > b) ? r : (g > b ? g : b);
-        int saturation = max - min;
-        int letter = 'i'; //i for grey, or r,y,g,c,b,m for colors
-        if(saturation > 32)
-        {
-          int h = lightness >= (min + max) / 2;
-          if(h) letter = (min == r ? 'c' : (min == g ? 'm' : 'y'));
-          else letter = (max == r ? 'r' : (max == g ? 'g' : 'b'));
-        }
-        int symbol = ' ';
-        if(lightness > 224) symbol = 'W';
-        else if(lightness > 128) symbol = letter - 32;
-        else if(lightness > 64) symbol = letter;
-        else if(lightness > 48) symbol = ';';
-        else if(lightness > 32) symbol = ':';
-        else if(lightness > 24) symbol = ',';
-        else if(lightness > 16) symbol = '.';
+        char symbol = RGBtoLetter(r, g, b, a, x, y, true, false);
         std::cout << (char)symbol;
       }
       std::cout << "|";
@@ -341,7 +441,7 @@ void displayPalette(const std::vector<unsigned char>& buffer)
   unsigned w, h;
   lodepng::State state;
   std::vector<unsigned char> out;
-  
+
   state.decoder.color_convert = 0;
 
   lodepng::decode(out, w, h, state, buffer);
@@ -388,7 +488,7 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer)
   unsigned w, h;
   lodepng::State state;
   std::vector<unsigned char> out;
-  
+
   state.decoder.color_convert = 0;
 
   lodepng::decode(out, w, h, state, buffer);
@@ -495,7 +595,7 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
               j++;
               std::cout << " tree: " << code << " rep: " << info.treecodes[j] << std::endl;
             }
-            
+
           }
         }
 
@@ -507,7 +607,7 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
         std::cout << " dist code lengths       : "; for(size_t j = 0; j < 32; j++) std::cout << info.distlengths[j]; std::cout << std::endl;
         if(!options.use_hex) std::cout << std::dec;
       }
-      
+
 
       if(info.btype != 0)
       {
@@ -573,7 +673,7 @@ void showHelp()
                "-p: show PNG file info\n"
                "-P: show extra PNG file info\n"
                "-l: show palette (if any)\n"
-               "-a: show ascii art rendering of PNG image. Letters rygcbm indicate hue.\n"
+               "-a: show ascii art rendering of PNG image. Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
                "-A: show larger ascii art rendering of PNG image. Adding more A's makes it larger.\n"
                "-#: show every pixel color in CSS RGBA hex format (huge output)\n"
                "-@: show every pixel color with 16-bit per channel (huge output)\n"
@@ -588,24 +688,107 @@ void showHelp()
             << std::endl;
 }
 
+// number of unique RGBA colors in the image
+// the input image is in 16-bit per channel color, so 8 chars per pixel
+size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
+  struct ColorTree
+  {
+    ColorTree* children[16]; /*up to 16 pointers to ColorTree of next level*/
+    int index; /*the payload. Only has a meaningful value if this is in the last level*/
+
+    ColorTree()
+    {
+      int i;
+      for(i = 0; i < 16; i++) children[i] = 0;
+      index = -1;
+    }
+
+    ~ColorTree()
+    {
+      int i;
+      for(i = 0; i < 16; i++)
+      {
+        if(children[i]) delete children[i];
+      }
+    }
+
+    /*returns -1 if color not present, its index otherwise*/
+    int get(unsigned short r, unsigned short g, unsigned short b, unsigned short a) const {
+      const ColorTree* tree = this;
+      int bit = 0;
+      for(bit = 0; bit < 8; bit++)
+      {
+        int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
+        if(!tree->children[i]) return -1;
+        else tree = tree->children[i];
+      }
+      return tree ? tree->index : -1;
+    }
+
+    bool has(unsigned short r, unsigned short g, unsigned short b, unsigned short a) {
+      return get(r, g, b, a) >= 0;
+    }
+
+    /*color is not allowed to already exist.
+    Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")*/
+    void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int index) {
+      ColorTree* tree = this;
+      int bit;
+      for(bit = 0; bit < 8; bit++)
+      {
+        int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
+        if(!tree->children[i])
+        {
+          tree->children[i] = new ColorTree();
+        }
+        tree = tree->children[i];
+      }
+      tree->index = index;
+    }
+  };
+
+  size_t count = 0;
+  ColorTree tree;
+  for(unsigned y = 0; y < h; y++) {
+    for(unsigned x = 0; x < w; x++) {
+      unsigned short r = 256 * image[y * 8 * w + x * 8 + 0] + image[y * 8 * w + x * 8 + 1];
+      unsigned short g = 256 * image[y * 8 * w + x * 8 + 2] + image[y * 8 * w + x * 8 + 3];
+      unsigned short b = 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
+      unsigned short a = 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
+      if(!tree.has(r, g, b, a)) {
+        tree.add(r, g, b, a, count);
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 unsigned showFileInfo(const std::string& filename, const Options& options)
 {
   std::vector<unsigned char> buffer;
   std::vector<unsigned char> image;
   unsigned w, h;
 
-  lodepng::load_file(buffer, filename); //load the image file with given filename
+  unsigned error = lodepng::load_file(buffer, filename); //load the image file with given filename
+
+  if(error)
+  {
+    std::cout << "Loading error " << error << ": " << lodepng_error_text(error) << std::endl;
+    return error;
+  }
 
   lodepng::State state;
   state.info_raw.colortype = LCT_RGBA;
   state.info_raw.bitdepth = 16;
-  unsigned error = lodepng::decode(image, w, h, state, buffer);
+  error = lodepng::decode(image, w, h, state, buffer);
 
   if(error)
   {
     std::cout << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+    // Do not return: some sections may still show partial info about a corrupted PNG.
   }
-  
+
   bool extra_newlines = false;
 
   if(!error && options.show_png_summary)
@@ -631,6 +814,7 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
                 << std::setw(2) << (int)image[0] << std::setw(2) << (int)image[1] << std::setw(2) << (int)image[2] << std::setw(2) << (int)image[3]
                 << std::endl;
       std::cout.flags(flags);
+      std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
     }
 
     displayPNGInfo(state.info_png, options);
