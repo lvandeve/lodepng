@@ -49,6 +49,7 @@ everything except huge output:
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
 
 struct Options
 {
