@@ -2684,12 +2684,12 @@ unsigned lodepng_can_have_alpha(const LodePNGColorMode* info)
 
 size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* color)
 {
-  return (w * h * lodepng_get_bpp(color) + 7) / 8;
+  return ((unsigned long long) w * h * lodepng_get_bpp(color) + 7) / 8;
 }
 
 size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
 {
-  return (w * h * lodepng_get_bpp_lct(colortype, bitdepth) + 7) / 8;
+  return ((unsigned long long) w * h * lodepng_get_bpp_lct(colortype, bitdepth) + 7) / 8;
 }
 
 
@@ -3429,7 +3429,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
 {
   size_t i;
   ColorTree tree;
-  size_t numpixels = w * h;
+  size_t numpixels = (unsigned long long) w * h;
 
   if(lodepng_color_mode_equal(mode_out, mode_in))
   {
@@ -3537,7 +3537,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
   unsigned error = 0;
   size_t i;
   ColorTree tree;
-  size_t numpixels = w * h;
+  size_t numpixels = (unsigned long long) w * h;
 
   unsigned colored_done = lodepng_is_greyscale_type(mode) ? 1 : 0;
   unsigned alpha_done = lodepng_can_have_alpha(mode) ? 0 : 1;
@@ -3706,7 +3706,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   if(error) return error;
   mode_out->key_defined = 0;
 
-  if(prof.key && w * h <= 16)
+  if(prof.key && (unsigned long long) w * h <= 16)
   {
     prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
     if(prof.bits < 8) prof.bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
@@ -3714,8 +3714,8 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   grey_ok = !prof.colored && !prof.alpha; /*grey without alpha, with potentially low bits*/
   n = prof.numcolors;
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));
-  palette_ok = n <= 256 && (n * 2 < w * h) && prof.bits <= 8;
-  if(w * h < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
+  palette_ok = n <= 256 && (n * 2 < (unsigned long long) w * h) && prof.bits <= 8;
+  if((unsigned long long) w * h < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
   if(grey_ok && prof.bits <= palettebits) palette_ok = 0; /*grey is less overhead*/
 
   if(palette_ok)
@@ -5610,7 +5610,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   if(!lodepng_color_mode_equal(&state->info_raw, &info.color))
   {
     unsigned char* converted;
-    size_t size = (w * h * lodepng_get_bpp(&info.color) + 7) / 8;
+    size_t size = ((unsigned long long) w * h * lodepng_get_bpp(&info.color) + 7) / 8;
 
     converted = (unsigned char*)lodepng_malloc(size);
     if(!converted && size) state->error = 83; /*alloc fail*/
