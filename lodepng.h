@@ -28,11 +28,6 @@ freely, subject to the following restrictions:
 
 #include <string.h> /*for size_t*/
 
-#ifdef __cplusplus
-#include <vector>
-#include <string>
-#endif /*__cplusplus*/
-
 extern const char* LODEPNG_VERSION_STRING;
 
 /*
@@ -85,6 +80,11 @@ source files with custom allocators.*/
 #define LODEPNG_COMPILE_CPP
 #endif
 #endif
+
+#ifdef LODEPNG_COMPILE_CPP
+#include <vector>
+#include <string>
+#endif /*LODEPNG_COMPILE_CPP*/
 
 #ifdef LODEPNG_COMPILE_PNG
 /*The PNG color types (also used for raw).*/
