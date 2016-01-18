@@ -1,7 +1,7 @@
 /*
-LodePNG version 20151208
+LodePNG version 20160118
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2016 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -1709,5 +1709,5 @@ Domain: gmail dot com.
 Account: lode dot vandevenne.
 
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2016 Lode Vandevenne
 */

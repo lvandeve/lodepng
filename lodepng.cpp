@@ -1,7 +1,7 @@
 /*
-LodePNG version 20151208
+LodePNG version 20160118
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2016 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -42,7 +42,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20151208";
+const char* LODEPNG_VERSION_STRING = "20160118";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2684,12 +2684,18 @@ unsigned lodepng_can_have_alpha(const LodePNGColorMode* info)
 
 size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* color)
 {
-  return (w * h * lodepng_get_bpp(color) + 7) / 8;
+  /*will not overflow for any color type if roughly w * h < 268435455*/
+  int bpp = lodepng_get_bpp(color);
+  size_t n = w * h;
+  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
 
 size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
 {
-  return (w * h * lodepng_get_bpp_lct(colortype, bitdepth) + 7) / 8;
+  /*will not overflow for any color type if roughly w * h < 268435455*/
+  int bpp = lodepng_get_bpp_lct(colortype, bitdepth);
+  size_t n = w * h;
+  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
 
 
@@ -2698,7 +2704,10 @@ size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colorty
 /*in an idat chunk, each scanline is a multiple of 8 bits, unlike the lodepng output buffer*/
 static size_t lodepng_get_raw_size_idat(unsigned w, unsigned h, const LodePNGColorMode* color)
 {
-  return h * ((w * lodepng_get_bpp(color) + 7) / 8);
+  /*will not overflow for any color type if roughly w * h < 268435455*/
+  int bpp = lodepng_get_bpp(color);
+  size_t line = ((w / 8) * bpp) + ((w & 7) * bpp + 7) / 8;
+  return h * line;
 }
 #endif /*LODEPNG_COMPILE_DECODER*/
 #endif /*LODEPNG_COMPILE_PNG*/
@@ -3855,7 +3864,11 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   {
     CERROR_RETURN_ERROR(state->error, 28); /*error: the first 8 bytes are not the correct PNG signature*/
   }
-  if(in[12] != 'I' || in[13] != 'H' || in[14] != 'D' || in[15] != 'R')
+  if(lodepng_chunk_length(in + 8) != 13)
+  {
+    CERROR_RETURN_ERROR(state->error, 94); /*error: header size must be 13 bytes*/
+  }
+  if(!lodepng_chunk_type_equals(in + 8, "IHDR"))
   {
     CERROR_RETURN_ERROR(state->error, 29); /*error: it doesn't start with a IHDR chunk!*/
   }
@@ -5923,6 +5936,7 @@ const char* lodepng_error_text(unsigned code)
     case 91: return "invalid decompressed idat size";
     case 92: return "too many pixels, not supported";
     case 93: return "zero width or height is invalid";
+    case 94: return "header chunk must have a size of 13 bytes";
   }
   return "unknown error code";
 }

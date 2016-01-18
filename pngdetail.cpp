@@ -48,6 +48,7 @@ everything except huge output:
 #include "lodepng_util.h"
 #include <iostream>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <algorithm>
 
@@ -169,7 +170,8 @@ void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& 
 {
   std::vector<std::string> names;
   std::vector<size_t> sizes;
-  lodepng::getChunkInfo(names, sizes, buffer);
+  unsigned error = lodepng::getChunkInfo(names, sizes, buffer);
+  if(error) std::cout << "Error while identifying chunks. Listing identified chunks anyway." << std::endl;
 
   if(options.show_chunks2)
   {
@@ -196,6 +198,17 @@ void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& 
       std::cout << sizes[i] << " ";
     }
     std::cout << std::endl;
+  }
+
+  std::map<std::string, bool> typedict;
+  for(size_t i = 0; i < names.size(); i++) {
+    typedict[names[i]] = true;
+  }
+
+  if(!error) {
+    if(!typedict["IHDR"]) std::cout << "Error: no IHDR chunk" << std::endl;
+    if(!typedict["IDAT"]) std::cout << "Error: no IDAT chunk" << std::endl;
+    if(!typedict["IEND"]) std::cout << "Error: no IEND chunk" << std::endl;
   }
 }
 
@@ -783,6 +796,23 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   state.info_raw.colortype = LCT_RGBA;
   state.info_raw.bitdepth = 16;
   error = lodepng::decode(image, w, h, state, buffer);
+
+  // In case of checksum errors, disable checksums
+  while (error == 57 || error == 58) {
+    if(error == 57)
+    {
+      std::cout << "Error: invalid CRC checksum" << std::endl;
+      state.decoder.ignore_crc = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+
+    if(error == 58)
+    {
+      std::cout << "Error: invalid Adler32 checksum" << std::endl;
+      state.decoder.zlibsettings.ignore_adler32 = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+  }
 
   if(error)
   {
