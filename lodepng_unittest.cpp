@@ -299,15 +299,11 @@ void doCodecTestC(Image& image)
 
   struct OnExitScope
   {
-    unsigned char* a;
-    unsigned char* b;
-    OnExitScope(unsigned char* ca, unsigned char* cb) : a(ca), b(cb) {}
-    ~OnExitScope()
-    {
-      free(a);
-      free(b);
-    }
-  } onExitScope(encoded, decoded);
+    unsigned char** a;
+    unsigned char** b;
+    OnExitScope(unsigned char** ca, unsigned char** cb) : a(ca), b(cb) {}
+    ~OnExitScope() { free(*a); free(*b); }
+  } onExitScope(&encoded, &decoded);
 
   unsigned error_enc = lodepng_encode_memory(&encoded, &encoded_size, &image.data[0],
                                              image.width, image.height, image.colorType, image.bitDepth);
@@ -327,9 +323,6 @@ void doCodecTestC(Image& image)
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
   assertPixels(image, decoded, "Pixels C");
-
-  free(decoded);
-  free(encoded);
 }
 
 //Test LodePNG encoding and decoding the encoded result, using the C++ interface
@@ -358,6 +351,45 @@ void doCodecTestCPP(Image& image)
   assertPixels(image, &decoded[0], "Pixels C++");
 }
 
+
+void doCodecTestWithEncState(Image& image, lodepng::State& state) {
+  std::vector<unsigned char> encoded;
+  std::vector<unsigned char> decoded;
+  unsigned decoded_w;
+  unsigned decoded_h;
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+
+
+  unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
+  assertNoPNGError(error_enc, "encoder error uncompressed");
+
+  unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, encoded, image.colorType, image.bitDepth);
+
+  assertNoPNGError(error_dec, "decoder error uncompressed");
+
+  ASSERT_EQUALS(image.width, decoded_w);
+  ASSERT_EQUALS(image.height, decoded_h);
+  ASSERT_EQUALS(image.data.size(), decoded.size());
+  assertPixels(image, &decoded[0], "Pixels uncompressed");
+}
+
+
+//Test LodePNG encoding and decoding the encoded result, using the C++ interface
+void doCodecTestUncompressed(Image& image)
+{
+  lodepng::State state;
+  state.encoder.zlibsettings.btype = 0;
+  doCodecTestWithEncState(image, state);
+}
+
+void doCodecTestNoLZ77(Image& image)
+{
+  lodepng::State state;
+  state.encoder.zlibsettings.use_lz77 = 0;
+  doCodecTestWithEncState(image, state);
+}
+
 //Test LodePNG encoding and decoding the encoded result, using the C++ interface, with interlace
 void doCodecTestInterlaced(Image& image)
 {
@@ -373,7 +405,7 @@ void doCodecTestInterlaced(Image& image)
 
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
 
-  assertNoPNGError(error_enc, "encoder error C++");
+  assertNoPNGError(error_enc, "encoder error interlaced");
 
   //if the image is large enough, compressing it should result in smaller size
   if(image.data.size() > 512) assertTrue(encoded.size() < image.data.size(), "compressed size");
@@ -382,12 +414,12 @@ void doCodecTestInterlaced(Image& image)
   state.info_raw.bitdepth = image.bitDepth;
   unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, state, encoded);
 
-  assertNoPNGError(error_dec, "decoder error C++");
+  assertNoPNGError(error_dec, "decoder error interlaced");
 
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
   ASSERT_EQUALS(image.data.size(), decoded.size());
-  assertPixels(image, &decoded[0], "Pixels C++");
+  assertPixels(image, &decoded[0], "Pixels interlaced");
 }
 
 //Test LodePNG encoding and decoding the encoded result
@@ -396,6 +428,8 @@ void doCodecTest(Image& image)
   doCodecTestC(image);
   doCodecTestCPP(image);
   doCodecTestInterlaced(image);
+  doCodecTestUncompressed(image);
+  doCodecTestNoLZ77(image);
 }
 
 
@@ -603,6 +637,9 @@ void testPNGCodec()
   codecTest(7, 7, LCT_GREY, 1);
   codecTest(127, 127);
   codecTest(127, 127, LCT_GREY, 1);
+  codecTest(500, 500);
+  codecTest(1, 10000);
+  codecTest(10000, 1);
 
   testOtherPattern1();
   testOtherPattern2();

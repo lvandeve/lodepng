@@ -1768,7 +1768,7 @@ static unsigned deflateDynamic(ucvector* out, size_t* bp, Hash* hash,
     else
     {
       if(!uivector_resize(&lz77_encoded, datasize)) ERROR_BREAK(83 /*alloc fail*/);
-      for(i = datapos; i < dataend; ++i) lz77_encoded.data[i-datapos] = data[i]; /*no LZ77, but still will be Huffman compressed*/
+      for(i = datapos; i < dataend; ++i) lz77_encoded.data[i - datapos] = data[i]; /*no LZ77, but still will be Huffman compressed*/
     }
 
     if(!uivector_resizev(&frequencies_ll, 286, 0)) ERROR_BREAK(83 /*alloc fail*/);

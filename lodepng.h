@@ -927,8 +927,9 @@ LodePNG Documentation
   10. examples
    10.1. decoder C++ example
    10.2. decoder C example
-  11. changes
-  12. contact information
+  11. state settings reference
+  12. changes
+  13. contact information
 
 
 1. about
@@ -1554,8 +1555,40 @@ int main(int argc, char *argv[])
   return 0;
 }
 
+11. state settings reference
+----------------------------
 
-11. changes
+A quick reference of some settings to set on the LodePNGState
+
+For decoding:
+
+state.decoder.zlibsettings.ignore_adler32: ignore ADLER32 checksups
+state.decoder.ignore_crc: ignore CRC checksums
+state.decoder.color_convert: convert internal PNG color to chosen one
+state.decoder.read_text_chunks: whether to read in text metadata chunks
+state.decoder.remember_unknown_chunks: whether to read in unknown chunks
+state.info_raw.colortype: desired color type for decoded image
+state.info_raw.bitdepth: desired bit depth for decoded image
+
+For encoding:
+
+state.encoder.zlibsettings.btype: disable compression by setting it to 0
+state.encoder.zlibsettings.use_lz77: use LZ77 in compression
+state.encoder.zlibsettings.windowsize: tweak LZ77 windowsize
+state.encoder.zlibsettings.minmatch: tweak min LZ77 length to match
+state.encoder.zlibsettings.nicematch: tweak LZ77 match where to stop searching
+state.encoder.zlibsettings.lazymatching: try one more LZ77 matching
+state.encoder.auto_convert: choose optimal PNG color type, if 0 uses raw format
+state.encoder.filter_palette_zero: PNG filter strategy for palette
+state.encoder.filter_strategy: PNG filter strategy to encode with
+state.encoder.force_palette: add palette even if not encoding to one
+state.encoder.add_id: add LodePNG identifier and version as a text chunk
+state.encoder.text_compression: use compressed text chunks for metadata
+state.info_raw.colortype: color type of raw input image you provide
+state.info_raw.bitdepth: bit depth of raw input image you provide
+
+
+12. changes
 -----------
 
 The version number of LodePNG is the date of the change given in the format
@@ -1697,7 +1730,7 @@ symbol.
 *) 12 aug 2005: Initial release (C++, decoder only)
 
 
-12. contact information
+13. contact information
 -----------------------
 
 Feel free to contact me with suggestions, problems, comments, ... concerning
