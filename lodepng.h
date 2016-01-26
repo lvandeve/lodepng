@@ -1563,13 +1563,16 @@ A quick reference of some settings to set on the LodePNGState
 
 For decoding:
 
-state.decoder.zlibsettings.ignore_adler32: ignore ADLER32 checksups
+state.decoder.zlibsettings.ignore_adler32: ignore ADLER32 checksums
+state.decoder.zlibsettings.custom_...: use custom inflate function
 state.decoder.ignore_crc: ignore CRC checksums
 state.decoder.color_convert: convert internal PNG color to chosen one
 state.decoder.read_text_chunks: whether to read in text metadata chunks
 state.decoder.remember_unknown_chunks: whether to read in unknown chunks
 state.info_raw.colortype: desired color type for decoded image
 state.info_raw.bitdepth: desired bit depth for decoded image
+state.info_raw....: more color settings, see struct LodePNGColorMode
+state.info_png....: no settings for decoder but ouput, see struct LodePNGInfo
 
 For encoding:
 
@@ -1579,7 +1582,8 @@ state.encoder.zlibsettings.windowsize: tweak LZ77 windowsize
 state.encoder.zlibsettings.minmatch: tweak min LZ77 length to match
 state.encoder.zlibsettings.nicematch: tweak LZ77 match where to stop searching
 state.encoder.zlibsettings.lazymatching: try one more LZ77 matching
-state.encoder.auto_convert: choose optimal PNG color type, if 0 uses raw format
+state.encoder.zlibsettings.custom_...: use custom deflate function
+state.encoder.auto_convert: choose optimal PNG color type, if 0 uses info_png
 state.encoder.filter_palette_zero: PNG filter strategy for palette
 state.encoder.filter_strategy: PNG filter strategy to encode with
 state.encoder.force_palette: add palette even if not encoding to one
@@ -1587,6 +1591,11 @@ state.encoder.add_id: add LodePNG identifier and version as a text chunk
 state.encoder.text_compression: use compressed text chunks for metadata
 state.info_raw.colortype: color type of raw input image you provide
 state.info_raw.bitdepth: bit depth of raw input image you provide
+state.info_raw: more color settings, see struct LodePNGColorMode
+state.info_png.color.colortype: desired color type if auto_convert is false
+state.info_png.color.bitdepth: desired bit depth if auto_convert is false
+state.info_png.color....: more color settings, see struct LodePNGColorMode
+state.info_png....: more PNG related settings, see struct LodePNGInfo
 
 
 12. changes
