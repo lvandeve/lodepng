@@ -2531,6 +2531,7 @@ static unsigned getNumColorChannels(LodePNGColorType colortype)
     case 3: return 1; /*palette*/
     case 4: return 2; /*grey + alpha*/
     case 6: return 4; /*RGBA*/
+    default: break;
   }
   return 0; /*unexisting color type*/
 }
@@ -5917,6 +5918,7 @@ const char* lodepng_error_text(unsigned code)
     case 92: return "too many pixels, not supported";
     case 93: return "zero width or height is invalid";
     case 94: return "header chunk must have a size of 13 bytes";
+    default: break;
   }
   return "unknown error code";
 }
