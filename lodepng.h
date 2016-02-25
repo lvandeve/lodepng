@@ -631,8 +631,10 @@ typedef struct LodePNGState
   LodePNGInfo info_png; /*info of the PNG image obtained after decoding*/
   unsigned error;
 #ifdef LODEPNG_COMPILE_CPP
-  /* For the lodepng::State subclass. */
+  /* For the lodepng::State subclass - produces warning on C++11. */
+  #if __cplusplus < 201103L
   virtual ~LodePNGState(){}
+  #endif
 #endif
 } LodePNGState;
 
