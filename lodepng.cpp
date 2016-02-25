@@ -383,7 +383,7 @@ unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const
   FILE* file;
   file = fopen(filename, "wb" );
   if(!file) return 79;
-  fwrite((char*)buffer , 1 , buffersize, file);
+  fwrite((const char*)buffer , 1 , buffersize, file);
   fclose(file);
   return 0;
 }
@@ -4303,7 +4303,7 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     length = chunkLength - string2_begin;
     /*will fail if zlib error, e.g. if length is too small*/
     error = zlib_decompress(&decoded.data, &decoded.size,
-                            (unsigned char*)(&data[string2_begin]),
+                            (const unsigned char*)(&data[string2_begin]),
                             length, zlibsettings);
     if(error) break;
     ucvector_push_back(&decoded, 0);
@@ -4386,7 +4386,7 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     {
       /*will fail if zlib error, e.g. if length is too small*/
       error = zlib_decompress(&decoded.data, &decoded.size,
-                              (unsigned char*)(&data[begin]),
+                              (const unsigned char*)(&data[begin]),
                               length, zlibsettings);
       if(error) break;
       if(decoded.allocsize < decoded.size) decoded.allocsize = decoded.size;
@@ -4942,7 +4942,7 @@ static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* te
   ucvector_push_back(&data, 0); /*compression method: 0*/
 
   error = zlib_compress(&compressed.data, &compressed.size,
-                        (unsigned char*)textstring, textsize, zlibsettings);
+                        (const unsigned char*)textstring, textsize, zlibsettings);
   if(!error)
   {
     for(i = 0; i != compressed.size; ++i) ucvector_push_back(&data, compressed.data[i]);
@@ -4978,7 +4978,7 @@ static unsigned addChunk_iTXt(ucvector* out, unsigned compressed, const char* ke
     ucvector compressed_data;
     ucvector_init(&compressed_data);
     error = zlib_compress(&compressed_data.data, &compressed_data.size,
-                          (unsigned char*)textstring, textsize, zlibsettings);
+                          (const unsigned char*)textstring, textsize, zlibsettings);
     if(!error)
     {
       for(i = 0; i != compressed_data.size; ++i) ucvector_push_back(&data, compressed_data.data[i]);
@@ -5955,7 +5955,7 @@ unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& 
 {
   std::ofstream file(filename.c_str(), std::ios::out|std::ios::binary);
   if(!file) return 79;
-  file.write(buffer.empty() ? 0 : (char*)&buffer[0], std::streamsize(buffer.size()));
+  file.write(buffer.empty() ? 0 : (const char*)&buffer[0], std::streamsize(buffer.size()));
   return 0;
 }
 #endif /* LODEPNG_COMPILE_DISK */
