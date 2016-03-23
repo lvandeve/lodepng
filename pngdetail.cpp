@@ -123,9 +123,22 @@ void displayPNGInfo(const LodePNGInfo& info, const Options& options)
   if(options.show_extra_png_info) std::cout << "Has color key: " << color.key_defined << std::endl;
   if(color.key_defined)
   {
-    std::cout << "Color key r: " << color.key_r << std::endl;
-    std::cout << "Color key g: " << color.key_g << std::endl;
-    std::cout << "Color key b: " << color.key_b << std::endl;
+    std::cout << "Color key rgb: " << color.key_r
+              << ", " << color.key_g
+              << ", " << color.key_b << std::endl;
+  }
+  if(info.background_defined)
+  {
+    if(color.colortype == LCT_PALETTE)
+    {
+      std::cout << "Background index: " << info.background_r << std::endl;
+    }
+    else
+    {
+      std::cout << "Background rgb: " << info.background_r
+                << ", " << info.background_g
+                << ", " << info.background_b << std::endl;
+    }
   }
   std::cout << "Interlace method: " << info.interlace_method << std::endl;
   if(options.show_extra_png_info) std::cout << "Texts: " << info.text_num << std::endl;
