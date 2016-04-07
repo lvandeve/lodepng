@@ -320,7 +320,7 @@ static void string_set(char** out, const char* in)
 
 /* ////////////////////////////////////////////////////////////////////////// */
 
-unsigned lodepng_read32bitInt(const unsigned char* buffer)
+static unsigned lodepng_read32bitInt(const unsigned char* buffer)
 {
   return (unsigned)((buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]);
 }
@@ -383,7 +383,7 @@ unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const
   FILE* file;
   file = fopen(filename, "wb" );
   if(!file) return 79;
-  fwrite((char*)buffer , 1 , buffersize, file);
+  fwrite((const char*)buffer , 1 , buffersize, file);
   fclose(file);
   return 0;
 }
@@ -1419,11 +1419,11 @@ static void updateHashChain(Hash* hash, size_t wpos, unsigned hashval, unsigned 
 {
   hash->val[wpos] = (int)hashval;
   if(hash->head[hashval] != -1) hash->chain[wpos] = hash->head[hashval];
-  hash->head[hashval] = wpos;
+  hash->head[hashval] = (int) wpos;
 
   hash->zeros[wpos] = numzeros;
   if(hash->headz[numzeros] != -1) hash->chainz[wpos] = hash->headz[numzeros];
-  hash->headz[numzeros] = wpos;
+  hash->headz[numzeros] = (int) wpos;
 }
 
 /*
@@ -1495,7 +1495,7 @@ static unsigned encodeLZ77(uivector* out, Hash* hash,
     for(;;)
     {
       if(chainlength++ >= maxchainlength) break;
-      current_offset = hashpos <= wpos ? wpos - hashpos : wpos - hashpos + windowsize;
+      current_offset = (unsigned) (hashpos <= wpos ? wpos - hashpos : wpos - hashpos + windowsize);
 
       if(current_offset < prev_offset) break; /*stop when went completely around the circular buffer*/
       prev_offset = current_offset;
@@ -2531,6 +2531,7 @@ static unsigned getNumColorChannels(LodePNGColorType colortype)
     case 3: return 1; /*palette*/
     case 4: return 2; /*grey + alpha*/
     case 6: return 4; /*RGBA*/
+    default: break;
   }
   return 0; /*unexisting color type*/
 }
@@ -2676,7 +2677,7 @@ size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* colo
   return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
 
-size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
+static size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
 {
   /*will not overflow for any color type if roughly w * h < 268435455*/
   int bpp = lodepng_get_bpp_lct(colortype, bitdepth);
@@ -2929,13 +2930,6 @@ unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source)
   CERROR_TRY_RETURN(LodePNGUnknownChunks_copy(dest, source));
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   return 0;
-}
-
-void lodepng_info_swap(LodePNGInfo* a, LodePNGInfo* b)
-{
-  LodePNGInfo temp = *a;
-  *a = *b;
-  *b = temp;
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
@@ -3452,7 +3446,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     for(i = 0; i != palsize; ++i)
     {
       const unsigned char* p = &palette[i * 4];
-      color_tree_add(&tree, p[0], p[1], p[2], p[3], i);
+      color_tree_add(&tree, p[0], p[1], p[2], p[3], (unsigned) i);
     }
   }
 
@@ -4259,7 +4253,7 @@ static unsigned readChunk_tEXt(LodePNGInfo* info, const unsigned char* data, siz
 
     string2_begin = length + 1; /*skip keyword null terminator*/
 
-    length = chunkLength < string2_begin ? 0 : chunkLength - string2_begin;
+    length = (unsigned) (chunkLength < string2_begin ? 0 : chunkLength - string2_begin);
     str = (char*)lodepng_malloc(length + 1);
     if(!str) CERROR_BREAK(error, 83); /*alloc fail*/
 
@@ -4307,10 +4301,10 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     string2_begin = length + 2;
     if(string2_begin > chunkLength) CERROR_BREAK(error, 75); /*no null termination, corrupt?*/
 
-    length = chunkLength - string2_begin;
+    length = (unsigned) (chunkLength - string2_begin);
     /*will fail if zlib error, e.g. if length is too small*/
     error = zlib_decompress(&decoded.data, &decoded.size,
-                            (unsigned char*)(&data[string2_begin]),
+                            (const unsigned char*)(&data[string2_begin]),
                             length, zlibsettings);
     if(error) break;
     ucvector_push_back(&decoded, 0);
@@ -4387,13 +4381,13 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     /*read the actual text*/
     begin += length + 1;
 
-    length = chunkLength < begin ? 0 : chunkLength - begin;
+    length = (unsigned) (chunkLength < begin ? 0 : chunkLength - begin);
 
     if(compressed)
     {
       /*will fail if zlib error, e.g. if length is too small*/
       error = zlib_decompress(&decoded.data, &decoded.size,
-                              (unsigned char*)(&data[begin]),
+                              (const unsigned char*)(&data[begin]),
                               length, zlibsettings);
       if(error) break;
       if(decoded.allocsize < decoded.size) decoded.allocsize = decoded.size;
@@ -4949,7 +4943,7 @@ static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* te
   ucvector_push_back(&data, 0); /*compression method: 0*/
 
   error = zlib_compress(&compressed.data, &compressed.size,
-                        (unsigned char*)textstring, textsize, zlibsettings);
+                        (const unsigned char*)textstring, textsize, zlibsettings);
   if(!error)
   {
     for(i = 0; i != compressed.size; ++i) ucvector_push_back(&data, compressed.data[i]);
@@ -4985,7 +4979,7 @@ static unsigned addChunk_iTXt(ucvector* out, unsigned compressed, const char* ke
     ucvector compressed_data;
     ucvector_init(&compressed_data);
     error = zlib_compress(&compressed_data.data, &compressed_data.size,
-                          (unsigned char*)textstring, textsize, zlibsettings);
+                          (const unsigned char*)textstring, textsize, zlibsettings);
     if(!error)
     {
       for(i = 0; i != compressed_data.size; ++i) ucvector_push_back(&data, compressed_data.data[i]);
@@ -5305,7 +5299,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     size_t size[5];
     unsigned char* attempt[5]; /*five filtering attempts, one for each filter type*/
     size_t smallest = 0;
-    unsigned type = 0, bestType = 0;
+    unsigned int type = 0, bestType = 0;
     unsigned char* dummy;
     LodePNGCompressSettings zlibsettings = settings->zlibsettings;
     /*use fixed tree on the attempts so that the tree is not adapted to the filtertype on purpose,
@@ -5326,7 +5320,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     {
       for(type = 0; type != 5; ++type)
       {
-        unsigned testsize = linebytes;
+        unsigned testsize =  (unsigned) linebytes;
         /*if(testsize > 8) testsize /= 8;*/ /*it already works good enough by testing a part of the row*/
 
         filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
@@ -5924,6 +5918,7 @@ const char* lodepng_error_text(unsigned code)
     case 92: return "too many pixels, not supported";
     case 93: return "zero width or height is invalid";
     case 94: return "header chunk must have a size of 13 bytes";
+    default: break;
   }
   return "unknown error code";
 }
@@ -5946,9 +5941,9 @@ unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filena
   if(!file) return 78;
 
   /*get filesize*/
-  std::streamsize size = 0;
-  if(file.seekg(0, std::ios::end).good()) size = file.tellg();
-  if(file.seekg(0, std::ios::beg).good()) size -= file.tellg();
+  std::streamsize size = (std::streamsize) 0;
+  if(file.seekg(0, std::ios::end).good()) size  = (std::streamsize) file.tellg();
+  if(file.seekg(0, std::ios::beg).good()) size -= (std::streamsize) file.tellg();
 
   /*read contents of the file into the vector*/
   buffer.resize(size_t(size));
@@ -5962,7 +5957,7 @@ unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& 
 {
   std::ofstream file(filename.c_str(), std::ios::out|std::ios::binary);
   if(!file) return 79;
-  file.write(buffer.empty() ? 0 : (char*)&buffer[0], std::streamsize(buffer.size()));
+  file.write(buffer.empty() ? 0 : (const char*)&buffer[0], std::streamsize(buffer.size()));
   return 0;
 }
 #endif /* LODEPNG_COMPILE_DISK */
