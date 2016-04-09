@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2016 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -606,6 +606,45 @@ void testColor(int r, int g, int b, int a)
   doCodecTest(image3);
 
   testSinglePixel(r, g, b, a);
+}
+
+// Tests combinations of various colors in different orders
+void testFewColors()
+{
+  std::cout << "codec test colors " << std::endl;
+  Image image;
+  image.width = 20;
+  image.height = 20;
+  image.colorType = LCT_RGBA;
+  image.bitDepth = 8;
+  image.data.resize(image.width * image.height * 4);
+  std::vector<unsigned char> colors;
+  colors.push_back(0); colors.push_back(0); colors.push_back(0); colors.push_back(255);
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(255);
+  colors.push_back(128); colors.push_back(128); colors.push_back(128); colors.push_back(255);
+  colors.push_back(0); colors.push_back(0); colors.push_back(255); colors.push_back(255);
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(0);
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(1);
+  for(size_t i = 0; i < colors.size(); i += 4)
+  for(size_t j = 0; j < colors.size(); j += 4)
+  for(size_t k = 0; k < colors.size(); k += 4)
+  for(size_t l = 0; l < colors.size(); l += 4)
+  {
+    for(size_t c = 0; c < 4; c++)
+    {
+      /*image.data[0 + c] = colors[i + c];
+      image.data[4 + c] = colors[j + c];
+      image.data[8 + c] = colors[k + c];*/
+      for(unsigned y = 0; y < image.height; y++)
+      for(unsigned x = 0; x < image.width; x++)
+      {
+        image.data[y * image.width * 4 + x * 4 + c] = (x ^ y) ? colors[i + c] : colors[j + c];
+      }
+      image.data[c] = colors[k + c];
+      image.data[image.data.size() - 4 + c] = colors[l + c];
+    }
+    doCodecTest(image);
+  }
 }
 
 void testSize(unsigned w, unsigned h)
@@ -1921,6 +1960,7 @@ void doMain()
   testPaletteToPaletteDecode2();
 
   //Colors
+  testFewColors();
   testColorKeyConvert();
   testColorConvert();
   testColorConvert2();
