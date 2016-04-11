@@ -4686,8 +4686,11 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     size_t outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
     *out = (unsigned char*)lodepng_malloc(outsize);
     if(!*out) state->error = 83; /*alloc fail*/
+  }
+  if(!state->error)
+  {
     for(i = 0; i < outsize; i++) (*out)[i] = 0;
-    if(!state->error) state->error = postProcessScanlines(*out, scanlines.data, *w, *h, &state->info_png);
+    state->error = postProcessScanlines(*out, scanlines.data, *w, *h, &state->info_png);
   }
   ucvector_cleanup(&scanlines);
 }
@@ -5391,7 +5394,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
       out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
       for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
     }
-    for(type = 0; type != 5; ++type) free(attempt[type]);
+    for(type = 0; type != 5; ++type) lodepng_free(attempt[type]);
   }
   else return 88; /* unknown filter strategy */
 
