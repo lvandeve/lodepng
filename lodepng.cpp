@@ -4506,6 +4506,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   ucvector scanlines;
   size_t predict;
   size_t numpixels;
+  size_t outsize;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
@@ -4683,7 +4684,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
 
   if(!state->error)
   {
-    size_t outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
+    outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
     *out = (unsigned char*)lodepng_malloc(outsize);
     if(!*out) state->error = 83; /*alloc fail*/
   }
