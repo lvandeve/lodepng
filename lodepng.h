@@ -1,5 +1,5 @@
 /*
-LodePNG version 20160409
+LodePNG version 20160418
 
 Copyright (c) 2005-2016 Lode Vandevenne
 
@@ -1607,6 +1607,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 18 apr 2016: Changed qsort to custom stable sort (for platforms w/o qsort).
 *) 09 apr 2016: Fixed colorkey usage detection, and better file loading (within
    the limits of pure C90).
 *) 08 dec 2015: Made load_file function return error if file can't be opened.

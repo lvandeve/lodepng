@@ -1,5 +1,5 @@
 /*
-LodePNG version 20160409
+LodePNG version 20160418
 
 Copyright (c) 2005-2016 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20160409";
+const char* LODEPNG_VERSION_STRING = "20160418";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -727,14 +727,31 @@ static BPMNode* bpmnode_create(BPMLists* lists, int weight, unsigned index, BPMN
   return result;
 }
 
-static int bpmnode_compare(const void* a, const void* b)
+/*sort the leaves with stable mergesort*/
+static void bpmnode_sort(BPMNode* leaves, size_t num)
 {
-  int wa = ((const BPMNode*)a)->weight;
-  int wb = ((const BPMNode*)b)->weight;
-  if(wa < wb) return -1;
-  if(wa > wb) return 1;
-  /*make the qsort a stable sort*/
-  return ((const BPMNode*)a)->index < ((const BPMNode*)b)->index ? 1 : -1;
+  BPMNode* mem = (BPMNode*)malloc(sizeof(*leaves) * num);
+  size_t width, counter = 0;
+  for(width = 1; width < num; width *= 2)
+  {
+    BPMNode* a = (counter & 1) ? mem : leaves;
+    BPMNode* b = (counter & 1) ? leaves : mem;
+    size_t p;
+    for(p = 0; p < num; p += 2 * width)
+    {
+      size_t q = (p + width > num) ? num : (p + width);
+      size_t r = (p + 2 * width > num) ? num : (p + 2 * width);
+      size_t i = p, j = q, k;
+      for(k = p; k < r; k++)
+      {
+        if(i < q && (j >= r || a[i].weight <= a[j].weight)) b[k] = a[i++];
+        else b[k] = a[j++];
+      }
+    }
+    counter++;
+  }
+  if(counter & 1) memcpy(leaves, mem, sizeof(*leaves) * num);
+  free(mem);
 }
 
 /*Boundary Package Merge step, numpresent is the amount of leaves, and c is the current chain.*/
@@ -814,7 +831,7 @@ unsigned lodepng_huffman_code_lengths(unsigned* lengths, const unsigned* frequen
     BPMLists lists;
     BPMNode* node;
 
-    qsort(leaves, numpresent, sizeof(BPMNode), bpmnode_compare);
+    bpmnode_sort(leaves, numpresent);
 
     lists.listsize = maxbitlen;
     lists.memsize = 2 * maxbitlen * (maxbitlen + 1);
