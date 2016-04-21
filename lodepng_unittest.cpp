@@ -80,6 +80,8 @@ valgrind --leak-check=full --track-origins=yes ./a.out
 cat lodepng.cpp | grep iostream
 cat lodepng.cpp | grep "#include <"
 
+*) check that no plain "free", "malloc" and "realloc" used, but the lodepng_* versions instead
+
 *) check version dates in copyright message and LODEPNG_VERSION_STRING
 
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
