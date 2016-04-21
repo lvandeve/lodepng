@@ -730,7 +730,7 @@ static BPMNode* bpmnode_create(BPMLists* lists, int weight, unsigned index, BPMN
 /*sort the leaves with stable mergesort*/
 static void bpmnode_sort(BPMNode* leaves, size_t num)
 {
-  BPMNode* mem = (BPMNode*)malloc(sizeof(*leaves) * num);
+  BPMNode* mem = (BPMNode*)lodepng_malloc(sizeof(*leaves) * num);
   size_t width, counter = 0;
   for(width = 1; width < num; width *= 2)
   {
@@ -751,7 +751,7 @@ static void bpmnode_sort(BPMNode* leaves, size_t num)
     counter++;
   }
   if(counter & 1) memcpy(leaves, mem, sizeof(*leaves) * num);
-  free(mem);
+  lodepng_free(mem);
 }
 
 /*Boundary Package Merge step, numpresent is the amount of leaves, and c is the current chain.*/
