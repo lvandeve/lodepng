@@ -4523,7 +4523,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   ucvector scanlines;
   size_t predict;
   size_t numpixels;
-  size_t outsize;
+  size_t outsize = 0;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
