@@ -1,5 +1,5 @@
 /*
-LodePNG version 20160418
+LodePNG version 20160501
 
 Copyright (c) 2005-2016 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20160418";
+const char* LODEPNG_VERSION_STRING = "20160501";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -5677,7 +5677,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   if(!lodepng_color_mode_equal(&state->info_raw, &info.color))
   {
     unsigned char* converted;
-    size_t size = (w * h * lodepng_get_bpp(&info.color) + 7) / 8;
+    size_t size = (w * h * (size_t)lodepng_get_bpp(&info.color) + 7) / 8;
 
     converted = (unsigned char*)lodepng_malloc(size);
     if(!converted && size) state->error = 83; /*alloc fail*/
