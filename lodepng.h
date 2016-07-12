@@ -896,6 +896,7 @@ TODO:
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
 [X] better name for the variables "codes", "codesD", "codelengthcodes", "clcl" and "lldl"
 [ ] don't stop decoding on errors like 69, 57, 58 (make warnings)
+[ ] make warnings like: oob palette, checksum fail, data after iend, wrong/unknown crit chunk, no null terminator in text, ...
 [ ] let the C++ wrapper catch exceptions coming from the standard library and return LodePNG error codes
 [ ] allow user to provide custom color conversion functions, e.g. for premultiplied alpha, padding bits or not, ...
 [ ] allow user to give data (void*) to custom allocator
