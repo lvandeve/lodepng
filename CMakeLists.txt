@@ -11,8 +11,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(lodepng
   ${CMAKE_CURRENT_SOURCE_DIR}/lodepng.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/lodepng_benchmark.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/lodepng_unittest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/lodepng_util.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/pngdetail.cpp)
 
