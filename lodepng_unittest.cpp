@@ -93,6 +93,7 @@ g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3
 *) strip trailing spaces and ensure consistent newlines
 
 *) check diff of lodepng.cpp and lodepng.h before submitting
+git difftool -y
 
 */
 
@@ -613,7 +614,7 @@ void testColor(int r, int g, int b, int a)
 // Tests combinations of various colors in different orders
 void testFewColors()
 {
-  std::cout << "codec test colors " << std::endl;
+  std::cout << "codec test few colors " << std::endl;
   Image image;
   image.width = 20;
   image.height = 20;
@@ -621,22 +622,20 @@ void testFewColors()
   image.bitDepth = 8;
   image.data.resize(image.width * image.height * 4);
   std::vector<unsigned char> colors;
-  colors.push_back(0); colors.push_back(0); colors.push_back(0); colors.push_back(255);
-  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(255);
-  colors.push_back(128); colors.push_back(128); colors.push_back(128); colors.push_back(255);
-  colors.push_back(0); colors.push_back(0); colors.push_back(255); colors.push_back(255);
-  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(0);
-  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(1);
+  colors.push_back(0); colors.push_back(0); colors.push_back(0); colors.push_back(255); // black
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(255); // white
+  colors.push_back(128); colors.push_back(128); colors.push_back(128); colors.push_back(255); // grey
+  colors.push_back(0); colors.push_back(0); colors.push_back(255); colors.push_back(255); // blue
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(0); // transparent white
+  colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(1); // translucent white
   for(size_t i = 0; i < colors.size(); i += 4)
   for(size_t j = 0; j < colors.size(); j += 4)
   for(size_t k = 0; k < colors.size(); k += 4)
   for(size_t l = 0; l < colors.size(); l += 4)
   {
+    //std::cout << (i/4) << " " << (j/4) << " " << (k/4) << " " << (l/4) << std::endl;
     for(size_t c = 0; c < 4; c++)
     {
-      /*image.data[0 + c] = colors[i + c];
-      image.data[4 + c] = colors[j + c];
-      image.data[8 + c] = colors[k + c];*/
       for(unsigned y = 0; y < image.height; y++)
       for(unsigned x = 0; x < image.width; x++)
       {
@@ -1778,35 +1777,50 @@ void testAutoColorModel(const std::vector<unsigned char>& colors, unsigned inbit
   ASSERT_EQUALS(colortype, state.info_png.color.colortype);
   ASSERT_EQUALS(bitdepth, state.info_png.color.bitdepth);
   ASSERT_EQUALS(key, state.info_png.color.key_defined);
+  // also check that the PNG decoded correctly and has same colors as input
   if(inbitdepth == 8) { for(size_t i = 0; i < colors.size(); i++) ASSERT_EQUALS(colors[i], decoded[i]); }
   else { for(size_t i = 0; i < colors.size() / 2; i++) ASSERT_EQUALS(colors[i * 2], decoded[i]); }
 }
 
 void testAutoColorModels()
 {
+  // 1-bit grey
   std::vector<unsigned char> grey1;
   for(size_t i = 0; i < 2; i++) addColor(grey1, i * 255, i * 255, i * 255, 255);
   testAutoColorModel(grey1, 8, LCT_GREY, 1, false);
 
+  // 2-bit grey
   std::vector<unsigned char> grey2;
   for(size_t i = 0; i < 4; i++) addColor(grey2, i * 85, i * 85, i * 85, 255);
   testAutoColorModel(grey2, 8, LCT_GREY, 2, false);
 
-
+  // 4-bit grey
   std::vector<unsigned char> grey4;
   for(size_t i = 0; i < 16; i++) addColor(grey4, i * 17, i * 17, i * 17, 255);
   testAutoColorModel(grey4, 8, LCT_GREY, 4, false);
 
-
+  // 8-bit grey
   std::vector<unsigned char> grey8;
   for(size_t i = 0; i < 256; i++) addColor(grey8, i, i, i, 255);
   testAutoColorModel(grey8, 8, LCT_GREY, 8, false);
 
-
+  // 16-bit grey
   std::vector<unsigned char> grey16;
   for(size_t i = 0; i < 257; i++) addColor16(grey16, i, i, i, 65535);
   testAutoColorModel(grey16, 16, LCT_GREY, 16, false);
 
+  // 8-bit grey+alpha
+  std::vector<unsigned char> grey8a;
+  for(size_t i = 0; i < 17; i++) addColor(grey8a, i, i, i, i);
+  testAutoColorModel(grey8a, 8, LCT_GREY_ALPHA, 8, false);
+
+  // 16-bit grey+alpha
+  std::vector<unsigned char> grey16a;
+  for(size_t i = 0; i < 257; i++) addColor16(grey16a, i, i, i, i);
+  testAutoColorModel(grey16a, 16, LCT_GREY_ALPHA, 16, false);
+
+
+  // various palette tests
   std::vector<unsigned char> palette;
   addColor(palette, 0, 0, 1, 255);
   testAutoColorModel(palette, 8, LCT_PALETTE, 1, false);
@@ -1823,43 +1837,73 @@ void testAutoColorModels()
   addColor(palette, 0, 0, 18, 1); // translucent
   testAutoColorModel(palette, 8, LCT_PALETTE, 8, false);
 
+  // 1-bit grey + alpha not possible, becomes palette
+  std::vector<unsigned char> grey1a;
+  for(size_t i = 0; i < 2; i++) addColor(grey1a, i, i, i, 128);
+  testAutoColorModel(grey1a, 8, LCT_PALETTE, 1, false);
+
+  // 2-bit grey + alpha not possible, becomes palette
+  std::vector<unsigned char> grey2a;
+  for(size_t i = 0; i < 4; i++) addColor(grey2a, i, i, i, 128);
+  testAutoColorModel(grey2a, 8, LCT_PALETTE, 2, false);
+
+  // 4-bit grey + alpha not possible, becomes palette
+  std::vector<unsigned char> grey4a;
+  for(size_t i = 0; i < 16; i++) addColor(grey4a, i, i, i, 128);
+  testAutoColorModel(grey4a, 8, LCT_PALETTE, 4, false);
+
+  // 8-bit rgb
   std::vector<unsigned char> rgb = grey8;
   addColor(rgb, 255, 0, 0, 255);
   testAutoColorModel(rgb, 8, LCT_RGB, 8, false);
 
+  // 8-bit rgb + key
   std::vector<unsigned char> rgb_key = rgb;
   addColor(rgb_key, 128, 0, 0, 0);
   testAutoColorModel(rgb_key, 8, LCT_RGB, 8, true);
 
+  // 8-bit rgb, not key due to edge case: single key color, but opaque color has same RGB value
   std::vector<unsigned char> rgb_key2 = rgb_key;
   addColor(rgb_key2, 128, 0, 0, 255); // same color but opaque ==> no more key
   testAutoColorModel(rgb_key2, 8, LCT_RGBA, 8, false);
 
+  // 8-bit rgb, not key due to semi translucent
   std::vector<unsigned char> rgb_key3 = rgb_key;
   addColor(rgb_key3, 128, 0, 0, 255); // semi-translucent ==> no more key
   testAutoColorModel(rgb_key3, 8, LCT_RGBA, 8, false);
 
+  // 8-bit rgb, not key due to multiple transparent colors
   std::vector<unsigned char> rgb_key4 = rgb_key;
   addColor(rgb_key4, 128, 0, 0, 255);
   addColor(rgb_key4, 129, 0, 0, 255); // two different transparent colors ==> no more key
   testAutoColorModel(rgb_key4, 8, LCT_RGBA, 8, false);
 
+  // 1-bit grey with key
   std::vector<unsigned char> grey1_key = grey1;
   grey1_key[7] = 0;
   testAutoColorModel(grey1_key, 8, LCT_GREY, 1, true);
 
+  // 2-bit grey with key
   std::vector<unsigned char> grey2_key = grey2;
   grey2_key[7] = 0;
   testAutoColorModel(grey2_key, 8, LCT_GREY, 2, true);
 
+  // 4-bit grey with key
   std::vector<unsigned char> grey4_key = grey4;
   grey4_key[7] = 0;
   testAutoColorModel(grey4_key, 8, LCT_GREY, 4, true);
 
+  // 8-bit grey with key
   std::vector<unsigned char> grey8_key = grey8;
   grey8_key[7] = 0;
   testAutoColorModel(grey8_key, 8, LCT_GREY, 8, true);
 
+  // 16-bit grey with key
+  std::vector<unsigned char> grey16_key = grey16;
+  grey16_key[14] = grey16_key[15] = 0;
+  testAutoColorModel(grey16_key, 16, LCT_GREY, 16, true);
+
+  // a single 16-bit color, can't become palette due to being 16-bit
   std::vector<unsigned char> small16;
   addColor16(small16, 1, 0, 0, 65535);
   testAutoColorModel(small16, 16, LCT_RGB, 16, false);
@@ -1868,13 +1912,22 @@ void testAutoColorModels()
   addColor16(small16a, 1, 0, 0, 1);
   testAutoColorModel(small16a, 16, LCT_RGBA, 16, false);
 
+  // what we provide as 16-bit is actually representable as 8-bit, so 8-bit palette expected for single color
   std::vector<unsigned char> not16;
   addColor16(not16, 257, 257, 257, 0);
   testAutoColorModel(not16, 16, LCT_PALETTE, 1, false);
 
+  // the rgb color is representable as 8-bit, but the alpha channel only as 16-bit, so ensure it uses 16-bit and not palette for this single color
   std::vector<unsigned char> alpha16;
   addColor16(alpha16, 257, 0, 0, 10000);
   testAutoColorModel(alpha16, 16, LCT_RGBA, 16, false);
+
+  // 1-bit grey, with attempt to get color key but can't do it due to opaque color with same value
+  std::vector<unsigned char> grey1k;
+  addColor(grey1k, 0, 0, 0, 255);
+  addColor(grey1k, 255, 255, 255, 255);
+  addColor(grey1k, 255, 255, 255, 0);
+  testAutoColorModel(grey1k, 8, LCT_PALETTE, 2, false);
 }
 
 void testPaletteToPaletteDecode() {
