@@ -3986,12 +3986,12 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
       break;
     case 1:
       for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-      for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + recon[i - bytewidth];
+      for(i = bytewidth; i < length; ++i) recon[i] = 0xFF & (scanline[i] + recon[i - bytewidth]);
       break;
     case 2:
       if(precon)
       {
-        for(i = 0; i != length; ++i) recon[i] = scanline[i] + precon[i];
+        for(i = 0; i != length; ++i) recon[i] = 0xFF & (scanline[i] + precon[i]);
       }
       else
       {
@@ -4001,13 +4001,13 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
     case 3:
       if(precon)
       {
-        for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i] + (precon[i] >> 1);
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + ((recon[i - bytewidth] + precon[i]) >> 1);
+        for(i = 0; i != bytewidth; ++i) recon[i] = 0xFF & (scanline[i] + (precon[i] >> 1));
+        for(i = bytewidth; i < length; ++i) recon[i] = 0xFF & (scanline[i] + ((recon[i - bytewidth] + precon[i]) >> 1));
       }
       else
       {
         for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + (recon[i - bytewidth] >> 1);
+        for(i = bytewidth; i < length; ++i) recon[i] = 0xFF & (scanline[i] + (recon[i - bytewidth] >> 1));
       }
       break;
     case 4:
@@ -4015,11 +4015,11 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
       {
         for(i = 0; i != bytewidth; ++i)
         {
-          recon[i] = (scanline[i] + precon[i]); /*paethPredictor(0, precon[i], 0) is always precon[i]*/
+          recon[i] = 0xFF & (scanline[i] + precon[i]); /*paethPredictor(0, precon[i], 0) is always precon[i]*/
         }
         for(i = bytewidth; i < length; ++i)
         {
-          recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth]));
+          recon[i] = 0xFF & (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth]));
         }
       }
       else
@@ -4031,7 +4031,7 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
         for(i = bytewidth; i < length; ++i)
         {
           /*paethPredictor(recon[i - bytewidth], 0, 0) is always recon[i - bytewidth]*/
-          recon[i] = (scanline[i] + recon[i - bytewidth]);
+          recon[i] = 0xFF & (scanline[i] + recon[i - bytewidth]);
         }
       }
       break;
