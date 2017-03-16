@@ -1,5 +1,5 @@
 /*
-LodePNG version 20160418
+LodePNG version 20161127
 
 Copyright (c) 2005-2016 Lode Vandevenne
 
@@ -40,7 +40,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4334 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20160418";
+const char* LODEPNG_VERSION_STRING = "20161127";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2386,9 +2386,10 @@ static unsigned readBitsFromReversedStream(size_t* bitpointer, const unsigned ch
 {
   unsigned result = 0;
   size_t i;
-  for(i = nbits - 1; i < nbits; --i)
+  for(i = 0 ; i < nbits; ++i)
   {
-    result += (unsigned)readBitFromReversedStream(bitpointer, bitstream) << i;
+    result <<= 1;
+    result |= (unsigned)readBitFromReversedStream(bitpointer, bitstream);
   }
   return result;
 }
@@ -3534,8 +3535,8 @@ void lodepng_color_profile_init(LodePNGColorProfile* profile)
 {
   profile->colored = 0;
   profile->key = 0;
-  profile->alpha = 0;
   profile->key_r = profile->key_g = profile->key_b = 0;
+  profile->alpha = 0;
   profile->numcolors = 0;
   profile->bits = 1;
 }
@@ -3622,8 +3623,8 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         if(a != 65535 && (a != 0 || (profile->key && !matchkey)))
         {
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
-          if(profile->bits < 8) profile->bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
         }
         else if(a == 0 && !profile->alpha && !profile->key)
         {
@@ -3636,6 +3637,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         {
           /* Color key cannot be used if an opaque pixel also has that RGB color. */
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
         }
       }
@@ -3651,6 +3653,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         {
           /* Color key cannot be used if an opaque pixel also has that RGB color. */
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
         }
       }
@@ -3684,6 +3687,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         if(a != 255 && (a != 0 || (profile->key && !matchkey)))
         {
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
           if(profile->bits < 8) profile->bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
         }
@@ -3698,6 +3702,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         {
           /* Color key cannot be used if an opaque pixel also has that RGB color. */
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
           if(profile->bits < 8) profile->bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
         }
@@ -3734,7 +3739,9 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
         {
           /* Color key cannot be used if an opaque pixel also has that RGB color. */
           profile->alpha = 1;
+          profile->key = 0;
           alpha_done = 1;
+          if(profile->bits < 8) profile->bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
         }
       }
     }
@@ -3760,7 +3767,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
 {
   LodePNGColorProfile prof;
   unsigned error = 0;
-  unsigned i, n, palettebits, grey_ok, palette_ok;
+  unsigned i, n, palettebits, palette_ok;
 
   lodepng_color_profile_init(&prof);
   error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
@@ -3770,14 +3777,14 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   if(prof.key && w * h <= 16)
   {
     prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
+    prof.key = 0;
     if(prof.bits < 8) prof.bits = 8; /*PNG has no alphachannel modes with less than 8-bit per channel*/
   }
-  grey_ok = !prof.colored && !prof.alpha; /*grey without alpha, with potentially low bits*/
   n = prof.numcolors;
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));
-  palette_ok = n <= 256 && (n * 2 < w * h) && prof.bits <= 8;
+  palette_ok = n <= 256 && prof.bits <= 8;
   if(w * h < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
-  if(grey_ok && prof.bits <= palettebits) palette_ok = 0; /*grey is less overhead*/
+  if(!prof.colored && prof.bits <= palettebits) palette_ok = 0; /*grey is less overhead*/
 
   if(palette_ok)
   {
@@ -3806,7 +3813,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
     mode_out->colortype = prof.alpha ? (prof.colored ? LCT_RGBA : LCT_GREY_ALPHA)
                                      : (prof.colored ? LCT_RGB : LCT_GREY);
 
-    if(prof.key && !prof.alpha)
+    if(prof.key)
     {
       unsigned mask = (1u << mode_out->bitdepth) - 1u; /*profile always uses 16-bit, mask converts it*/
       mode_out->key_r = prof.key_r & mask;
@@ -5678,7 +5685,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   if(!lodepng_color_mode_equal(&state->info_raw, &info.color))
   {
     unsigned char* converted;
-    size_t size = (w * h * lodepng_get_bpp(&info.color) + 7) / 8;
+    size_t size = (w * h * (size_t)lodepng_get_bpp(&info.color) + 7) / 8;
 
     converted = (unsigned char*)lodepng_malloc(size);
     if(!converted && size) state->error = 83; /*alloc fail*/

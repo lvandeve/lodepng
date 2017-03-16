@@ -27,11 +27,12 @@ freely, subject to the following restrictions:
 Extra C++ utilities for LodePNG, for convenience.
 */
 
+#ifndef LODEPNG_UTIL_H
+#define LODEPNG_UTIL_H
+
 #include <string>
 #include <vector>
 #include "lodepng.h"
-
-#pragma once
 
 namespace lodepng
 {
@@ -149,3 +150,5 @@ struct ZlibBlockInfo
 void extractZlibInfo(std::vector<ZlibBlockInfo>& zlibinfo, const std::vector<unsigned char>& in);
 
 } // namespace lodepng
+
+#endif /*LODEPNG_UTIL_H inclusion guard*/
