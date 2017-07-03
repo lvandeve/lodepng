@@ -3046,7 +3046,7 @@ static int color_tree_has(ColorTree* tree, unsigned char r, unsigned char g, uns
 /*color is not allowed to already exist.
 Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")*/
 static void color_tree_add(ColorTree* tree,
-                           unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index)
+                           unsigned char r, unsigned char g, unsigned char b, unsigned char a, size_t index)
 {
   int bit;
   for(bit = 0; bit < 8; ++bit)
@@ -4313,7 +4313,7 @@ static unsigned readChunk_tEXt(LodePNGInfo* info, const unsigned char* data, siz
 
   while(!error) /*not really a while loop, only used to break on error*/
   {
-    unsigned length, string2_begin;
+    size_t length, string2_begin;
 
     length = 0;
     while(length < chunkLength && data[length] != 0) ++length;
@@ -4354,7 +4354,7 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
   unsigned error = 0;
   unsigned i;
 
-  unsigned length, string2_begin;
+  size_t length, string2_begin;
   char *key = 0;
   ucvector decoded;
 
@@ -4401,9 +4401,10 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
                                const unsigned char* data, size_t chunkLength)
 {
   unsigned error = 0;
-  unsigned i;
+  size_t i;
 
-  unsigned length, begin, compressed;
+  size_t length, begin;
+  unsigned compressed;
   char *key = 0, *langtag = 0, *transkey = 0;
   ucvector decoded;
   ucvector_init(&decoded);
