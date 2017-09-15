@@ -111,6 +111,12 @@ git difftool -y
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _MSC_VER
+# define cdecl __cdecl
+#else
+# define cdecl
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void fail()
@@ -507,8 +513,8 @@ void testOtherPattern1()
   Image image1;
   size_t w = 192;
   size_t h = 192;
-  image1.width = w;
-  image1.height = h;
+  image1.width = (int)w;
+  image1.height = (int)h;
   image1.colorType = LCT_RGBA;
   image1.bitDepth = 8;
   image1.data.resize(w * h * 4u);
@@ -532,8 +538,8 @@ void testOtherPattern2()
   Image image1;
   size_t w = 192;
   size_t h = 192;
-  image1.width = w;
-  image1.height = h;
+  image1.width = (int)w;
+  image1.height = (int)h;
   image1.colorType = LCT_RGBA;
   image1.bitDepth = 8;
   image1.data.resize(w * h * 4u);
@@ -541,8 +547,8 @@ void testOtherPattern2()
   for(size_t x = 0; x < w; x++)
   {
     image1.data[4u * w * y + 4u * x + 0u] = 255 * !(x & y);
-    image1.data[4u * w * y + 4u * x + 1u] = x ^ y;
-    image1.data[4u * w * y + 4u * x + 2u] = x | y;
+    image1.data[4u * w * y + 4u * x + 1u] = (unsigned char)(x ^ y);
+    image1.data[4u * w * y + 4u * x + 2u] = (unsigned char)(x | y);
     image1.data[4u * w * y + 4u * x + 3u] = 255;
   }
 
@@ -558,10 +564,10 @@ void testSinglePixel(int r, int g, int b, int a)
   pixel.colorType = LCT_RGBA;
   pixel.bitDepth = 8;
   pixel.data.resize(4);
-  pixel.data[0] = r;
-  pixel.data[1] = g;
-  pixel.data[2] = b;
-  pixel.data[3] = a;
+  pixel.data[0] = (unsigned char)r;
+  pixel.data[1] = (unsigned char)g;
+  pixel.data[2] = (unsigned char)b;
+  pixel.data[3] = (unsigned char)a;
 
   doCodecTest(pixel);
 }
@@ -578,10 +584,10 @@ void testColor(int r, int g, int b, int a)
   for(size_t y = 0; y < 20; y++)
   for(size_t x = 0; x < 20; x++)
   {
-    image.data[20 * 4 * y + 4 * x + 0] = r;
-    image.data[20 * 4 * y + 4 * x + 0] = g;
-    image.data[20 * 4 * y + 4 * x + 0] = b;
-    image.data[20 * 4 * y + 4 * x + 0] = a;
+    image.data[20 * 4 * y + 4 * x + 0] = (unsigned char)r;
+    image.data[20 * 4 * y + 4 * x + 0] = (unsigned char)g;
+    image.data[20 * 4 * y + 4 * x + 0] = (unsigned char)b;
+    image.data[20 * 4 * y + 4 * x + 0] = (unsigned char)a;
   }
 
   doCodecTest(image);
@@ -595,9 +601,9 @@ void testColor(int r, int g, int b, int a)
   Image image3 = image;
   // add 255 different colors
   for(size_t i = 0; i < 255; i++) {
-    image.data[i * 4 + 0] = i;
-    image.data[i * 4 + 1] = i;
-    image.data[i * 4 + 2] = i;
+    image.data[i * 4 + 0] = (unsigned char)i;
+    image.data[i * 4 + 1] = (unsigned char)i;
+    image.data[i * 4 + 2] = (unsigned char)i;
     image.data[i * 4 + 3] = 255;
   }
   doCodecTest(image3);
@@ -801,7 +807,7 @@ void testColorConvert2()
 
   for(size_t i = 0; i < 256; i++)
   {
-    size_t j = i == 1 ? 255 : i;
+    unsigned char j = i == 1 ? 255 : (unsigned char)i;
     lodepng_palette_add(&mode_in, j, j, j, 255);
     lodepng_palette_add(&mode_out, j, j, j, 255);
   }
@@ -945,7 +951,7 @@ void doTestHuffmanCodeLengths(const std::string& expectedstr, const std::string&
   std::vector<unsigned> count = strtovector(counts);
   std::cout << "doTestHuffmanCodeLengths: " << counts << std::endl;
   std::vector<unsigned> result(count.size());
-  unsigned error = lodepng_huffman_code_lengths(&result[0], &count[0], count.size(), bitlength);
+  unsigned error = lodepng_huffman_code_lengths(&result[0], &count[0], count.size(), (unsigned)bitlength);
   assertNoPNGError(error, "errorcode");
   std::stringstream ss1, ss2;
   for(size_t i = 0; i < count.size(); i++)
@@ -1012,8 +1018,8 @@ void createComplexPNG(std::vector<unsigned char>& png)
   state.encoder.add_id = 1;
   for(size_t i = 0; i < 256; i++)
   {
-    lodepng_palette_add(&info.color, i, i, i, i);
-    lodepng_palette_add(&state.info_raw, i, i, i, i);
+    lodepng_palette_add(&info.color, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
+    lodepng_palette_add(&state.info_raw, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
   }
 
   info.background_defined = 1;
@@ -1131,12 +1137,12 @@ void testPaletteToPaletteConvert()
   ASSERT_EQUALS(true, state.encoder.auto_convert);
   for(size_t i = 0; i < 256; i++)
   {
-    lodepng_palette_add(&info.color, i, i, i, i);
+    lodepng_palette_add(&info.color, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
   }
   std::vector<unsigned char> png;
   for(size_t i = 0; i < 256; i++)
   {
-    lodepng_palette_add(&state.info_raw, i, i, i, i);
+    lodepng_palette_add(&state.info_raw, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
   }
   error = lodepng::encode(png, &image[0], w, h, state);
   assertNoPNGError(error);
@@ -1148,7 +1154,7 @@ void doRGBAToPaletteTest(unsigned char* palette, size_t size, LodePNGColorType e
 {
   std::cout << "testRGBToPaletteConvert " << size << std::endl;
   unsigned error;
-  unsigned w = size, h = 257 /*LodePNG encodes no palette if image is too small*/;
+  unsigned w = (unsigned)size, h = 257 /*LodePNG encodes no palette if image is too small*/;
   std::vector<unsigned char> image(w * h * 4);
   for(size_t i = 0; i < image.size(); i++) image[i] = palette[i % (size * 4)];
   std::vector<unsigned char> png;
@@ -1180,9 +1186,9 @@ void testRGBToPaletteConvert()
   doRGBAToPaletteTest(palette3, 3);
 
   std::vector<unsigned char> palette;
-  for(int i = 0; i < 256; i++)
+  for(size_t i = 0; i < 256; i++)
   {
-    palette.push_back(i);
+    palette.push_back((unsigned char)i);
     palette.push_back(5);
     palette.push_back(6);
     palette.push_back(128);
@@ -1204,7 +1210,7 @@ void testColorKeyConvert()
   for(size_t i = 0; i < w * h; i++)
   {
     image[i * 4 + 0] = i % 256;
-    image[i * 4 + 1] = i / 256;
+    image[i * 4 + 1] = (unsigned char)(i / 256);
     image[i * 4 + 2] = 0;
     image[i * 4 + 3] = i == 23 ? 0 : 255;
   }
@@ -1688,7 +1694,7 @@ void test16bitColorEndianness()
 }
 
 void testPredefinedFilters() {
-  size_t w = 32, h = 32;
+  unsigned w = 32, h = 32;
   std::cout << "testPredefinedFilters" << std::endl;
   Image image;
   generateTestImage(image, w, h, LCT_RGBA, 8);
@@ -1765,7 +1771,7 @@ void testAutoColorModel(const std::vector<unsigned char>& colors, unsigned inbit
   for(size_t i = 0; i < colors2.size(); i++) colors2[i] = colors[i % colors.size()];
 
   std::vector<unsigned char> png;
-  lodepng::encode(png, colors2, num, 1, LCT_RGBA, inbitdepth);
+  lodepng::encode(png, colors2, (unsigned)num, 1, LCT_RGBA, inbitdepth);
 
   // now extract the color type it chose
   unsigned w, h;
@@ -1786,37 +1792,37 @@ void testAutoColorModels()
 {
   // 1-bit grey
   std::vector<unsigned char> grey1;
-  for(size_t i = 0; i < 2; i++) addColor(grey1, i * 255, i * 255, i * 255, 255);
+  for(size_t i = 0; i < 2; i++) addColor(grey1, (unsigned char)(i * 255), (unsigned char)(i * 255), (unsigned char)(i * 255), 255);
   testAutoColorModel(grey1, 8, LCT_GREY, 1, false);
 
   // 2-bit grey
   std::vector<unsigned char> grey2;
-  for(size_t i = 0; i < 4; i++) addColor(grey2, i * 85, i * 85, i * 85, 255);
+  for(size_t i = 0; i < 4; i++) addColor(grey2, (unsigned char)(i * 85), (unsigned char)(i * 85), (unsigned char)(i * 85), 255);
   testAutoColorModel(grey2, 8, LCT_GREY, 2, false);
 
   // 4-bit grey
   std::vector<unsigned char> grey4;
-  for(size_t i = 0; i < 16; i++) addColor(grey4, i * 17, i * 17, i * 17, 255);
+  for(size_t i = 0; i < 16; i++) addColor(grey4, (unsigned char)(i * 17), (unsigned char)(i * 17), (unsigned char)(i * 17), 255);
   testAutoColorModel(grey4, 8, LCT_GREY, 4, false);
 
   // 8-bit grey
   std::vector<unsigned char> grey8;
-  for(size_t i = 0; i < 256; i++) addColor(grey8, i, i, i, 255);
+  for(size_t i = 0; i < 256; i++) addColor(grey8, (unsigned char)i, (unsigned char)i, (unsigned char)i, 255);
   testAutoColorModel(grey8, 8, LCT_GREY, 8, false);
 
   // 16-bit grey
   std::vector<unsigned char> grey16;
-  for(size_t i = 0; i < 257; i++) addColor16(grey16, i, i, i, 65535);
+  for(size_t i = 0; i < 257; i++) addColor16(grey16, (unsigned char)i, (unsigned char)i, (unsigned char)i, 65535);
   testAutoColorModel(grey16, 16, LCT_GREY, 16, false);
 
   // 8-bit grey+alpha
   std::vector<unsigned char> grey8a;
-  for(size_t i = 0; i < 17; i++) addColor(grey8a, i, i, i, i);
+  for(size_t i = 0; i < 17; i++) addColor(grey8a, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
   testAutoColorModel(grey8a, 8, LCT_GREY_ALPHA, 8, false);
 
   // 16-bit grey+alpha
   std::vector<unsigned char> grey16a;
-  for(size_t i = 0; i < 257; i++) addColor16(grey16a, i, i, i, i);
+  for(size_t i = 0; i < 257; i++) addColor16(grey16a, (unsigned char)i, (unsigned char)i, (unsigned char)i, (unsigned char)i);
   testAutoColorModel(grey16a, 16, LCT_GREY_ALPHA, 16, false);
 
 
@@ -1826,11 +1832,11 @@ void testAutoColorModels()
   testAutoColorModel(palette, 8, LCT_PALETTE, 1, false);
   addColor(palette, 0, 0, 2, 255);
   testAutoColorModel(palette, 8, LCT_PALETTE, 1, false);
-  for(int i = 3; i <= 4; i++) addColor(palette, 0, 0, i, 255);
+  for(size_t i = 3; i <= 4; i++) addColor(palette, 0, 0, (unsigned char)i, 255);
   testAutoColorModel(palette, 8, LCT_PALETTE, 2, false);
-  for(int i = 5; i <= 7; i++) addColor(palette, 0, 0, i, 255);
+  for(size_t i = 5; i <= 7; i++) addColor(palette, 0, 0, (unsigned char)i, 255);
   testAutoColorModel(palette, 8, LCT_PALETTE, 4, false);
-  for(int i = 8; i <= 17; i++) addColor(palette, 0, 0, i, 255);
+  for(size_t i = 8; i <= 17; i++) addColor(palette, 0, 0, (unsigned char)i, 255);
   testAutoColorModel(palette, 8, LCT_PALETTE, 8, false);
   addColor(palette, 0, 0, 18, 0); // transparent
   testAutoColorModel(palette, 8, LCT_PALETTE, 8, false);
@@ -1839,17 +1845,17 @@ void testAutoColorModels()
 
   // 1-bit grey + alpha not possible, becomes palette
   std::vector<unsigned char> grey1a;
-  for(size_t i = 0; i < 2; i++) addColor(grey1a, i, i, i, 128);
+  for(size_t i = 0; i < 2; i++) addColor(grey1a, (unsigned char)i, (unsigned char)i, (unsigned char)i, 128);
   testAutoColorModel(grey1a, 8, LCT_PALETTE, 1, false);
 
   // 2-bit grey + alpha not possible, becomes palette
   std::vector<unsigned char> grey2a;
-  for(size_t i = 0; i < 4; i++) addColor(grey2a, i, i, i, 128);
+  for(size_t i = 0; i < 4; i++) addColor(grey2a, (unsigned char)i, (unsigned char)i, (unsigned char)i, 128);
   testAutoColorModel(grey2a, 8, LCT_PALETTE, 2, false);
 
   // 4-bit grey + alpha not possible, becomes palette
   std::vector<unsigned char> grey4a;
-  for(size_t i = 0; i < 16; i++) addColor(grey4a, i, i, i, 128);
+  for(size_t i = 0; i < 16; i++) addColor(grey4a, (unsigned char)i, (unsigned char)i, (unsigned char)i, 128);
   testAutoColorModel(grey4a, 8, LCT_PALETTE, 4, false);
 
   // 8-bit rgb
@@ -2040,7 +2046,7 @@ void doMain()
   std::cout << "\ntest successful" << std::endl;
 }
 
-int main()
+int cdecl main()
 {
   try
   {

@@ -37,7 +37,11 @@ freely, subject to the following restrictions:
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <SDL/SDL.h> //SDL is used for timing.
+#ifdef _MSC_VER
+# define cdecl __cdecl
+#else
+# define cdecl
+#endif
 
 #define NUM_DECODE 5 //set to 0 for not benchmarking encoding at all, 1 for normal, higher for decoding multiple times to measure better
 
@@ -50,10 +54,25 @@ bool verbose = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if __cplusplus >= 201103L || _MSVC_LANG >= 201103L
+
+#include <chrono>
+
+double getTime()
+{
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count() / 1000000.0;
+}
+
+#else
+
+#include <SDL/SDL.h> //SDL is used for timing.
+
 double getTime()
 {
   return SDL_GetTicks() / 1000.0;
 }
+
+#endif
 
 void fail()
 {
@@ -157,7 +176,9 @@ void doCodecTest(Image& image)
     std::cout << "compression: " << ((double)(encoded_size) / (double)(image.data.size())) * 100 << "%"
               << " ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
               << " size: " << encoded_size << std::endl;
-    if(NUM_DECODE> 0) printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
+#if NUM_DECODE> 0
+    printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
+#endif
     std::cout << std::endl;
   }
 
@@ -245,9 +266,9 @@ void testPatternXor()
   for(int y = 0; y < h; y++)
   for(int x = 0; x < w; x++)
   {
-    image.data[3 * w * y + 3 * x + 0] = x ^ y;
-    image.data[3 * w * y + 3 * x + 1] = x ^ y;
-    image.data[3 * w * y + 3 * x + 2] = x ^ y;
+    image.data[3 * w * y + 3 * x + 0] = (unsigned char)(x ^ y);
+    image.data[3 * w * y + 3 * x + 1] = (unsigned char)(x ^ y);
+    image.data[3 * w * y + 3 * x + 2] = (unsigned char)(x ^ y);
   }
 
   doCodecTest(image);
@@ -451,7 +472,7 @@ void testPatternDisk(const std::string& filename)
   doCodecTest(image);
 }
 
-int main(int argc, char *argv[])
+int cdecl main(int argc, char *argv[])
 {
   verbose = false;
 

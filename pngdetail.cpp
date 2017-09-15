@@ -52,6 +52,12 @@ everything except huge output:
 #include <sstream>
 #include <algorithm>
 
+#ifdef _MSC_VER
+# define cdecl __cdecl
+#else
+# define cdecl
+#endif
+
 struct Options
 {
   bool show_png_summary; //show filesize, pixels and color type on single line
@@ -234,8 +240,8 @@ void RGBtoHSL(unsigned char r, unsigned char g, unsigned char b, unsigned char* 
   } else {
     int sum = cmin + cmax;
     int diff = cmax - cmin;
-    *l = sum / 2;
-    *s = 255 * diff / ((*l < 128) ? sum : (512 - sum));
+    *l = (unsigned char)(sum / 2);
+    *s = (unsigned char)(255 * diff / ((*l < 128) ? sum : (512 - sum)));
     int hi = (r == cmax) ? (255 * (g - b) / diff) : ((g == cmax) ? (512 + 255 * (b - r) / diff) : (1024 + 255 * (r - g) / diff));
     *h = ((hi / 6) & 255);
   }
@@ -250,8 +256,8 @@ void RGBtoHCT(unsigned char r, unsigned char g, unsigned char b, unsigned char* 
   int cmax = std::max<int>(r, std::max<int>(g, b));
   int cmin = std::min<int>(r, std::min<int>(g, b));
   RGBtoHSL(r, g, b, h, c, t);
-  *c = cmax - cmin;
-  *t = *c == 255 ? 0 : 255 * cmin / (255 + cmin - cmax);
+  *c = (unsigned char)(cmax - cmin);
+  *t = *c == (unsigned char)(255 ? 0 : 255 * cmin / (255 + cmin - cmax));
 }
 
 // add 32 to get small letter instead of capital
@@ -284,7 +290,7 @@ char lightnessToLetter(int l) {
   else if(l < 208) c = '+'; // The + looks denser than the * in a terminal...
   else if(l < 240) c = '=';
   else c = '#';
-  return c;
+  return (char)c;
 }
 
 // Both v and result are assumed in range 0-255
@@ -366,10 +372,10 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
       {
         unsigned x2 = x * w / w2;
         unsigned y2 = y * h / h2;
-        int r = image[y2 * w * 8 + x2 * 8 + 0];
-        int g = image[y2 * w * 8 + x2 * 8 + 2];
-        int b = image[y2 * w * 8 + x2 * 8 + 4];
-        int a = image[y2 * w * 8 + x2 * 8 + 6];
+        unsigned char r = image[y2 * w * 8 + x2 * 8 + 0];
+        unsigned char g = image[y2 * w * 8 + x2 * 8 + 2];
+        unsigned char b = image[y2 * w * 8 + x2 * 8 + 4];
+        unsigned char a = image[y2 * w * 8 + x2 * 8 + 6];
         char symbol = RGBtoLetter(r, g, b, a, x, y, true, false);
         std::cout << (char)symbol;
       }
@@ -758,7 +764,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
 
     /*color is not allowed to already exist.
     Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")*/
-    void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int index) {
+    void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int idx) {
       ColorTree* tree = this;
       int bit;
       for(bit = 0; bit < 8; bit++)
@@ -770,7 +776,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
         }
         tree = tree->children[i];
       }
-      tree->index = index;
+      tree->index = idx;
     }
   };
 
@@ -783,7 +789,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
       unsigned short b = 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
       unsigned short a = 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
       if(!tree.has(r, g, b, a)) {
-        tree.add(r, g, b, a, count);
+        tree.add(r, g, b, a, (int)count);
         count++;
       }
     }
@@ -905,7 +911,7 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   return 0;
 }
 
-int main(int argc, char *argv[])
+int cdecl main(int argc, char *argv[])
 {
   Options options;
   bool options_chosen = false;
