@@ -317,7 +317,7 @@ static void string_set(char** out, const char* in)
 
 /* ////////////////////////////////////////////////////////////////////////// */
 
-unsigned lodepng_read32bitInt(const unsigned char* buffer)
+static unsigned lodepng_read32bitInt(const unsigned char* buffer)
 {
   return (unsigned)((buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]);
 }
@@ -402,7 +402,7 @@ unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const
   FILE* file;
   file = fopen(filename, "wb" );
   if(!file) return 79;
-  fwrite((char*)buffer , 1 , buffersize, file);
+  fwrite(buffer , 1 , buffersize, file);
   fclose(file);
   return 0;
 }
@@ -1171,7 +1171,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
       code_d = huffmanDecodeSymbol(in, bp, &tree_d, inbitlength);
       if(code_d > 29)
       {
-        if(code_ll == (unsigned)(-1)) /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/
+        if(code_d == (unsigned)(-1)) /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/
         {
           /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
           (10=no endcode, 11=wrong jump outside of tree)*/
@@ -2715,14 +2715,6 @@ size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* colo
   return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
 
-size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
-{
-  /*will not overflow for any color type if roughly w * h < 268435455*/
-  size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
-  size_t n = w * h;
-  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
-}
-
 
 #ifdef LODEPNG_COMPILE_PNG
 #ifdef LODEPNG_COMPILE_DECODER
@@ -2968,13 +2960,6 @@ unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source)
   CERROR_TRY_RETURN(LodePNGUnknownChunks_copy(dest, source));
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   return 0;
-}
-
-void lodepng_info_swap(LodePNGInfo* a, LodePNGInfo* b)
-{
-  LodePNGInfo temp = *a;
-  *a = *b;
-  *b = temp;
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
@@ -4382,7 +4367,7 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     length = chunkLength - string2_begin;
     /*will fail if zlib error, e.g. if length is too small*/
     error = zlib_decompress(&decoded.data, &decoded.size,
-                            (unsigned char*)(&data[string2_begin]),
+                            (const unsigned char*)(&data[string2_begin]),
                             length, zlibsettings);
     if(error) break;
     ucvector_push_back(&decoded, 0);
@@ -4466,7 +4451,7 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     {
       /*will fail if zlib error, e.g. if length is too small*/
       error = zlib_decompress(&decoded.data, &decoded.size,
-                              (unsigned char*)(&data[begin]),
+                              (const unsigned char*)(&data[begin]),
                               length, zlibsettings);
       if(error) break;
       if(decoded.allocsize < decoded.size) decoded.allocsize = decoded.size;
@@ -5026,7 +5011,7 @@ static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* te
   ucvector_push_back(&data, 0); /*compression method: 0*/
 
   error = zlib_compress(&compressed.data, &compressed.size,
-                        (unsigned char*)textstring, textsize, zlibsettings);
+                        (const unsigned char*)textstring, textsize, zlibsettings);
   if(!error)
   {
     for(i = 0; i != compressed.size; ++i) ucvector_push_back(&data, compressed.data[i]);
@@ -6163,6 +6148,14 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const
 #endif /* LODEPNG_COMPILE_DISK */
 
 #ifdef LODEPNG_COMPILE_ENCODER
+size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
+{
+    /*will not overflow for any color type if roughly w * h < 268435455*/
+    size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
+    size_t n = w * h;
+    return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
+}
+
 unsigned encode(std::vector<unsigned char>& out, const unsigned char* in, unsigned w, unsigned h,
                 LodePNGColorType colortype, unsigned bitdepth)
 {
