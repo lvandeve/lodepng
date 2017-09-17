@@ -28,6 +28,8 @@ freely, subject to the following restrictions:
 /*
 Testing instructions:
 
+*) Ensure no tests commented out below
+
 *) Compile with g++ with all warnings and run the unit test
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
 
@@ -1712,26 +1714,59 @@ void testPredefinedFilters() {
   for(size_t i = 0; i < h; i++) ASSERT_EQUALS(3, outfilters[i]);
 }
 
-void testWrongWindowSizeGivesError() {
+void testEncoderErrors() {
+  std::cout << "testEncoderErrors" << std::endl;
+
   std::vector<unsigned char> png;
   unsigned w = 32, h = 32;
   Image image;
   generateTestImage(image, w, h);
-  unsigned error = 0;
+
+  lodepng::State def;
 
   lodepng::State state;
+
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+
+  // test window sizes
   state.encoder.zlibsettings.windowsize = 0;
-  error = lodepng::encode(png, &image.data[0], w, h, state);
-  ASSERT_EQUALS(60, error);
+  ASSERT_EQUALS(60, lodepng::encode(png, &image.data[0], w, h, state));
   state.encoder.zlibsettings.windowsize = 65536;
-  error = lodepng::encode(png, &image.data[0], w, h, state);
-  ASSERT_EQUALS(60, error);
+  ASSERT_EQUALS(60, lodepng::encode(png, &image.data[0], w, h, state));
   state.encoder.zlibsettings.windowsize = 1000; // not power of two
-  error = lodepng::encode(png, &image.data[0], w, h, state);
-  ASSERT_EQUALS(90, error);
+  ASSERT_EQUALS(90, lodepng::encode(png, &image.data[0], w, h, state));
   state.encoder.zlibsettings.windowsize = 256;
-  error = lodepng::encode(png, &image.data[0], w, h, state);
-  ASSERT_EQUALS(0, error);
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+
+  state = def;
+  state.info_png.color.bitdepth = 3;
+  ASSERT_EQUALS(37, lodepng::encode(png, &image.data[0], w, h, state));
+
+  state = def;
+  state.info_png.color.colortype = (LodePNGColorType)5;
+  ASSERT_EQUALS(31, lodepng::encode(png, &image.data[0], w, h, state));
+
+  state = def;
+  state.info_png.color.colortype = LCT_PALETTE;
+  ASSERT_EQUALS(68, lodepng::encode(png, &image.data[0], w, h, state));
+
+  state = def;
+  state.info_png.interlace_method = 0;
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+  state.info_png.interlace_method = 1;
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+  state.info_png.interlace_method = 2;
+  ASSERT_EQUALS(71, lodepng::encode(png, &image.data[0], w, h, state));
+
+  state = def;
+  state.encoder.zlibsettings.btype = 0;
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+  state.encoder.zlibsettings.btype = 1;
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+  state.encoder.zlibsettings.btype = 2;
+  ASSERT_EQUALS(0, lodepng::encode(png, &image.data[0], w, h, state));
+  state.encoder.zlibsettings.btype = 3;
+  ASSERT_EQUALS(61, lodepng::encode(png, &image.data[0], w, h, state));
 }
 
 void addColor(std::vector<unsigned char>& colors, unsigned char r, unsigned char g, unsigned char b, unsigned char a)
@@ -1996,26 +2031,26 @@ void testPaletteToPaletteDecode2() {
   lodepng_palette_add(&state.info_raw, 3, 3, 3, 255);
   unsigned char* image2 = 0;
   unsigned error2 = lodepng_decode(&image2, &width, &height, &state, &png[0], png.size());
-  ASSERT_EQUALS(82, error2);
   lodepng_state_cleanup(&state);
+  ASSERT_EQUALS(82, error2);
   free(image2);
 }
 
 void doMain()
 {
   //PNG
-  testPNGCodec();
+  testPNGCodec(); // this one is slow for valgrind
   testPngSuiteTiny();
   testPaletteFilterTypesZero();
   testComplexPNG();
   testPredefinedFilters();
   testFuzzing();
-  testWrongWindowSizeGivesError();
+  testEncoderErrors();
   testPaletteToPaletteDecode();
   testPaletteToPaletteDecode2();
 
   //Colors
-  testFewColors();
+  testFewColors(); // this one is slow for valgrind
   testColorKeyConvert();
   testColorConvert();
   testColorConvert2();

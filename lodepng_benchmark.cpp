@@ -499,10 +499,10 @@ int main(int argc, char *argv[])
     }
   }
 
-  std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s" << std::endl;
-  std::cout << "Total encoding time: " << total_enc_time << "s" << std::endl;
-  std::cout << "Total input size  : " << total_in_size << std::endl;
-  std::cout << "Total encoded size: " << total_enc_size << std::endl;
+  std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s (" << ((total_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s)" << std::endl;
+  std::cout << "Total encoding time: " << total_enc_time << "s (" << ((total_in_size/1024.0/1024.0)/(total_enc_time)) << " MB/s)" << std::endl;
+  std::cout << "Total uncompressed size  : " << total_in_size << std::endl;
+  std::cout << "Total encoded size: " << total_enc_size << " (" << (100.0 * total_enc_size / total_in_size) << "%)" << std::endl;
 
   if(verbose) std::cout << "benchmark done" << std::endl;
 }
