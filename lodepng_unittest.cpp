@@ -762,7 +762,8 @@ void testColorConvert()
   colorConvertTest("1011010110110101", LCT_GREY, 16, "10110101", LCT_GREY, 8);
 
   //others
-  colorConvertTest("11111111 11111111 11111111 00000000 00000000 00000000", LCT_RGB, 1, "10", LCT_GREY, 1);
+  colorConvertTest("11111111 11111111 11111111 00000000 00000000 00000000", LCT_RGB, 8, "10", LCT_GREY, 1);
+  colorConvertTest("11111111 11111111 11111111 11111111 11111111 11111111 00000000 00000000 00000000 00000000 00000000 00000000", LCT_RGB, 16, "10", LCT_GREY, 1);
 }
 
 //This tests color conversions from any color model to any color model, with any bit depth
