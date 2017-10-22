@@ -711,7 +711,7 @@ void showHelp()
                "-b: show Zlib blocks\n"
                "-B: show Zlib block symbol counts\n"
                "-7: show all lz77 values (huge output)\n"
-               "-x: print most numbers in hexadecimal\n"
+               "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
             << std::endl;
 }
 
@@ -850,15 +850,23 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
     std::cout << "Height: " << h << std::endl;
 
     if(options.show_extra_png_info) std::cout << "Num pixels: " << w * h << std::endl;
+    std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
     if(options.show_extra_png_info && w > 0 && h > 0)
     {
-      std::ios_base::fmtflags flags = std::cout.flags();
-      std::cout << "Top left pixel color: #"
-                << std::hex << std::setfill('0')
-                << std::setw(2) << (int)image[0] << std::setw(2) << (int)image[1] << std::setw(2) << (int)image[2] << std::setw(2) << (int)image[3]
-                << std::endl;
-      std::cout.flags(flags);
-      std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
+      double r = 0, g = 0, b = 0, a = 0;
+      for(unsigned y = 0; y < h; y++) {
+        for(unsigned x = 0; x < w; x++) {
+          r += 256 * image[y * 8 * w + x * 8 + 0] + image[y * 8 * w + x * 8 + 1];
+          g += 256 * image[y * 8 * w + x * 8 + 2] + image[y * 8 * w + x * 8 + 3];
+          b += 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
+          a += 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
+        }
+      }
+      r /= (w * h * 257.0);
+      g /= (w * h * 257.0);
+      b /= (w * h * 257.0);
+      a /= (w * h * 257.0);
+      std::cout << "Average color: " << r << ", " << g << ", " << b << ", " << a << std::endl;
     }
 
     displayPNGInfo(state.info_png, options);
