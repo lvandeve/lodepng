@@ -317,7 +317,7 @@ static void string_set(char** out, const char* in)
 
 /* ////////////////////////////////////////////////////////////////////////// */
 
-unsigned lodepng_read32bitInt(const unsigned char* buffer)
+static unsigned lodepng_read32bitInt(const unsigned char* buffer)
 {
   return (unsigned)((buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]);
 }
@@ -402,7 +402,7 @@ unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const
   FILE* file;
   file = fopen(filename, "wb" );
   if(!file) return 79;
-  fwrite((char*)buffer , 1 , buffersize, file);
+  fwrite(buffer , 1 , buffersize, file);
   fclose(file);
   return 0;
 }
@@ -2709,14 +2709,6 @@ size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* colo
 {
   /*will not overflow for any color type if roughly w * h < 268435455*/
   size_t bpp = lodepng_get_bpp(color);
-  size_t n = w * h;
-  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
-}
-
-size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
-{
-  /*will not overflow for any color type if roughly w * h < 268435455*/
-  size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
   size_t n = w * h;
   return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
@@ -6162,6 +6154,14 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const
 #endif /* LODEPNG_COMPILE_DISK */
 
 #ifdef LODEPNG_COMPILE_ENCODER
+static size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
+{
+  /*will not overflow for any color type if roughly w * h < 268435455*/
+  size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
+  size_t n = w * h;
+  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
+}
+
 unsigned encode(std::vector<unsigned char>& out, const unsigned char* in, unsigned w, unsigned h,
                 LodePNGColorType colortype, unsigned bitdepth)
 {
