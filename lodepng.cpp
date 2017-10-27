@@ -5224,7 +5224,6 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
   size_t bytewidth = (bpp + 7) / 8;
   const unsigned char* prevline = 0;
   unsigned x, y;
-  unsigned error = 0;
   LodePNGFilterStrategy strategy = settings->filter_strategy;
 
   /*
@@ -5270,47 +5269,44 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
       if(!attempt[type]) return 83; /*alloc fail*/
     }
 
-    if(!error)
+    for(y = 0; y != h; ++y)
     {
-      for(y = 0; y != h; ++y)
+      /*try the 5 filter types*/
+      for(type = 0; type != 5; ++type)
       {
-        /*try the 5 filter types*/
-        for(type = 0; type != 5; ++type)
+        filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
+
+        /*calculate the sum of the result*/
+        sum[type] = 0;
+        if(type == 0)
         {
-          filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
-
-          /*calculate the sum of the result*/
-          sum[type] = 0;
-          if(type == 0)
+          for(x = 0; x != linebytes; ++x) sum[type] += (unsigned char)(attempt[type][x]);
+        }
+        else
+        {
+          for(x = 0; x != linebytes; ++x)
           {
-            for(x = 0; x != linebytes; ++x) sum[type] += (unsigned char)(attempt[type][x]);
-          }
-          else
-          {
-            for(x = 0; x != linebytes; ++x)
-            {
-              /*For differences, each byte should be treated as signed, values above 127 are negative
-              (converted to signed char). Filtertype 0 isn't a difference though, so use unsigned there.
-              This means filtertype 0 is almost never chosen, but that is justified.*/
-              unsigned char s = attempt[type][x];
-              sum[type] += s < 128 ? s : (255U - s);
-            }
-          }
-
-          /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
-          if(type == 0 || sum[type] < smallest)
-          {
-            bestType = type;
-            smallest = sum[type];
+            /*For differences, each byte should be treated as signed, values above 127 are negative
+            (converted to signed char). Filtertype 0 isn't a difference though, so use unsigned there.
+            This means filtertype 0 is almost never chosen, but that is justified.*/
+            unsigned char s = attempt[type][x];
+            sum[type] += s < 128 ? s : (255U - s);
           }
         }
 
-        prevline = &in[y * linebytes];
-
-        /*now fill the out values*/
-        out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-        for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
+        /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
+        if(type == 0 || sum[type] < smallest)
+        {
+            bestType = type;
+            smallest = sum[type];
+        }
       }
+
+      prevline = &in[y * linebytes];
+
+      /*now fill the out values*/
+      out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
+      for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
     }
 
     for(type = 0; type != 5; ++type) lodepng_free(attempt[type]);
@@ -5425,7 +5421,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
   }
   else return 88; /* unknown filter strategy */
 
-  return error;
+  return 0;
 }
 
 static void addPaddingBits(unsigned char* out, const unsigned char* in,
