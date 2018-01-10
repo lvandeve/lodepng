@@ -5692,10 +5692,16 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       {
         state->error = lodepng_convert(converted, image, &info.color, &state->info_raw, w, h);
       }
-      if(!state->error) preProcessScanlines(&data, &datasize, converted, w, h, &info, &state->encoder);
+      if(!state->error)
+      {
+          state->error = preProcessScanlines(&data, &datasize, converted, w, h, &info, &state->encoder);
+      }
       lodepng_free(converted);
     }
-    else preProcessScanlines(&data, &datasize, image, w, h, &info, &state->encoder);
+    else 
+    {
+        state->error = preProcessScanlines(&data, &datasize, image, w, h, &info, &state->encoder);
+    }
   }
 
   /* output all PNG chunks */
