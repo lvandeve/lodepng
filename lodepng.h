@@ -1,7 +1,7 @@
 /*
-LodePNG version 20170917
+LodePNG version 20180114
 
-Copyright (c) 2005-2017 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -255,6 +255,7 @@ const char* lodepng_error_text(unsigned code);
 typedef struct LodePNGDecompressSettings LodePNGDecompressSettings;
 struct LodePNGDecompressSettings
 {
+  /* Check LodePNGDecoderSettings for more ignorable errors */
   unsigned ignore_adler32; /*if 1, continue and don't give an error message if the Adler32 checksum is corrupted*/
 
   /*use custom zlib decoder instead of built in one (default: null)*/
@@ -520,7 +521,10 @@ typedef struct LodePNGDecoderSettings
 {
   LodePNGDecompressSettings zlibsettings; /*in here is the setting to ignore Adler32 checksums*/
 
+  /* Check LodePNGDecompressSettings for more ignorable errors */
   unsigned ignore_crc; /*ignore CRC checksums*/
+  unsigned ignore_critical; /*ignore unknown critical chunks*/
+  unsigned ignore_end; /*ignore issues at end of file if possible (missing IEND chunk, too large chunk, ...)*/
 
   unsigned color_convert; /*whether to convert the PNG to the color type you want. Default: yes*/
 
@@ -1567,6 +1571,8 @@ For decoding:
 state.decoder.zlibsettings.ignore_adler32: ignore ADLER32 checksums
 state.decoder.zlibsettings.custom_...: use custom inflate function
 state.decoder.ignore_crc: ignore CRC checksums
+state.decoder.ignore_critical: ignore unknown critical chunks
+state.decoder.ignore_end: ignore missing IEND chunk. May fail if this corruption causes other errors
 state.decoder.color_convert: convert internal PNG color to chosen one
 state.decoder.read_text_chunks: whether to read in text metadata chunks
 state.decoder.remember_unknown_chunks: whether to read in unknown chunks
@@ -1608,6 +1614,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 14 jan 2018: allow optionally ignoring a few more recoverable errors
 *) 17 sep 2017: fix memory leak for some encoder input error cases
 *) 27 nov 2016: grey+alpha auto color model detection bugfix
 *) 18 apr 2016: Changed qsort to custom stable sort (for platforms w/o qsort).

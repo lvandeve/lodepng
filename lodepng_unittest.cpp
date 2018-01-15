@@ -28,7 +28,7 @@ freely, subject to the following restrictions:
 /*
 Testing instructions:
 
-*) Ensure no tests commented out below
+*) Ensure no tests commented out below or early return in doMain
 
 *) Compile with g++ with all warnings and run the unit test
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out

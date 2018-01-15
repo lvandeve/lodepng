@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -797,6 +797,11 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   std::vector<unsigned char> image;
   unsigned w, h;
 
+  if(options.show_png_info)
+  {
+    std::cout << "pngdetail version: " << LODEPNG_VERSION_STRING << std::endl;
+  }
+
   unsigned error = lodepng::load_file(buffer, filename); //load the image file with given filename
 
   if(error)
@@ -810,27 +815,45 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   state.info_raw.bitdepth = 16;
   error = lodepng::decode(image, w, h, state, buffer);
 
-  // In case of checksum errors, disable checksums
-  while (error == 57 || error == 58) {
+  // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
+  while (error) {
+    std::cerr << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+    unsigned error2 = error;
     if(error == 57)
     {
-      std::cout << "Error: invalid CRC checksum" << std::endl;
+      std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       error = lodepng::decode(image, w, h, state, buffer);
     }
-
-    if(error == 58)
+    else if(error == 58)
     {
-      std::cout << "Error: invalid Adler32 checksum" << std::endl;
+      std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       error = lodepng::decode(image, w, h, state, buffer);
     }
-  }
-
-  if(error)
-  {
-    std::cout << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-    // Do not return: some sections may still show partial info about a corrupted PNG.
+    else if(error == 69)
+    {
+      std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
+      state.decoder.ignore_critical = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+    else if(error == 30 || error == 63)
+    {
+      std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
+      state.decoder.ignore_end = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+    else
+    {
+      if(error == 0) std::cerr << "This error is unrecoverable" << std::endl;
+      break;  // other error that we cannot ignore
+    }
+    if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
+    if(error == error2)
+    {
+      std::cerr << "Failed to ignore the error" << std::endl;
+      break; // avoid infinite loop if ignoring did not fix the error code
+    }
   }
 
   bool extra_newlines = false;
