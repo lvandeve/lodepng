@@ -185,7 +185,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
   {
     char type[5];
     lodepng_chunk_type(type, chunk);
-    if(std::string(type).size() != 4) return 1; //Probably not a PNG file
+    if(std::string(type).size() != 4) break; //Probably not a PNG file
 
     if(std::string(type) == "IDAT")
     {
@@ -203,11 +203,11 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
     }
 
     next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) return 1; // integer overflow
+    if (next <= chunk) break; // integer overflow
     chunk = next;
   }
 
-  //Decompress all IDAT data
+  //Decompress all IDAT data (if the while loop ended early, this might fail)
   std::vector<unsigned char> data;
   error = lodepng::decompress(data, &zdata[0], zdata.size());
 

@@ -184,7 +184,13 @@ void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& 
   std::vector<std::string> names;
   std::vector<size_t> sizes;
   unsigned error = lodepng::getChunkInfo(names, sizes, buffer);
-  if(error) std::cout << "Error while identifying chunks. Listing identified chunks anyway." << std::endl;
+  if(error) {
+    if(!names.empty() && names.back() == "IEND" && sizes.back() == 0) {
+      std::cout << "Corruption or superfluous data detected after the IEND chunk" << std::endl;
+    } else {
+      std::cout << "Error while identifying chunks. Listing identified chunks anyway." << std::endl;
+    }
+  }
 
   if(options.show_chunks2)
   {
