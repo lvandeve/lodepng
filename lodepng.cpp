@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180114
+LodePNG version 20180326
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20180114";
+const char* LODEPNG_VERSION_STRING = "20180326";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2621,15 +2621,10 @@ static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColo
     if(a->key_g != b->key_g) return 0;
     if(a->key_b != b->key_b) return 0;
   }
-  /*if one of the palette sizes is 0, then we consider it to be the same as the
-  other: it means that e.g. the palette was not given by the user and should be
-  considered the same as the palette inside the PNG.*/
-  if(1/*a->palettesize != 0 && b->palettesize != 0*/) {
-    if(a->palettesize != b->palettesize) return 0;
-    for(i = 0; i != a->palettesize * 4; ++i)
-    {
-      if(a->palette[i] != b->palette[i]) return 0;
-    }
+  if(a->palettesize != b->palettesize) return 0;
+  for(i = 0; i != a->palettesize * 4; ++i)
+  {
+    if(a->palette[i] != b->palette[i]) return 0;
   }
   return 1;
 }
@@ -3476,7 +3471,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
   {
     size_t palettesize = mode_out->palettesize;
     const unsigned char* palette = mode_out->palette;
-    size_t palsize = 1u << mode_out->bitdepth;
+    size_t palsize = (size_t)1u << mode_out->bitdepth;
     /*if the user specified output palette but did not give the values, assume
     they want the values of the input color type (assuming that one is palette).
     Note that we never create a new palette ourselves.*/
@@ -3484,6 +3479,15 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     {
       palettesize = mode_in->palettesize;
       palette = mode_in->palette;
+      /*if the input was also palette with same bitdepth, then the color types are also
+      equal, so copy literally. This to preserve the exact indices that were in the PNG
+      even in case there are duplicate colors in the palette.*/
+      if (mode_in->colortype == LCT_PALETTE && mode_in->bitdepth == mode_out->bitdepth)
+      {
+        size_t numbytes = lodepng_get_raw_size(w, h, mode_in);
+        for(i = 0; i != numbytes; ++i) out[i] = in[i];
+        return 0;
+      }
     }
     if(palettesize < palsize) palsize = palettesize;
     color_tree_init(&tree);
