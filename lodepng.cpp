@@ -2090,13 +2090,13 @@ static unsigned deflate(unsigned char** out, size_t* outsize,
 
 static unsigned update_adler32(unsigned adler, const unsigned char* data, unsigned len)
 {
-   unsigned s1 = adler & 0xffff;
-   unsigned s2 = (adler >> 16) & 0xffff;
+  unsigned s1 = adler & 0xffff;
+  unsigned s2 = (adler >> 16) & 0xffff;
 
   while(len > 0)
   {
-    /*at least 5550 sums can be done before the sums overflow, saving a lot of module divisions*/
-    unsigned amount = len > 5550 ? 5550 : len;
+    /*at least 5552 sums can be done before the sums overflow, saving a lot of module divisions*/
+    unsigned amount = len > 5552 ? 5552 : len;
     len -= amount;
     while(amount > 0)
     {
