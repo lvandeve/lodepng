@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2016 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -30,8 +30,9 @@ Testing instructions:
 
 *) Ensure no tests commented out below or early return in doMain
 
-*) Compile with g++ with all warnings and run the unit test
+*) Compile with g++ or clang++ with all warnings and run the unit test
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
+clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
@@ -66,7 +67,7 @@ g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_PNG -DLODEP
 g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_PNG -DLODEPNG_NO_COMPILE_ENCODER
 rm *.o
 
-*) analyze met clang:
+*) analyze with clang:
 clang++ lodepng.cpp --analyze
 More verbose:
 clang++ --analyze -Xanalyzer -analyzer-output=text lodepng.cpp
@@ -75,8 +76,11 @@ clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 
 *) check for memory leaks and vulnerabilities with valgrind
 comment out the large files tests because they're slow with valgrind
-g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3
-valgrind --leak-check=full --track-origins=yes ./a.out
+g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
+
+*) Try with clang++ and address sanitizer (to get line numbers, make sure 'llvm' is also installed to get 'llvm-symbolizer'
+clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -g3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
 cat lodepng.cpp | grep iostream
@@ -89,8 +93,7 @@ cat lodepng.cpp | grep "#include <"
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 
 *) check examples/sdl.cpp with the png test suite images (the "x" ones are expected to show error)
-g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng
-./showpng testdata/PngSuite/''*.png
+g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng && ./showpng testdata/PngSuite/''*.png
 
 *) strip trailing spaces and ensure consistent newlines
 

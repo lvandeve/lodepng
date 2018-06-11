@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180326
+LodePNG version 20180611
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -410,7 +410,7 @@ typedef struct LodePNGInfo
   /*header (IHDR), palette (PLTE) and transparency (tRNS) chunks*/
   unsigned compression_method;/*compression method of the original file. Always 0.*/
   unsigned filter_method;     /*filter method of the original file*/
-  unsigned interlace_method;  /*interlace method of the original file*/
+  unsigned interlace_method;  /*interlace method of the original file: 0=none, 1=Adam7*/
   LodePNGColorMode color;     /*color type and bits, palette and transparency of the PNG file*/
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
@@ -1614,6 +1614,7 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 11 jun 2018: less restrictive check for pixel size integer overflow
 *) 14 jan 2018: allow optionally ignoring a few more recoverable errors
 *) 17 sep 2017: fix memory leak for some encoder input error cases
 *) 27 nov 2016: grey+alpha auto color model detection bugfix
@@ -1765,5 +1766,5 @@ Domain: gmail dot com.
 Account: lode dot vandevenne.
 
 
-Copyright (c) 2005-2017 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 */

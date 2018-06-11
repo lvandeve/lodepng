@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180326
+LodePNG version 20180611
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20180326";
+const char* LODEPNG_VERSION_STRING = "20180611";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -62,11 +62,17 @@ from here.*/
 #ifdef LODEPNG_COMPILE_ALLOCATORS
 static void* lodepng_malloc(size_t size)
 {
+#ifdef LODEPNG_MAX_ALLOC
+  if(size > LODEPNG_MAX_ALLOC) return 0;
+#endif
   return malloc(size);
 }
 
 static void* lodepng_realloc(void* ptr, size_t new_size)
 {
+#ifdef LODEPNG_MAX_ALLOC
+  if(new_size > LODEPNG_MAX_ALLOC) return 0;
+#endif
   return realloc(ptr, new_size);
 }
 
@@ -85,6 +91,8 @@ void lodepng_free(void* ptr);
 /* // Tools for C, and common code for PNG and Zlib.                       // */
 /* ////////////////////////////////////////////////////////////////////////// */
 /* ////////////////////////////////////////////////////////////////////////// */
+
+#define LODEPNG_MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 /*
 Often in case of an error a value is assigned to a variable and then it breaks
@@ -1455,11 +1463,11 @@ static void updateHashChain(Hash* hash, size_t wpos, unsigned hashval, unsigned 
 {
   hash->val[wpos] = (int)hashval;
   if(hash->head[hashval] != -1) hash->chain[wpos] = hash->head[hashval];
-  hash->head[hashval] = (unsigned)wpos;
+  hash->head[hashval] = (int)wpos;
 
   hash->zeros[wpos] = numzeros;
   if(hash->headz[numzeros] != -1) hash->chainz[wpos] = hash->headz[numzeros];
-  hash->headz[numzeros] = (unsigned)wpos;
+  hash->headz[numzeros] = (int)wpos;
 }
 
 /*
@@ -2700,32 +2708,75 @@ unsigned lodepng_can_have_alpha(const LodePNGColorMode* info)
       || lodepng_has_palette_alpha(info);
 }
 
-size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* color)
+size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
 {
-  /*will not overflow for any color type if roughly w * h < 268435455*/
-  size_t bpp = lodepng_get_bpp(color);
-  size_t n = w * h;
+  size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
+  size_t n = (size_t)w * (size_t)h;
   return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
 }
 
-size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth)
+size_t lodepng_get_raw_size(unsigned w, unsigned h, const LodePNGColorMode* color)
 {
-  /*will not overflow for any color type if roughly w * h < 268435455*/
-  size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
-  size_t n = w * h;
-  return ((n / 8) * bpp) + ((n & 7) * bpp + 7) / 8;
+  return lodepng_get_raw_size_lct(w, h, color->colortype, color->bitdepth);
 }
 
 
 #ifdef LODEPNG_COMPILE_PNG
 #ifdef LODEPNG_COMPILE_DECODER
-/*in an idat chunk, each scanline is a multiple of 8 bits, unlike the lodepng output buffer*/
+
+/*in an idat chunk, each scanline is a multiple of 8 bits, unlike the lodepng output buffer,
+and in addition has one extra byte per line: the filter byte. So this gives a larger
+result than lodepng_get_raw_size. */
 static size_t lodepng_get_raw_size_idat(unsigned w, unsigned h, const LodePNGColorMode* color)
 {
-  /*will not overflow for any color type if roughly w * h < 268435455*/
   size_t bpp = lodepng_get_bpp(color);
-  size_t line = ((w / 8) * bpp) + ((w & 7) * bpp + 7) / 8;
-  return h * line;
+  /* + 1 for the filter byte, and possibly plus padding bits per line */
+  size_t line = ((size_t)(w / 8) * bpp) + 1 + ((w & 7) * bpp + 7) / 8;
+  return (size_t)h * line;
+}
+
+/* Safely check if multiplying two integers will overflow (no undefined
+behavior, compiler removing the code, etc...) and output result. */
+static int lodepng_mulofl(size_t a, size_t b, size_t* result)
+{
+  *result = a * b; /* Unsigned multiplication is well defined and safe in C90 */
+  return (a != 0 && *result / a != b);
+}
+
+/* Safely check if adding two integers will overflow (no undefined
+behavior, compiler removing the code, etc...) and output result. */
+static int lodepng_addofl(size_t a, size_t b, size_t* result)
+{
+  *result = a + b; /* Unsigned addition is well defined and safe in C90 */
+  return *result < a;
+}
+
+/*Safely checks whether size_t overflow can be caused due to amount of pixels.
+This check is overcautious rather than precise. If this check indicates no overflow,
+you can safely compute in a size_t (but not an unsigned):
+-(size_t)w * (size_t)h * 8
+-amount of bytes in IDAT (including filter, padding and Adam7 bytes)
+-amount of bytes in raw color model
+Returns 1 if overflow possible, 0 if not.
+*/
+static int lodepng_pixel_overflow(unsigned w, unsigned h,
+                                  const LodePNGColorMode* pngcolor, const LodePNGColorMode* rawcolor)
+{
+  size_t bpp = LODEPNG_MAX(lodepng_get_bpp(pngcolor), lodepng_get_bpp(rawcolor));
+  size_t numpixels, total;
+  size_t line; /* bytes per line in worst case */
+
+  if(lodepng_mulofl((size_t)w, (size_t)h, &numpixels)) return 1;
+  if(lodepng_mulofl(numpixels, 8, &total)) return 1; /* bit pointer with 8-bit color, or 8 bytes per channel color */
+
+  /* Bytes per scanline with the expression "(w / 8) * bpp) + ((w & 7) * bpp + 7) / 8" */
+  if(lodepng_mulofl((size_t)(w / 8), bpp, &line)) return 1;
+  if(lodepng_addofl(line, ((w & 7) * bpp + 7) / 8, &line)) return 1;
+
+  if(lodepng_addofl(line, 5, &line)) return 1; /* 5 bytes overhead per line: 1 filterbyte, 4 for Adam7 worst case */
+  if(lodepng_mulofl(line, h, &total)) return 1; /* Total bytes in worst case */
+
+  return 0; /* no overflow */
 }
 #endif /*LODEPNG_COMPILE_DECODER*/
 #endif /*LODEPNG_COMPILE_PNG*/
@@ -3457,7 +3508,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
 {
   size_t i;
   ColorTree tree;
-  size_t numpixels = w * h;
+  size_t numpixels = (size_t)w * (size_t)h;
   unsigned error = 0;
 
   if(lodepng_color_mode_equal(mode_out, mode_in))
@@ -3577,7 +3628,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
   unsigned error = 0;
   size_t i;
   ColorTree tree;
-  size_t numpixels = w * h;
+  size_t numpixels = (size_t)w * (size_t)h;
 
   unsigned colored_done = lodepng_is_greyscale_type(mode) ? 1 : 0;
   unsigned alpha_done = lodepng_can_have_alpha(mode) ? 0 : 1;
@@ -3772,14 +3823,16 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
 {
   LodePNGColorProfile prof;
   unsigned error = 0;
-  unsigned i, n, palettebits, palette_ok;
+  unsigned palettebits, palette_ok;
+  size_t i, n;
+  size_t numpixels = (size_t)w * (size_t)h;
 
   lodepng_color_profile_init(&prof);
   error = lodepng_get_color_profile(&prof, image, w, h, mode_in);
   if(error) return error;
   mode_out->key_defined = 0;
 
-  if(prof.key && w * h <= 16)
+  if(prof.key && numpixels <= 16)
   {
     prof.alpha = 1; /*too few pixels to justify tRNS chunk overhead*/
     prof.key = 0;
@@ -3788,7 +3841,7 @@ unsigned lodepng_auto_choose_color(LodePNGColorMode* mode_out,
   n = prof.numcolors;
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));
   palette_ok = n <= 256 && prof.bits <= 8;
-  if(w * h < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
+  if(numpixels < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
   if(!prof.colored && prof.bits <= palettebits) palette_ok = 0; /*grey is less overhead*/
 
   if(palette_ok)
@@ -4535,7 +4588,6 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   ucvector idat; /*the data from idat chunks*/
   ucvector scanlines;
   size_t predict;
-  size_t numpixels;
   size_t outsize = 0;
 
   /*for unknown chunk order*/
@@ -4550,13 +4602,10 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
   if(state->error) return;
 
-  numpixels = *w * *h;
-
-  /*multiplication overflow*/
-  if(*h != 0 && numpixels / *h != *w) CERROR_RETURN(state->error, 92);
-  /*multiplication overflow possible further below. Allows up to 2^31-1 pixel
-  bytes with 16-bit RGBA, the rest is room for filter bytes.*/
-  if(numpixels > 268435455) CERROR_RETURN(state->error, 92);
+  if(lodepng_pixel_overflow(*w, *h, &state->info_png.color, &state->info_raw))
+  {
+    CERROR_RETURN(state->error, 92); /*overflow possible due to amount of pixels*/
+  }
 
   ucvector_init(&idat);
   chunk = &in[33]; /*first byte of the first chunk after the header*/
@@ -4595,7 +4644,9 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(lodepng_chunk_type_equals(chunk, "IDAT"))
     {
       size_t oldsize = idat.size;
-      if(!ucvector_resize(&idat, oldsize + chunkLength)) CERROR_BREAK(state->error, 83 /*alloc fail*/);
+      size_t newsize;
+      if(lodepng_addofl(oldsize, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
+      if(!ucvector_resize(&idat, newsize)) CERROR_BREAK(state->error, 83 /*alloc fail*/);
       for(i = 0; i != chunkLength; ++i) idat.data[oldsize + i] = data[i];
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
       critical_pos = 3;
@@ -4698,21 +4749,20 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   If the decompressed size does not match the prediction, the image must be corrupt.*/
   if(state->info_png.interlace_method == 0)
   {
-    /*The extra *h is added because this are the filter bytes every scanline starts with*/
-    predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color) + *h;
+    predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color);
   }
   else
   {
     /*Adam-7 interlaced: predicted size is the sum of the 7 sub-images sizes*/
     const LodePNGColorMode* color = &state->info_png.color;
     predict = 0;
-    predict += lodepng_get_raw_size_idat((*w + 7) >> 3, (*h + 7) >> 3, color) + ((*h + 7) >> 3);
-    if(*w > 4) predict += lodepng_get_raw_size_idat((*w + 3) >> 3, (*h + 7) >> 3, color) + ((*h + 7) >> 3);
-    predict += lodepng_get_raw_size_idat((*w + 3) >> 2, (*h + 3) >> 3, color) + ((*h + 3) >> 3);
-    if(*w > 2) predict += lodepng_get_raw_size_idat((*w + 1) >> 2, (*h + 3) >> 2, color) + ((*h + 3) >> 2);
-    predict += lodepng_get_raw_size_idat((*w + 1) >> 1, (*h + 1) >> 2, color) + ((*h + 1) >> 2);
-    if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, color) + ((*h + 1) >> 1);
-    predict += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, color) + ((*h + 0) >> 1);
+    predict += lodepng_get_raw_size_idat((*w + 7) >> 3, (*h + 7) >> 3, color);
+    if(*w > 4) predict += lodepng_get_raw_size_idat((*w + 3) >> 3, (*h + 7) >> 3, color);
+    predict += lodepng_get_raw_size_idat((*w + 3) >> 2, (*h + 3) >> 3, color);
+    if(*w > 2) predict += lodepng_get_raw_size_idat((*w + 1) >> 2, (*h + 3) >> 2, color);
+    predict += lodepng_get_raw_size_idat((*w + 1) >> 1, (*h + 1) >> 2, color);
+    if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, color);
+    predict += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, color);
   }
   if(!state->error && !ucvector_reserve(&scanlines, predict)) state->error = 83; /*alloc fail*/
   if(!state->error)
@@ -5701,7 +5751,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     if(!lodepng_color_mode_equal(&state->info_raw, &info.color))
     {
       unsigned char* converted;
-      size_t size = (w * h * (size_t)lodepng_get_bpp(&info.color) + 7) / 8;
+      size_t size = ((size_t)w * (size_t)h * (size_t)lodepng_get_bpp(&info.color) + 7) / 8;
 
       converted = (unsigned char*)lodepng_malloc(size);
       if(!converted && size) state->error = 83; /*alloc fail*/
@@ -6014,9 +6064,10 @@ const char* lodepng_error_text(unsigned code)
     /*the windowsize in the LodePNGCompressSettings. Requiring POT(==> & instead of %) makes encoding 12% faster.*/
     case 90: return "windowsize must be a power of two";
     case 91: return "invalid decompressed idat size";
-    case 92: return "too many pixels, not supported";
+    case 92: return "integer overflow due to too many pixels";
     case 93: return "zero width or height is invalid";
     case 94: return "header chunk must have a size of 13 bytes";
+    case 95: return "integer overflow with combined idat chunk size";
   }
   return "unknown error code";
 }
