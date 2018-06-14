@@ -398,7 +398,7 @@ unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const
   FILE* file;
   file = fopen(filename, "wb" );
   if(!file) return 79;
-  fwrite((char*)buffer , 1 , buffersize, file);
+  fwrite(buffer, 1, buffersize, file);
   fclose(file);
   return 0;
 }
