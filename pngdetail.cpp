@@ -699,14 +699,18 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
 void showHelp()
 {
   std::cout << "pngdetail by Lode Vandevenne\n"
-               "Shows detailed information about a PNG image and its compression\n"
+               "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
                "Usage: pngdetail [filename] [options]...\n"
+               "Without options shows a default set of stats. With options, shows only selected options.\n"
+               "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
                "-s: show PNG file summary on one line\n"
                "-p: show PNG file info\n"
                "-P: show extra PNG file info\n"
                "-l: show palette (if any)\n"
-               "-a: show ascii art rendering of PNG image. Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "-a: show ascii art rendering of PNG image.\n"
+               "    Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "    Symbols  .:-!*+=# indicate greyscale increasingly lighter from black to white.\n"
                "-A: show larger ascii art rendering of PNG image. Adding more A's makes it larger.\n"
                "-#: show every pixel color in CSS RGBA hex format (huge output)\n"
                "-@: show every pixel color with 16-bit per channel (huge output)\n"
@@ -882,20 +886,26 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
     std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
     if(options.show_extra_png_info && w > 0 && h > 0)
     {
-      double r = 0, g = 0, b = 0, a = 0;
+      double avg[4] = {0, 0, 0, 0};
+      double min[4] = {999999, 999999, 999999, 999999};
+      double max[4] = {0, 0, 0, 0};
       for(unsigned y = 0; y < h; y++) {
         for(unsigned x = 0; x < w; x++) {
-          r += 256 * image[y * 8 * w + x * 8 + 0] + image[y * 8 * w + x * 8 + 1];
-          g += 256 * image[y * 8 * w + x * 8 + 2] + image[y * 8 * w + x * 8 + 3];
-          b += 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
-          a += 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
+          for(int c = 0; c < 4; c++) {
+            double v = 256 * image[y * 8 * w + x * 8 + c * 2] + image[y * 8 * w + x * 8 + c * 2 + 1];
+            avg[c] += v;
+            min[c] = std::min(min[c], v);
+            max[c] = std::max(max[c], v);
+          }
         }
       }
-      r /= (w * h * 257.0);
-      g /= (w * h * 257.0);
-      b /= (w * h * 257.0);
-      a /= (w * h * 257.0);
-      std::cout << "Average color: " << r << ", " << g << ", " << b << ", " << a << std::endl;
+      for(int c = 0; c < 4; c++) {
+        avg[c] /= (w * h * 257.0);
+        min[c] /= 257.0;
+        max[c] /= 257.0;
+      }
+      std::cout << "Average color: " << avg[0] << ", " << avg[1] << ", " << avg[2] << ", " << avg[3] << std::endl;
+      std::cout << "Color ranges: " << min[0] << "-" << max[0] << ", " << min[1] << "-" << max[1] << ", " << min[2] << "-" << max[2] << ", " << min[3] << "-" << max[3] << std::endl;
     }
 
     displayPNGInfo(state.info_png, options);
@@ -999,9 +1009,16 @@ int main(int argc, char *argv[])
           options.use_hex = true;
           std::cout << std::hex;
         }
+        else if(c == '-')
+        {
+          if(s != "--help") std::cout << "Unknown flag: " << s << ". Use -h for help" << std::endl;
+          showHelp();
+          return 0;
+        }
         else
         {
           std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
+          showHelp();
           return 0;
         }
 
@@ -1028,7 +1045,10 @@ int main(int argc, char *argv[])
 
   for(size_t i = 0; i < filenames.size(); i++)
   {
-    if(filenames.size() > 1) std::cout << filenames[i] << std::endl;
+    if(filenames.size() > 1) {
+      if(i > 0) std::cout << std::endl;
+      std::cout << filenames[i] << ":" << std::endl;
+    }
     showFileInfo(filenames[i], options);
   }
 }
