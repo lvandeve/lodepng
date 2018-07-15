@@ -753,7 +753,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
     int get(unsigned short r, unsigned short g, unsigned short b, unsigned short a) const {
       const ColorTree* tree = this;
       int bit = 0;
-      for(bit = 0; bit < 8; bit++)
+      for(bit = 0; bit < 16; bit++)
       {
         int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
         if(!tree->children[i]) return -1;
@@ -771,7 +771,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
     void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int index) {
       ColorTree* tree = this;
       int bit;
-      for(bit = 0; bit < 8; bit++)
+      for(bit = 0; bit < 16; bit++)
       {
         int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
         if(!tree->children[i])

@@ -31,7 +31,7 @@ freely, subject to the following restrictions:
 NOTE: this samples overwrite the file or test.png without warning!
 */
 
-//g++ lodepng.cpp example_encode.cpp -ansi -pedantic -Wall -Wextra -O3
+//g++ lodepng.cpp examples/example_encode.cpp -I./ -ansi -pedantic -Wall -Wextra -O3
 
 //Example 1
 //Encode from raw pixels to disk with a single function call
