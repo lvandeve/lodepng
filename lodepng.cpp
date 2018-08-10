@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180611
+LodePNG version 20180809
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20180611";
+const char* LODEPNG_VERSION_STRING = "20180809";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -283,42 +283,29 @@ static unsigned ucvector_push_back(ucvector* p, unsigned char c)
 
 #ifdef LODEPNG_COMPILE_PNG
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
-/*returns 1 if success, 0 if failure ==> nothing done*/
-static unsigned string_resize(char** out, size_t size)
-{
-  char* data = (char*)lodepng_realloc(*out, size + 1);
-  if(data)
-  {
-    data[size] = 0; /*null termination char*/
-    *out = data;
-  }
-  return data != 0;
-}
 
-/*init a {char*, size_t} pair for use as string*/
-static void string_init(char** out)
-{
-  *out = NULL;
-  string_resize(out, 0);
-}
-
-/*free the above pair again*/
+/*free string pointer and set it to NULL*/
 static void string_cleanup(char** out)
 {
   lodepng_free(*out);
   *out = NULL;
 }
 
-static void string_set(char** out, const char* in)
+/* dynamically allocates a new string with a copy of the null terminated input text */
+static char* alloc_string(const char* in)
 {
-  size_t insize = strlen(in), i;
-  if(string_resize(out, insize))
+  size_t insize = strlen(in);
+  char* out = (char*)lodepng_malloc(insize + 1);
+  if(out)
   {
+    size_t i;
     for(i = 0; i != insize; ++i)
     {
-      (*out)[i] = in[i];
+      out[i] = in[i];
     }
+    out[i] = 0;
   }
+  return out;
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 #endif /*LODEPNG_COMPILE_PNG*/
@@ -2871,11 +2858,8 @@ unsigned lodepng_add_text(LodePNGInfo* info, const char* key, const char* str)
   info->text_keys = new_keys;
   info->text_strings = new_strings;
 
-  string_init(&info->text_keys[info->text_num - 1]);
-  string_set(&info->text_keys[info->text_num - 1], key);
-
-  string_init(&info->text_strings[info->text_num - 1]);
-  string_set(&info->text_strings[info->text_num - 1], str);
+  info->text_keys[info->text_num - 1] = alloc_string(key);
+  info->text_strings[info->text_num - 1] = alloc_string(str);
 
   return 0;
 }
@@ -2950,19 +2934,41 @@ unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langt
   info->itext_transkeys = new_transkeys;
   info->itext_strings = new_strings;
 
-  string_init(&info->itext_keys[info->itext_num - 1]);
-  string_set(&info->itext_keys[info->itext_num - 1], key);
-
-  string_init(&info->itext_langtags[info->itext_num - 1]);
-  string_set(&info->itext_langtags[info->itext_num - 1], langtag);
-
-  string_init(&info->itext_transkeys[info->itext_num - 1]);
-  string_set(&info->itext_transkeys[info->itext_num - 1], transkey);
-
-  string_init(&info->itext_strings[info->itext_num - 1]);
-  string_set(&info->itext_strings[info->itext_num - 1], str);
+  info->itext_keys[info->itext_num - 1] = alloc_string(key);
+  info->itext_langtags[info->itext_num - 1] = alloc_string(langtag);
+  info->itext_transkeys[info->itext_num - 1] = alloc_string(transkey);
+  info->itext_strings[info->itext_num - 1] = alloc_string(str);
 
   return 0;
+}
+
+/* same as set but does not delete */
+static unsigned lodepng_assign_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size)
+{
+  info->iccp_name = alloc_string(name);
+  info->iccp_profile = (unsigned char*)lodepng_malloc(profile_size);
+
+  if(!info->iccp_name || !info->iccp_profile) return 83; /*alloc fail*/
+
+  memcpy(info->iccp_profile, profile, profile_size);
+  info->iccp_profile_size = profile_size;
+
+  return 0; /*ok*/
+}
+
+unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size)
+{
+  if(info->iccp_name) lodepng_clear_icc(info);
+
+  return lodepng_assign_icc(info, name, profile, profile_size);
+}
+
+void lodepng_clear_icc(LodePNGInfo* info)
+{
+  string_cleanup(&info->iccp_name);
+  lodepng_free(info->iccp_profile);
+  info->iccp_profile = NULL;
+  info->iccp_profile_size = 0;
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
@@ -2982,6 +2988,13 @@ void lodepng_info_init(LodePNGInfo* info)
   info->time_defined = 0;
   info->phys_defined = 0;
 
+  info->gama_defined = 0;
+  info->chrm_defined = 0;
+  info->srgb_defined = 0;
+  info->iccp_defined = 0;
+  info->iccp_name = NULL;
+  info->iccp_profile = NULL;
+
   LodePNGUnknownChunks_init(info);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 }
@@ -2992,6 +3005,8 @@ void lodepng_info_cleanup(LodePNGInfo* info)
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   LodePNGText_cleanup(info);
   LodePNGIText_cleanup(info);
+
+  lodepng_clear_icc(info);
 
   LodePNGUnknownChunks_cleanup(info);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -3007,18 +3022,15 @@ unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source)
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   CERROR_TRY_RETURN(LodePNGText_copy(dest, source));
   CERROR_TRY_RETURN(LodePNGIText_copy(dest, source));
+  if(source->iccp_defined)
+  {
+    CERROR_TRY_RETURN(lodepng_assign_icc(dest, source->iccp_name, source->iccp_profile, source->iccp_profile_size));
+  }
 
   LodePNGUnknownChunks_init(dest);
   CERROR_TRY_RETURN(LodePNGUnknownChunks_copy(dest, source));
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   return 0;
-}
-
-void lodepng_info_swap(LodePNGInfo* a, LodePNGInfo* b)
-{
-  LodePNGInfo temp = *a;
-  *a = *b;
-  *b = temp;
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
@@ -4465,7 +4477,7 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
   unsigned length, begin, compressed;
   char *key = 0, *langtag = 0, *transkey = 0;
   ucvector decoded;
-  ucvector_init(&decoded);
+  ucvector_init(&decoded); /* TODO: only use in case of compressed text */
 
   while(!error) /*not really a while loop, only used to break on error*/
   {
@@ -4575,6 +4587,88 @@ static unsigned readChunk_pHYs(LodePNGInfo* info, const unsigned char* data, siz
 
   return 0; /* OK */
 }
+
+static unsigned readChunk_gAMA(LodePNGInfo* info, const unsigned char* data, size_t chunkLength)
+{
+  if(chunkLength != 4) return 96; /*invalid gAMA chunk size*/
+
+  info->gama_defined = 1;
+  info->gama_gamma = 16777216u * data[0] + 65536u * data[1] + 256u * data[2] + data[3];
+
+  return 0; /* OK */
+}
+
+static unsigned readChunk_cHRM(LodePNGInfo* info, const unsigned char* data, size_t chunkLength)
+{
+  if(chunkLength != 32) return 97; /*invalid cHRM chunk size*/
+
+  info->chrm_defined = 1;
+  info->chrm_white_x = 16777216u * data[ 0] + 65536u * data[ 1] + 256u * data[ 2] + data[ 3];
+  info->chrm_white_y = 16777216u * data[ 4] + 65536u * data[ 5] + 256u * data[ 6] + data[ 7];
+  info->chrm_red_x   = 16777216u * data[ 8] + 65536u * data[ 9] + 256u * data[10] + data[11];
+  info->chrm_red_y   = 16777216u * data[12] + 65536u * data[13] + 256u * data[14] + data[15];
+  info->chrm_green_x = 16777216u * data[16] + 65536u * data[17] + 256u * data[18] + data[19];
+  info->chrm_green_y = 16777216u * data[20] + 65536u * data[21] + 256u * data[22] + data[23];
+  info->chrm_blue_x  = 16777216u * data[24] + 65536u * data[25] + 256u * data[26] + data[27];
+  info->chrm_blue_y  = 16777216u * data[28] + 65536u * data[29] + 256u * data[30] + data[31];
+
+  return 0; /* OK */
+}
+
+static unsigned readChunk_sRGB(LodePNGInfo* info, const unsigned char* data, size_t chunkLength)
+{
+  if(chunkLength != 1) return 98; /*invalid sRGB chunk size (this one is never ignored)*/
+
+  info->srgb_defined = 1;
+  info->srgb_intent = data[0];
+
+  return 0; /* OK */
+}
+
+static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSettings* zlibsettings,
+                               const unsigned char* data, size_t chunkLength)
+{
+  unsigned error = 0;
+  unsigned i;
+
+  unsigned length, string2_begin;
+  ucvector decoded;
+
+  info->iccp_defined = 1;
+  if(info->iccp_name) lodepng_clear_icc(info);
+
+  for(length = 0; length < chunkLength && data[length] != 0; ++length) ;
+  if(length + 2 >= chunkLength) return 75; /*no null termination, corrupt?*/
+  if(length < 1 || length > 79) return 89; /*keyword too short or long*/
+
+  info->iccp_name = (char*)lodepng_malloc(length + 1);
+  if(!info->iccp_name) return 83; /*alloc fail*/
+
+  info->iccp_name[length] = 0;
+  for(i = 0; i != length; ++i) info->iccp_name[i] = (char)data[i];
+
+  if(data[length + 1] != 0) return 72; /*the 0 byte indicating compression must be 0*/
+
+  string2_begin = length + 2;
+  if(string2_begin > chunkLength) return 75; /*no null termination, corrupt?*/
+
+  length = (unsigned)chunkLength - string2_begin;
+  ucvector_init(&decoded);
+  error = zlib_decompress(&decoded.data, &decoded.size,
+                          (unsigned char*)(&data[string2_begin]),
+                          length, zlibsettings);
+  if(!error) {
+    info->iccp_profile_size = decoded.size;
+    info->iccp_profile = (unsigned char*)lodepng_malloc(decoded.size);
+    if(info->iccp_profile) {
+      memcpy(info->iccp_profile, decoded.data, decoded.size);
+    } else {
+      error = 83; /* alloc fail */
+    }
+  }
+  ucvector_cleanup(&decoded);
+  return error;
+}
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 /*read a PNG, the result will be in the same color type as the PNG (hence "generic")*/
@@ -4639,6 +4733,8 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     }
 
     data = lodepng_chunk_data_const(chunk);
+
+    unknown = 0;
 
     /*IDAT chunk, containing compressed image data*/
     if(lodepng_chunk_type_equals(chunk, "IDAT"))
@@ -4714,6 +4810,26 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     else if(lodepng_chunk_type_equals(chunk, "pHYs"))
     {
       state->error = readChunk_pHYs(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    }
+    else if(lodepng_chunk_type_equals(chunk, "gAMA"))
+    {
+      state->error = readChunk_gAMA(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    }
+    else if(lodepng_chunk_type_equals(chunk, "cHRM"))
+    {
+      state->error = readChunk_cHRM(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    }
+    else if(lodepng_chunk_type_equals(chunk, "sRGB"))
+    {
+      state->error = readChunk_sRGB(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    }
+    else if(lodepng_chunk_type_equals(chunk, "iCCP"))
+    {
+      state->error = readChunk_iCCP(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
       if(state->error) break;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -5205,6 +5321,73 @@ static unsigned addChunk_pHYs(ucvector* out, const LodePNGInfo* info)
   error = addChunk(out, "pHYs", data.data, data.size);
   ucvector_cleanup(&data);
 
+  return error;
+}
+
+static unsigned addChunk_gAMA(ucvector* out, const LodePNGInfo* info)
+{
+  unsigned error = 0;
+  ucvector data;
+  ucvector_init(&data);
+
+  lodepng_add32bitInt(&data, info->gama_gamma);
+
+  error = addChunk(out, "gAMA", data.data, data.size);
+  ucvector_cleanup(&data);
+
+  return error;
+}
+
+static unsigned addChunk_cHRM(ucvector* out, const LodePNGInfo* info)
+{
+  unsigned error = 0;
+  ucvector data;
+  ucvector_init(&data);
+
+  lodepng_add32bitInt(&data, info->chrm_white_x);
+  lodepng_add32bitInt(&data, info->chrm_white_y);
+  lodepng_add32bitInt(&data, info->chrm_red_x);
+  lodepng_add32bitInt(&data, info->chrm_red_y);
+  lodepng_add32bitInt(&data, info->chrm_green_x);
+  lodepng_add32bitInt(&data, info->chrm_green_y);
+  lodepng_add32bitInt(&data, info->chrm_blue_x);
+  lodepng_add32bitInt(&data, info->chrm_blue_y);
+
+  error = addChunk(out, "cHRM", data.data, data.size);
+  ucvector_cleanup(&data);
+
+  return error;
+}
+
+static unsigned addChunk_sRGB(ucvector* out, const LodePNGInfo* info)
+{
+  unsigned char data = info->srgb_intent;
+  return addChunk(out, "sRGB", &data, 1);
+}
+
+static unsigned addChunk_iCCP(ucvector* out, const LodePNGInfo* info, LodePNGCompressSettings* zlibsettings)
+{
+  unsigned error = 0;
+  ucvector data, compressed;
+  size_t i;
+
+  ucvector_init(&data);
+  ucvector_init(&compressed);
+  for(i = 0; info->iccp_name[i] != 0; ++i) ucvector_push_back(&data, (unsigned char)info->iccp_name[i]);
+  if(i < 1 || i > 79) return 89; /*error: invalid keyword size*/
+  ucvector_push_back(&data, 0); /*0 termination char*/
+  ucvector_push_back(&data, 0); /*compression method: 0*/
+
+  error = zlib_compress(&compressed.data, &compressed.size,
+                        info->iccp_profile, info->iccp_profile_size, zlibsettings);
+  if(!error)
+  {
+    for(i = 0; i != compressed.size; ++i) ucvector_push_back(&data, compressed.data[i]);
+    error = addChunk(out, "iCCP", data.data, data.size);
+  }
+
+  ucvector_cleanup(&compressed);
+  ucvector_cleanup(&data);
   return error;
 }
 
@@ -5704,6 +5887,28 @@ static unsigned addUnknownChunks(ucvector* out, unsigned char* data, size_t data
   }
   return 0;
 }
+
+static unsigned isGreyICCProfile(const unsigned char* profile, unsigned size)
+{
+  /*
+  It is a grey profile if bytes 16-19 are "GRAY", rgb profile if bytes 16-19
+  are "RGB ". We do not perform any full parsing of the ICC profile here, other
+  than check those 4 bytes to grayscale profile. Other than that, validity of
+  the profile is not checked. This is needed only because the PNG specification
+  requires using a non-grey color model if there is an ICC profile with "RGB "
+  (sadly limiting compression opportunities if the input data is greyscale RGB
+  data), and requires using a grey color model if it is "GRAY".
+  */
+  if(size < 20) return 0;
+  return profile[16] == 'G' &&  profile[17] == 'R' &&  profile[18] == 'A' &&  profile[19] == 'Y';
+}
+
+static unsigned isRGBICCProfile(const unsigned char* profile, unsigned size)
+{
+  /* See comment in isGreyICCProfile*/
+  if(size < 20) return 0;
+  return profile[16] == 'R' &&  profile[17] == 'G' &&  profile[18] == 'B' &&  profile[19] == ' ';
+}
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 unsigned lodepng_encode(unsigned char** out, size_t* outsize,
@@ -5746,6 +5951,41 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   {
     state->error = lodepng_auto_choose_color(&info.color, image, w, h, &state->info_raw);
   }
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+  if(state->info_png.iccp_defined)
+  {
+    unsigned grey_icc = isGreyICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size);
+    unsigned grey_png = info.color.colortype == LCT_GREY || info.color.colortype == LCT_GREY_ALPHA;
+    /* TODO: perhaps instead of giving errors or less optimal compression, we can automatically modify
+    the ICC profile here to say "GRAY" or "RGB " to match the PNG color type, unless this will require
+    non trivial changes to the rest of the ICC profile */
+    if(!grey_icc && !isRGBICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size))
+    {
+      CERROR_RETURN_ERROR(state->error, 100); /* Disallowed profile color type for PNG */
+    }
+    if(!state->encoder.auto_convert && grey_icc != grey_png)
+    {
+      /* Non recoverable: encoder not allowed to convert color type, and requested color type not
+      compatible with ICC color type */
+      CERROR_RETURN_ERROR(state->error, 101);
+    }
+    if(grey_icc && !grey_png)
+    {
+      /* Non recoverable: trying to set greyscale ICC profile while colored pixels were given */
+      CERROR_RETURN_ERROR(state->error, 102);
+      /* NOTE: this relies on the fact that lodepng_auto_choose_color never returns palette for greyscale pixels */
+    }
+    if(!grey_icc && grey_png)
+    {
+      /* Recoverable but an unfortunate loss in compression density: We have greyscale pixels but
+      are forced to store them in more expensive RGB format that will repeat each value 3 times
+      because the PNG spec does not allow an RGB ICC profile with internal greyscale color data */
+      if(info.color.colortype == LCT_GREY) info.color.colortype = LCT_RGB;
+      if(info.color.colortype == LCT_GREY_ALPHA) info.color.colortype = LCT_RGBA;
+      if(info.color.bitdepth < 8) info.color.bitdepth = 8;
+    }
+  }
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   if (!state->error)
   {
     if(!lodepng_color_mode_equal(&state->info_raw, &info.color))
@@ -5783,6 +6023,11 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       state->error = addUnknownChunks(&outv, info.unknown_chunks_data[0], info.unknown_chunks_size[0]);
       if(state->error) break;
     }
+    /*color profile chunks must come before PLTE */
+    if(info.iccp_defined) addChunk_iCCP(&outv, &info, &state->encoder.zlibsettings);
+    if(info.srgb_defined) addChunk_sRGB(&outv, &info);
+    if(info.gama_defined) addChunk_gAMA(&outv, &info);
+    if(info.chrm_defined) addChunk_cHRM(&outv, &info);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     /*PLTE*/
     if(info.color.colortype == LCT_PALETTE)
@@ -6068,6 +6313,13 @@ const char* lodepng_error_text(unsigned code)
     case 93: return "zero width or height is invalid";
     case 94: return "header chunk must have a size of 13 bytes";
     case 95: return "integer overflow with combined idat chunk size";
+    case 96: return "invalid gAMA chunk size";
+    case 97: return "invalid cHRM chunk size";
+    case 98: return "invalid sRGB chunk size";
+    case 99: return "invalid sRGB rendering intent";
+    case 100: return "invalid ICC profile color type, the PNG specification only allows RGB or GRAY";
+    case 101: return "PNG specification does not allow RGB ICC profile on grey color types and vice versa";
+    case 102: return "not allowed to set greyscale ICC profile with colored pixels by PNG specification";
   }
   return "unknown error code";
 }

@@ -51,6 +51,7 @@ everything except huge output:
 #include <map>
 #include <sstream>
 #include <algorithm>
+#include <stdio.h>
 
 struct Options
 {
@@ -139,6 +140,34 @@ void displayPNGInfo(const LodePNGInfo& info, const Options& options)
                 << ", " << info.background_g
                 << ", " << info.background_b << std::endl;
     }
+  }
+  if(info.gama_defined)
+  {
+    std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
+              << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
+  }
+  if(info.chrm_defined)
+  {
+    std::cout << "cHRM defined: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0) << " "
+              << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0) << " "
+              << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0) << " "
+              << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0) << std::endl;
+  }
+  if(info.srgb_defined)
+  {
+    std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
+  }
+  if(info.iccp_defined)
+  {
+    std::cout << "iCCP defined: " << info.iccp_name << std::endl;
+    std::cout << "iCCP profile size: " << info.iccp_profile_size << std::endl;
+    for(size_t i = 0; i < info.iccp_profile_size; i++) {
+      unsigned char c = info.iccp_profile[i];
+      if(c > 32 && c < 127) printf(" %c ", c);
+      else printf("%02x ", c);
+      if(i % 80 == 79 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+    }
+    std::cout << std::endl;
   }
   std::cout << "Interlace method: " << info.interlace_method << std::endl;
   if(options.show_extra_png_info) std::cout << "Texts: " << info.text_num << std::endl;

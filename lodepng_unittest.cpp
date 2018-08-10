@@ -75,8 +75,8 @@ Or html, look under lodepng.plist dir afterwards and find the numbered locations
 clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 
 *) check for memory leaks and vulnerabilities with valgrind
-comment out the large files tests because they're slow with valgrind
-g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
+(DISABLE_SLOW disables a few tests that are very slow with valgrind)
+g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) Try with clang++ and address sanitizer (to get line numbers, make sure 'llvm' is also installed to get 'llvm-symbolizer'
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
@@ -209,8 +209,8 @@ void fromBase64(T& out, const U& in)
   {
     int v = 262144 * fromBase64(in[i]) + 4096 * fromBase64(in[i + 1]) + 64 * fromBase64(in[i + 2]) + fromBase64(in[i + 3]);
     out.push_back((v >> 16) & 0xff);
-    if(in[i + 3] != '=') out.push_back((v >> 8) & 0xff);
-    if(in[i + 2] != '=') out.push_back((v >> 0) & 0xff);
+    if(in[i + 2] != '=') out.push_back((v >> 8) & 0xff);
+    if(in[i + 3] != '=') out.push_back((v >> 0) & 0xff);
   }
 }
 
@@ -680,6 +680,7 @@ void testPNGCodec()
   codecTest(2, 2);
   codecTest(1, 1, LCT_GREY, 1);
   codecTest(7, 7, LCT_GREY, 1);
+#ifndef DISABLE_SLOW
   codecTest(127, 127);
   codecTest(127, 127, LCT_GREY, 1);
   codecTest(500, 500);
@@ -688,6 +689,7 @@ void testPNGCodec()
 
   testOtherPattern1();
   testOtherPattern2();
+#endif // DISABLE_SLOW
 
   testColor(255, 255, 255, 255);
   testColor(0, 0, 0, 255);
@@ -2040,10 +2042,163 @@ void testPaletteToPaletteDecode2() {
   free(image2);
 }
 
+void assertColorProfileDataEqual(const lodepng::State& a, const lodepng::State& b)
+{
+  ASSERT_EQUALS(a.info_png.gama_defined, b.info_png.gama_defined);
+  if(a.info_png.gama_defined)
+  {
+    ASSERT_EQUALS(a.info_png.gama_gamma, b.info_png.gama_gamma);
+  }
+
+  ASSERT_EQUALS(a.info_png.chrm_defined, b.info_png.chrm_defined);
+  if(a.info_png.chrm_defined)
+  {
+    ASSERT_EQUALS(a.info_png.chrm_white_x, b.info_png.chrm_white_x);
+    ASSERT_EQUALS(a.info_png.chrm_white_y, b.info_png.chrm_white_y);
+    ASSERT_EQUALS(a.info_png.chrm_red_x, b.info_png.chrm_red_x);
+    ASSERT_EQUALS(a.info_png.chrm_red_y, b.info_png.chrm_red_y);
+    ASSERT_EQUALS(a.info_png.chrm_green_x, b.info_png.chrm_green_x);
+    ASSERT_EQUALS(a.info_png.chrm_green_y, b.info_png.chrm_green_y);
+    ASSERT_EQUALS(a.info_png.chrm_blue_x, b.info_png.chrm_blue_x);
+    ASSERT_EQUALS(a.info_png.chrm_blue_y, b.info_png.chrm_blue_y);
+  }
+
+  ASSERT_EQUALS(a.info_png.srgb_defined, b.info_png.srgb_defined);
+  if(a.info_png.srgb_defined)
+  {
+    ASSERT_EQUALS(a.info_png.srgb_intent, b.info_png.srgb_intent);
+  }
+
+  ASSERT_EQUALS(a.info_png.iccp_defined, b.info_png.iccp_defined);
+  if(a.info_png.iccp_defined)
+  {
+    //ASSERT_EQUALS(std::string(a.info_png.iccp_name), std::string(b.info_png.iccp_name));
+    ASSERT_EQUALS(a.info_png.iccp_profile_size, b.info_png.iccp_profile_size);
+    for(size_t i = 0; i < a.info_png.iccp_profile_size; ++i) {
+      ASSERT_EQUALS(a.info_png.iccp_profile[i], b.info_png.iccp_profile[i]);
+    }
+  }
+}
+
+// Tests the gAMA, cHRM, sRGB, iCCP chunks
+void testColorProfile()
+{
+  std::cout << "testColorProfile" << std::endl;
+
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.gama_defined = 1;
+    state.info_png.gama_gamma = 12345;
+    state.info_png.chrm_defined = 1;
+    state.info_png.chrm_white_x = 10;
+    state.info_png.chrm_white_y = 20;
+    state.info_png.chrm_red_x = 30;
+    state.info_png.chrm_red_y = 40;
+    state.info_png.chrm_green_x = 100000;
+    state.info_png.chrm_green_y = 200000;
+    state.info_png.chrm_blue_x = 300000;
+    state.info_png.chrm_blue_y = 400000;
+    error = lodepng::encode(png, &image[0], w, h, state);
+    assertNoPNGError(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    assertNoPNGError(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.srgb_defined = 1;
+    state.info_png.srgb_intent = 2;
+    error = lodepng::encode(png, &image[0], w, h, state);
+    assertNoPNGError(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    assertNoPNGError(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.iccp_defined = 1;
+    std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
+    testprofile[0] = testprofile[1] = 0;
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    assertNoPNGError(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    assertNoPNGError(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+
+  // greyscale ICC profile
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i + 4 < image.size(); i += 4)
+    {
+      image[i] = image[i + 1] = image[i + 2] = image[i + 3] = i;
+    }
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.iccp_defined = 1;
+    std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
+    testprofile[0] = testprofile[1] = 0;
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    assertNoPNGError(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    assertNoPNGError(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+}
+
 void doMain()
 {
   //PNG
-  testPNGCodec(); // this one is slow for valgrind
+  testPNGCodec();
   testPngSuiteTiny();
   testPaletteFilterTypesZero();
   testComplexPNG();
@@ -2052,9 +2207,12 @@ void doMain()
   testEncoderErrors();
   testPaletteToPaletteDecode();
   testPaletteToPaletteDecode2();
+  testColorProfile();
 
   //Colors
-  testFewColors(); // this one is slow for valgrind
+#ifndef DISABLE_SLOW
+  testFewColors();
+#endif // DISABLE_SLOW
   testColorKeyConvert();
   testColorConvert();
   testColorConvert2();
