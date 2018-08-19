@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180809
+LodePNG version 20180819
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -415,18 +415,30 @@ typedef struct LodePNGInfo
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   /*
-  suggested background color chunk (bKGD)
-  This color uses the same color mode as the PNG (except alpha channel), which can be 1-bit to 16-bit.
+  Suggested background color chunk (bKGD)
 
-  For greyscale PNGs, r, g and b will all 3 be set to the same. When encoding
-  the encoder writes the red one. For palette PNGs: When decoding, the RGB value
-  will be stored, not a palette index. But when encoding, specify the index of
-  the palette in background_r, the other two are then ignored.
+  This uses the same color mode and bit depth as the PNG (except no alpha channel),
+  with values truncated to the bit depth in the unsigned integer.
 
-  The decoder does not use this background color to edit the color of pixels.
+  For greyscale and palette PNGs, the value is stored in background_r. The values
+  in background_g and background_b are then unused.
+
+  So when decoding, you may get these in a different color mode than the one you requested
+  for the raw pixels.
+
+  When encoding with auto_convert, you must use the color model defined in info_png.color for
+  these values. The encoder normally ignores info_png.color when auto_convert is on, but will
+  use it to interpret these values (and convert copies of them to its chosen color model).
+
+  When encoding, avoid setting this to an expensive color, such as a non-grey value
+  when the image is grey, or the compression will be worse since it will be forced to
+  write the PNG with a more expensive color mode (when auto_convert is on).
+
+  The decoder does not use this background color to edit the color of pixels. This is a
+  completely optional metadata feature.
   */
   unsigned background_defined; /*is a suggested background color given?*/
-  unsigned background_r;       /*red component of suggested background color*/
+  unsigned background_r;       /*red/grey/palette component of suggested background color*/
   unsigned background_g;       /*green component of suggested background color*/
   unsigned background_b;       /*blue component of suggested background color*/
 
@@ -661,11 +673,12 @@ typedef struct LodePNGColorProfile
   unsigned numcolors; /*amount of colors, up to 257. Not valid if bits == 16.*/
   unsigned char palette[1024]; /*Remembers up to the first 256 RGBA colors, in no particular order*/
   unsigned bits; /*bits per channel (not for palette). 1,2 or 4 for greyscale only. 16 if 16-bit per channel required.*/
+  size_t numpixels;
 } LodePNGColorProfile;
 
 void lodepng_color_profile_init(LodePNGColorProfile* profile);
 
-/*Get a LodePNGColorProfile of the image
+/*Get a LodePNGColorProfile of the image. The profile must already have been inited.
 NOTE: This is not related to the ICC color profile, search "iccp_profile" instead to find the ICC/chromacity/...
 fields in this header file.*/
 unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
@@ -749,7 +762,7 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
 
 /*
 Read the PNG header, but not the actual data. This returns only the information
-that is in the header chunk of the PNG, such as width, height and color type. The
+that is in the IHDR chunk of the PNG, such as width, height and color type. The
 information is placed in the info_png field of the LodePNGState.
 */
 unsigned lodepng_inspect(unsigned* w, unsigned* h,
@@ -770,11 +783,23 @@ The lodepng_chunk functions are normally not needed, except to traverse the
 unknown chunks stored in the LodePNGInfo struct, or add new ones to it.
 It also allows traversing the chunks of an encoded PNG file yourself.
 
-PNG standard chunk naming conventions:
-First byte: uppercase = critical, lowercase = ancillary
-Second byte: uppercase = public, lowercase = private
-Third byte: must be uppercase
-Fourth byte: uppercase = unsafe to copy, lowercase = safe to copy
+The chunk pointer always points to the beginning of the chunk itself, that is
+the first byte of the 4 length bytes.
+
+In the PNG file format, chunks have the following format:
+-4 bytes length: length of the data of the chunk in bytes (chunk itself is 12 bytes longer)
+-4 bytes chunk name (ASCII a-z,A-Z only, see below)
+-length bytes of data (may be 0 bytes if length was 0)
+-4 bytes of CRC, computed on chunk name + data
+
+The first chunk starts at the 8th byte of the PNG file, the entire rest of the file
+exists out of concatenated chunks with the above format.
+
+PNG standard chunk ASCII naming conventions:
+-First byte: uppercase = critical, lowercase = ancillary
+-Second byte: uppercase = public, lowercase = private
+-Third byte: must be uppercase
+-Fourth byte: uppercase = unsafe to copy, lowercase = safe to copy
 */
 
 /*
@@ -809,7 +834,12 @@ unsigned lodepng_chunk_check_crc(const unsigned char* chunk);
 /*generates the correct CRC from the data and puts it in the last 4 bytes of the chunk*/
 void lodepng_chunk_generate_crc(unsigned char* chunk);
 
-/*iterate to next chunks. don't use on IEND chunk, as there is no next chunk then*/
+/*
+Iterate to next chunks, allows iterating through all chunks of the PNG file. Expects at least 4 readable
+bytes of memory in the input pointer. Will output pointer to the start of the next chunk or the end of the
+file if there is no more chunk after this. Start this process at the 8th byte of the PNG file. In a non-corrupt
+PNG file, the last chunk should have name "IEND".
+*/
 unsigned char* lodepng_chunk_next(unsigned char* chunk);
 const unsigned char* lodepng_chunk_next_const(const unsigned char* chunk);
 
@@ -1708,8 +1738,10 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
-*) 10 aug 2018: added support for gAMA, cHRM, sRGB and iCCP chunks. This change
-   is backwards compatible unless you relied on unknown_chunks to use those.
+*) 19 aug 2018 (!): fixed color mode bKGD is encoded with and made it use palette
+   index in case of palette.
+*) 10 aug 2018 (!): added support for gAMA, cHRM, sRGB and iCCP chunks. This
+   change is backwards compatible unless you relied on unknown_chunks for those.
 *) 11 jun 2018: less restrictive check for pixel size integer overflow
 *) 14 jan 2018: allow optionally ignoring a few more recoverable errors
 *) 17 sep 2017: fix memory leak for some encoder input error cases

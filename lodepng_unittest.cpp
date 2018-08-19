@@ -134,6 +134,17 @@ void assertEquals(const T& expected, const U& actual, const std::string& message
   }
 }
 
+template<typename T, typename U>
+void assertNotEquals(const T& expected, const U& actual, const std::string& message = "")
+{
+  if(expected == (T)actual)
+  {
+    std::cout << "Error: Equal but expected not equal! Expected not " << expected << " got " << (T)actual << ". "
+              << "Message: " << message << std::endl;
+    fail();
+  }
+}
+
 void assertTrue(bool value, const std::string& message = "")
 {
   if(!value)
@@ -168,6 +179,13 @@ void assertNoError(unsigned error)
 {\
   assertEquals(e, v, std::string() + "line " + STR(__LINE__) + ": " + STR(v) + " ASSERT_EQUALS(" + #e + ", " + #v + ")");\
 }
+#define ASSERT_NOT_EQUALS(e, v) \
+{\
+  assertNotEquals(e, v, std::string() + "line " + STR(__LINE__) + ": " + STR(v) + " ASSERT_NOT_EQUALS(" + #e + ", " + #v + ")");\
+}
+
+#define ASSERT_NO_PNG_ERROR_MSG(error, message) assertNoPNGError(error, std::string("line ") + STR(__LINE__) + (std::string(message).empty() ? std::string("") : (": " + std::string(message))))
+#define ASSERT_NO_PNG_ERROR(error) ASSERT_NO_PNG_ERROR_MSG(error, std::string(""))
 
 static const std::string BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -268,6 +286,155 @@ void generateTestImage(Image& image, unsigned width, unsigned height, LodePNGCol
   }
 }
 
+//Generate a 16-bit test image with minimal size that requires at minimum the given color type (bit depth, greyscaleness, ...)
+//If key is true, makes it such that exactly one color is transparent, so it can use a key. If false, adds a translucent color depending on
+//whether it's an alpha color type or not.
+void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorType, unsigned bitDepth, bool key)
+{
+  image.colorType = colorType;
+  image.bitDepth = bitDepth;
+  unsigned w = 1;
+  unsigned h = 1;
+
+  bool grey = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
+  bool alpha = colorType == LCT_RGBA || colorType == LCT_GREY_ALPHA;
+
+  if(colorType == LCT_PALETTE)
+  {
+    w = 1 << bitDepth;
+    h = 256; // ensure it'll really choose palette, not omit it due to small image size
+    image.data.resize(w * h * 8);
+    for(size_t y = 0; y < h; y++)
+    {
+      for(size_t x = 0; x < w; x++)
+      {
+        size_t i = y * w * 8 + x * 8;
+        image.data[i + 0] = image.data[i + 1] = y;
+        image.data[i + 2] = image.data[i + 3] = 255;
+        image.data[i + 4] = image.data[i + 5] = 0;
+        image.data[i + 6] = image.data[i + 7] = (key && y == 0) ? 0 : 255;
+      }
+    }
+  }
+  else if(bitDepth == 16)
+  {
+    // one color suffices for this model. But add one more to support key.
+    w = 2;
+    image.data.resize(w * h * 8);
+    image.data[0] = 10; image.data[1] = 20;
+    image.data[2] = 10; image.data[3] = 20;
+    image.data[4] = grey ? 10 : 110; image.data[5] = grey ? 20 : 120;
+    image.data[6] = alpha ? 128 : 255; image.data[7] = alpha ? 20 : 255;
+
+    image.data[8] = 40; image.data[9] = 50;
+    image.data[10] = 40; image.data[11] = 50;
+    image.data[12] = grey ? 40 : 140; image.data[13] = grey ? 50 : 150;
+    image.data[14] = key ? 0 : 255; image.data[15] = key ? 0 : 255;
+  }
+  else if(grey)
+  {
+    w = 2;
+    unsigned v = 255 / ((1 << bitDepth) - 1); // value that forces at least this bitdepth
+    image.data.resize(w * h * 8);
+    image.data[0] = v; image.data[1] = v;
+    image.data[2] = v; image.data[3] = v;
+    image.data[4] = v; image.data[5] = v;
+    image.data[6] = alpha ? v : 255; image.data[7] = alpha ? v : 255;
+
+    image.data[8] = image.data[9] = 0;
+    image.data[10] = image.data[11] = 0;
+    image.data[12] = image.data[13] = 0;
+    image.data[14] = image.data[15] = key ? 0 : 255;
+  }
+  else
+  {
+    // now it's RGB or RGBA with bitdepth 8
+    w = 257; // must have at least more than 256 colors so it won't use palette
+    image.data.resize(w * h * 8);
+    for(size_t y = 0; y < h; y++)
+    {
+      for(size_t x = 0; x < w; x++)
+      {
+        size_t i = y * w * 8 + x * 8;
+        image.data[i + 0] = image.data[i + 1] = i / 2;
+        image.data[i + 2] = image.data[i + 3] = i / 3;
+        image.data[i + 4] = image.data[i + 5] = i / 5;
+        image.data[i + 6] = image.data[i + 7] = (key && y == 0) ? 0 : (alpha ? i : 255);
+      }
+    }
+  }
+
+  image.width = w;
+  image.height = h;
+}
+
+//Generate a 8-bit test image with minimal size that requires at minimum the given color type (bit depth, greyscaleness, ...). bitDepth max 8 here.
+//If key is true, makes it such that exactly one color is transparent, so it can use a key. If false, adds a translucent color depending on
+//whether it's an alpha color type or not.
+void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorType, unsigned bitDepth, bool key)
+{
+  image.colorType = colorType;
+  image.bitDepth = bitDepth;
+  unsigned w = 1;
+  unsigned h = 1;
+
+  bool grey = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
+  bool alpha = colorType == LCT_RGBA || colorType == LCT_GREY_ALPHA;
+
+  if(colorType == LCT_PALETTE)
+  {
+    w = 1 << bitDepth;
+    h = 256; // ensure it'll really choose palette, not omit it due to small image size
+    image.data.resize(w * h * 4);
+    for(size_t y = 0; y < h; y++)
+    {
+      for(size_t x = 0; x < w; x++)
+      {
+        size_t i = y * w * 4 + x * 4;
+        image.data[i + 0] = x;
+        image.data[i + 1] = 255;
+        image.data[i + 2] = 0;
+        image.data[i + 3] = (key && x == 0) ? 0 : 255;
+      }
+    }
+  }
+  else if(grey)
+  {
+    w = 2;
+    unsigned v = 255 / ((1 << bitDepth) - 1); // value that forces at least this bitdepth
+    image.data.resize(w * h * 4);
+    image.data[0] = v;
+    image.data[1] = v;
+    image.data[2] = v;
+    image.data[3] = alpha ? v : 255;
+
+    image.data[4] = 0;
+    image.data[5] = 0;
+    image.data[6] = 0;
+    image.data[7] = key ? 0 : 255;
+  }
+  else
+  {
+    // now it's RGB or RGBA with bitdepth 8
+    w = 257; // must have at least more than 256 colors so it won't use palette
+    image.data.resize(w * h * 4);
+    for(size_t y = 0; y < h; y++)
+    {
+      for(size_t x = 0; x < w; x++)
+      {
+        size_t i = y * w * 4 + x * 4;
+        image.data[i + 0] = i / 2;
+        image.data[i + 1] = i / 3;
+        image.data[i + 2] = i / 5;
+        image.data[i + 3] = (key && x == 0) ? 0 : (alpha ? i : 255);
+      }
+    }
+  }
+
+  image.width = w;
+  image.height = h;
+}
+
 //Check that the decoded PNG pixels are the same as the pixels in the image
 void assertPixels(Image& image, const unsigned char* decoded, const std::string& message)
 {
@@ -317,7 +484,7 @@ void doCodecTestC(Image& image)
                                              image.width, image.height, image.colorType, image.bitDepth);
 
   if(error_enc != 0) std::cout << "Error: " << lodepng_error_text(error_enc) << std::endl;
-  assertNoPNGError(error_enc, "encoder error C");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error C");
 
   //if the image is large enough, compressing it should result in smaller size
   if(image.data.size() > 512) assertTrue(encoded_size < image.data.size(), "compressed size");
@@ -326,7 +493,7 @@ void doCodecTestC(Image& image)
                                              encoded, encoded_size, image.colorType, image.bitDepth);
 
   if(error_dec != 0) std::cout << "Error: " << lodepng_error_text(error_dec) << std::endl;
-  assertNoPNGError(error_dec, "decoder error C");
+  ASSERT_NO_PNG_ERROR_MSG(error_dec, "decoder error C");
 
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
@@ -344,14 +511,14 @@ void doCodecTestCPP(Image& image)
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height,
                                        image.colorType, image.bitDepth);
 
-  assertNoPNGError(error_enc, "encoder error C++");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error C++");
 
   //if the image is large enough, compressing it should result in smaller size
   if(image.data.size() > 512) assertTrue(encoded.size() < image.data.size(), "compressed size");
 
   unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, encoded, image.colorType, image.bitDepth);
 
-  assertNoPNGError(error_dec, "decoder error C++");
+  ASSERT_NO_PNG_ERROR_MSG(error_dec, "decoder error C++");
 
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
@@ -370,11 +537,11 @@ void doCodecTestWithEncState(Image& image, lodepng::State& state) {
 
 
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
-  assertNoPNGError(error_enc, "encoder error uncompressed");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error uncompressed");
 
   unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, encoded, image.colorType, image.bitDepth);
 
-  assertNoPNGError(error_dec, "decoder error uncompressed");
+  ASSERT_NO_PNG_ERROR_MSG(error_dec, "decoder error uncompressed");
 
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
@@ -413,7 +580,7 @@ void doCodecTestInterlaced(Image& image)
 
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height, state);
 
-  assertNoPNGError(error_enc, "encoder error interlaced");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error interlaced");
 
   //if the image is large enough, compressing it should result in smaller size
   if(image.data.size() > 512) assertTrue(encoded.size() < image.data.size(), "compressed size");
@@ -422,7 +589,7 @@ void doCodecTestInterlaced(Image& image)
   state.info_raw.bitdepth = image.bitDepth;
   unsigned error_dec = lodepng::decode(decoded, decoded_w, decoded_h, state, encoded);
 
-  assertNoPNGError(error_dec, "decoder error interlaced");
+  ASSERT_NO_PNG_ERROR_MSG(error_dec, "decoder error interlaced");
 
   ASSERT_EQUALS(image.width, decoded_w);
   ASSERT_EQUALS(image.height, decoded_h);
@@ -494,7 +661,7 @@ void colorConvertTest(const std::string& bits_in, LodePNGColorType colorType_in,
   mode_out.bitdepth = bitDepth_out;
   unsigned error = lodepng_convert(&actual[0], &image[0], &mode_out, &mode_in, 1, 1);
 
-  assertNoPNGError(error, "convert error");
+  ASSERT_NO_PNG_ERROR_MSG(error, "convert error");
 
   for(size_t i = 0; i < expected.size(); i++)
   {
@@ -859,7 +1026,7 @@ void testColorConvert2()
           << " colortype j: " << combos[j].colortype
           << " bitdepth j: " << combos[j].bitdepth
           << std::endl;
-        if(error != 99999) assertNoPNGError(error);
+        if(error != 99999) ASSERT_NO_PNG_ERROR(error);
         else fail();
       }
     }
@@ -879,14 +1046,14 @@ void testCompressStringZlib(const std::string& text, bool compressible)
   unsigned error = 0;
 
   error = lodepng_zlib_compress(&out, &outsize, in.empty() ? 0 : &in[0], in.size(), &lodepng_default_compress_settings);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   if(compressible) assertTrue(outsize < in.size());
 
   unsigned char* out2 = 0;
   size_t outsize2 = 0;
 
   error = lodepng_zlib_decompress(&out2, &outsize2, out, outsize, &lodepng_default_decompress_settings);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(outsize2, in.size());
   for(size_t i = 0; i < in.size(); i++) ASSERT_EQUALS(in[i], out2[i]);
 
@@ -933,7 +1100,7 @@ void testDiskPNG(const std::string& filename)
   image.colorType = LCT_RGB;
   image.bitDepth = 8;
   unsigned error = lodepng::decode(image.data, image.width, image.height, filename, image.colorType, image.bitDepth);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 
   doCodecTest(image);
 }
@@ -954,7 +1121,7 @@ void doTestHuffmanCodeLengths(const std::string& expectedstr, const std::string&
   std::cout << "doTestHuffmanCodeLengths: " << counts << std::endl;
   std::vector<unsigned> result(count.size());
   unsigned error = lodepng_huffman_code_lengths(&result[0], &count[0], count.size(), bitlength);
-  assertNoPNGError(error, "errorcode");
+  ASSERT_NO_PNG_ERROR_MSG(error, "errorcode");
   std::stringstream ss1, ss2;
   for(size_t i = 0; i < count.size(); i++)
   {
@@ -1052,7 +1219,7 @@ void createComplexPNG(std::vector<unsigned char>& png)
   lodepng_chunk_create(&info.unknown_chunks_data[2], &info.unknown_chunks_size[2], 3, "uNKc", (unsigned char*)"c00");
 
   unsigned error = lodepng::encode(png, &image[0], w, h, state);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 }
 
 std::string extractChunkNames(const std::vector<unsigned char>& png)
@@ -1083,7 +1250,7 @@ void testComplexPNG()
   unsigned w, h;
   std::vector<unsigned char> image;
   unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 
   ASSERT_EQUALS(16, w);
   ASSERT_EQUALS(17, h);
@@ -1147,7 +1314,7 @@ void testPaletteToPaletteConvert()
     lodepng_palette_add(&state.info_raw, i, i, i, i);
   }
   error = lodepng::encode(png, &image[0], w, h, state);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 }
 
 //for this test, you have to choose palette colors that cause LodePNG to actually use a palette,
@@ -1161,11 +1328,11 @@ void doRGBAToPaletteTest(unsigned char* palette, size_t size, LodePNGColorType e
   for(size_t i = 0; i < image.size(); i++) image[i] = palette[i % (size * 4)];
   std::vector<unsigned char> png;
   error = lodepng::encode(png, &image[0], w, h);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   lodepng::State state;
   std::vector<unsigned char> image2;
   error = lodepng::decode(image2, w, h, state, png);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(image.size(), image2.size());
   for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
 
@@ -1218,12 +1385,12 @@ void testColorKeyConvert()
   }
   std::vector<unsigned char> png;
   error = lodepng::encode(png, &image[0], w, h);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 
   lodepng::State state;
   std::vector<unsigned char> image2;
   error = lodepng::decode(image2, w, h, state, png);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(32, w);
   ASSERT_EQUALS(32, h);
   ASSERT_EQUALS(1, state.info_png.color.key_defined);
@@ -1256,12 +1423,12 @@ void testNoAutoConvert()
   state.info_png.color.bitdepth = 8;
   state.encoder.auto_convert = false;
   error = lodepng::encode(png, &image[0], w, h, state);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 
   lodepng::State state2;
   std::vector<unsigned char> image2;
   error = lodepng::decode(image2, w, h, state2, png);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(32, w);
   ASSERT_EQUALS(32, h);
   ASSERT_EQUALS(LCT_RGBA, state2.info_png.color.colortype);
@@ -1368,14 +1535,14 @@ void testCustomZlibCompress2()
 
   unsigned error = lodepng::encode(encoded, image.data, image.width, image.height,
                                    state);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
 
   std::vector<unsigned char> decoded;
   unsigned w, h;
   state.decoder.zlibsettings.ignore_adler32 = 0;
   state.decoder.ignore_crc = 0;
   error = lodepng::decode(decoded, w, h, state, encoded);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(5, w);
   ASSERT_EQUALS(5, h);
 }
@@ -1419,7 +1586,7 @@ void testCustomZlibDecompress()
 
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height,
                                    image.colorType, image.bitDepth);
-  assertNoPNGError(error_enc, "encoder error not expected");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error not expected");
 
 
   std::vector<unsigned char> decoded;
@@ -1456,7 +1623,7 @@ void testCustomInflate()
 
   unsigned error_enc = lodepng::encode(encoded, image.data, image.width, image.height,
                                    image.colorType, image.bitDepth);
-  assertNoPNGError(error_enc, "encoder error not expected");
+  ASSERT_NO_PNG_ERROR_MSG(error_enc, "encoder error not expected");
 
 
   std::vector<unsigned char> decoded;
@@ -1492,7 +1659,7 @@ void doPngSuiteTinyTest(const std::string& base64, unsigned w, unsigned h,
   unsigned w2, h2;
   std::vector<unsigned char> image;
   unsigned error = lodepng::decode(image, w2, h2, state, png);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   ASSERT_EQUALS(w, w2);
   ASSERT_EQUALS(h, h2);
   ASSERT_EQUALS((int)r, (int)image[0]);
@@ -1503,10 +1670,10 @@ void doPngSuiteTinyTest(const std::string& base64, unsigned w, unsigned h,
   state.encoder.auto_convert = false;
   std::vector<unsigned char> png2;
   error = lodepng::encode(png2, image, w, h, state);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   std::vector<unsigned char> image2;
   error = lodepng::decode(image2, w2, h2, state, png2);
-  assertNoPNGError(error);
+  ASSERT_NO_PNG_ERROR(error);
   for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
 }
 
@@ -1520,8 +1687,8 @@ void doPngSuiteEqualTest(const std::string& base64a, const std::string& base64b)
   fromBase64(pngb, base64b);
   unsigned wa, ha, wb, hb;
   std::vector<unsigned char> imagea, imageb;
-  assertNoPNGError(lodepng::decode(imagea, wa, ha, state, pnga));
-  assertNoPNGError(lodepng::decode(imageb, wb, hb, state, pngb));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(imagea, wa, ha, state, pnga));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(imageb, wb, hb, state, pngb));
   ASSERT_EQUALS(wa, wb);
   ASSERT_EQUALS(ha, hb);
 
@@ -1622,7 +1789,7 @@ void testChunkUtil()
 
   std::vector<unsigned char> image;
   unsigned w, h;
-  assertNoPNGError(lodepng::decode(image, w, h, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, png));
 }
 
 //Test that when decoding to 16-bit per channel, it always uses big endian consistently.
@@ -1643,7 +1810,7 @@ void test16bitColorEndianness()
 
   // Decode from 16-bit grey image to 16-bit per channel RGBA
   state.info_raw.bitdepth = 16;
-  assertNoPNGError(lodepng::decode(image, w, h, state, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
   ASSERT_EQUALS(0x09, image[8]);
   ASSERT_EQUALS(0x00, image[9]);
 
@@ -1651,7 +1818,7 @@ void test16bitColorEndianness()
   image.clear();
   state = lodepng::State();
   state.decoder.color_convert = false;
-  assertNoPNGError(lodepng::decode(image, w, h, state, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
   ASSERT_EQUALS(0x09, image[2]);
   ASSERT_EQUALS(0x00, image[3]);
 
@@ -1665,7 +1832,7 @@ void test16bitColorEndianness()
   image.clear();
   state = lodepng::State();
   state.info_raw.bitdepth = 16;
-  assertNoPNGError(lodepng::decode(image, w, h, state, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
   ASSERT_EQUALS(0x1f, image[258]);
   ASSERT_EQUALS(0xf9, image[259]);
 
@@ -1673,7 +1840,7 @@ void test16bitColorEndianness()
   image.clear();
   state = lodepng::State();
   state.decoder.color_convert = false;
-  assertNoPNGError(lodepng::decode(image, w, h, state, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
 
   ASSERT_EQUALS(0x1f, image[194]);
   ASSERT_EQUALS(0xf9, image[195]);
@@ -1690,7 +1857,7 @@ void test16bitColorEndianness()
   image.clear();
   state = lodepng::State();
   state.info_raw.bitdepth = 16;
-  assertNoPNGError(lodepng::decode(image, w, h, state, png));
+  ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
   ASSERT_EQUALS(0x77, image[84]);
   ASSERT_EQUALS(0x77, image[85]);
 }
@@ -2104,12 +2271,12 @@ void testColorProfile()
     state.info_png.chrm_blue_x = 300000;
     state.info_png.chrm_blue_y = 400000;
     error = lodepng::encode(png, &image[0], w, h, state);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
 
     lodepng::State state2;
     std::vector<unsigned char> image2;
     error = lodepng::decode(image2, w, h, state2, png);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
     assertColorProfileDataEqual(state, state2);
     ASSERT_EQUALS(32, w);
     ASSERT_EQUALS(32, h);
@@ -2127,12 +2294,12 @@ void testColorProfile()
     state.info_png.srgb_defined = 1;
     state.info_png.srgb_intent = 2;
     error = lodepng::encode(png, &image[0], w, h, state);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
 
     lodepng::State state2;
     std::vector<unsigned char> image2;
     error = lodepng::decode(image2, w, h, state2, png);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
     assertColorProfileDataEqual(state, state2);
     ASSERT_EQUALS(32, w);
     ASSERT_EQUALS(32, h);
@@ -2152,12 +2319,12 @@ void testColorProfile()
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
 
     lodepng::State state2;
     std::vector<unsigned char> image2;
     error = lodepng::decode(image2, w, h, state2, png);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
     assertColorProfileDataEqual(state, state2);
     ASSERT_EQUALS(32, w);
     ASSERT_EQUALS(32, h);
@@ -2181,18 +2348,216 @@ void testColorProfile()
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
 
     lodepng::State state2;
     std::vector<unsigned char> image2;
     error = lodepng::decode(image2, w, h, state2, png);
-    assertNoPNGError(error);
+    ASSERT_NO_PNG_ERROR(error);
     assertColorProfileDataEqual(state, state2);
     ASSERT_EQUALS(32, w);
     ASSERT_EQUALS(32, h);
     ASSERT_EQUALS(image.size(), image2.size());
     for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
   }
+}
+
+// r, g, b is input background color to encoder, given in png color model
+// r2, g2, b2 is expected decoded background color, in color model it auto chose if auto_convert is on
+// pixels must be given in mode_raw color format
+void testBkgdChunk(unsigned r, unsigned g, unsigned b,
+                   unsigned r2, unsigned g2, unsigned b2,
+                   const std::vector<unsigned char>& pixels,
+                   unsigned w, unsigned h,
+                   const LodePNGColorMode& mode_raw,
+                   const LodePNGColorMode& mode_png,
+                   bool auto_convert, bool expect_encoder_error = false)
+{
+  unsigned error;
+
+  lodepng::State state;
+  LodePNGInfo& info = state.info_png;
+  lodepng_color_mode_copy(&info.color, &mode_png);
+  lodepng_color_mode_copy(&state.info_raw, &mode_raw);
+  state.encoder.auto_convert = auto_convert;
+
+  info.background_defined = 1;
+  info.background_r = r;
+  info.background_g = g;
+  info.background_b = b;
+
+  std::vector<unsigned char> png;
+  error = lodepng::encode(png, pixels, w, h, state);
+  if(expect_encoder_error)
+  {
+    ASSERT_NOT_EQUALS(0, error);
+    return;
+  }
+  ASSERT_NO_PNG_ERROR(error);
+
+  lodepng::State state2;
+  LodePNGInfo& info2 = state2.info_png;
+  state2.info_raw.colortype = LCT_RGBA;
+  state2.info_raw.bitdepth = 16;
+  unsigned w2, h2;
+  std::vector<unsigned char> image2;
+  error = lodepng::decode(image2, w2, h2, state2, &png[0], png.size());
+  ASSERT_NO_PNG_ERROR(error);
+
+  ASSERT_EQUALS(w, w2);
+  ASSERT_EQUALS(h, h2);
+  ASSERT_EQUALS(1, info2.background_defined);
+  ASSERT_EQUALS(r2, info2.background_r);
+  ASSERT_EQUALS(g2, info2.background_g);
+  ASSERT_EQUALS(b2, info2.background_b);
+
+  // compare pixels in the "raw" color model
+  LodePNGColorMode mode_temp; lodepng_color_mode_init(&mode_temp); mode_temp.bitdepth = 16; mode_temp.colortype = LCT_RGBA;
+  std::vector<unsigned char> image3((w * h * lodepng_get_bpp(&mode_raw) + 7) / 8);
+  error = lodepng_convert(image3.data(), image2.data(), &mode_raw, &mode_temp, w, h);
+  ASSERT_NO_PNG_ERROR(error);
+  ASSERT_EQUALS(pixels.size(), image3.size());
+  for(size_t i = 0; i < image3.size(); i++)
+  {
+    ASSERT_EQUALS((int)image3[i], (int)pixels[i]);
+  }
+}
+
+// r, g, b is input background color to encoder, given in png color model
+// r2, g2, b2 is expected decoded background color, in color model it auto chose if auto_convert is on
+void testBkgdChunk(unsigned r, unsigned g, unsigned b,
+                   unsigned r2, unsigned g2, unsigned b2,
+                   LodePNGColorType type_pixels, unsigned bitdepth_pixels,
+                   LodePNGColorType type_raw, unsigned bitdepth_raw,
+                   LodePNGColorType type_png, unsigned bitdepth_png,
+                   bool auto_convert, bool expect_encoder_error = false)
+{
+  unsigned error;
+  Image image;
+  generateTestImageRequiringColorType16(image, type_pixels, bitdepth_pixels, false);
+
+  LodePNGColorMode mode_raw; lodepng_color_mode_init(&mode_raw); mode_raw.bitdepth = bitdepth_raw; mode_raw.colortype = type_raw;
+  LodePNGColorMode mode_temp; lodepng_color_mode_init(&mode_temp); mode_temp.bitdepth = 16; mode_temp.colortype = LCT_RGBA;
+  LodePNGColorMode mode_png; lodepng_color_mode_init(&mode_png); mode_png.bitdepth = bitdepth_png; mode_png.colortype = type_png;
+  std::vector<unsigned char> temp((image.width * image.height * lodepng_get_bpp(&mode_raw) + 7) / 8);
+  error = lodepng_convert(temp.data(), image.data.data(), &mode_raw, &mode_temp, image.width, image.height);
+  ASSERT_NO_PNG_ERROR(error);
+  image.data = temp;
+
+  testBkgdChunk(r, g, b, r2, g2, b2,
+                image.data, image.width, image.height,
+                mode_raw, mode_png, auto_convert, expect_encoder_error);
+}
+
+void testBkgdChunk()
+{
+  std::cout << "testBkgdChunk" << std::endl;
+  // color param order is: generated, raw, png ( == bKGD)
+  // here generated means: what color values the pixels will get, so what auto_convert will make it choose
+  testBkgdChunk(255, 0, 0, 255, 0, 0, LCT_RGBA, 8, LCT_RGBA, 8, LCT_RGBA, 8, true);
+  testBkgdChunk(255, 0, 0, 255, 0, 0, LCT_RGBA, 8, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 0, 0, 255, 0, 0, LCT_RGB, 8, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 255, 255, 1, 1, 1, LCT_GREY, 1, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 255, 255, 3, 3, 3, LCT_GREY, 2, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 255, 255, 15, 15, 15, LCT_GREY, 4, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 255, 255, 255, 255, 255, LCT_GREY, 8, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(255, 255, 255, 65535, 65535, 65535, LCT_GREY, 16, LCT_RGB, 16, LCT_RGB, 8, true);
+  testBkgdChunk(123, 0, 0, 123, 0, 0, LCT_GREY, 1, LCT_RGB, 8, LCT_RGB, 8, true);
+  testBkgdChunk(170, 170, 170, 2, 2, 2, LCT_GREY, 1, LCT_RGB, 8, LCT_RGB, 8, true); // 170 = value 2 in 2-bit
+
+  // without auto_convert. Note that it will still convert if different colortype is given for raw and png, it's just
+  // not automatic in that case.
+  testBkgdChunk(255, 0, 0, 255, 0, 0, LCT_RGBA, 8, LCT_RGBA, 8, LCT_RGBA, 8, false);
+  testBkgdChunk(60000, 0, 0, 60000, 0, 0, LCT_RGBA, 8, LCT_RGBA, 8, LCT_RGBA, 16, false);
+  testBkgdChunk(128, 128, 128, 128, 128, 128, LCT_GREY, 8, LCT_RGBA, 8, LCT_GREY, 8, false);
+
+  {
+    LodePNGColorMode pal;
+    lodepng_color_mode_init(&pal);
+    for(int i = 0; i < 200; i++) lodepng_palette_add(&pal, i, i / 2, 0, 255);
+    pal.colortype = LCT_PALETTE;
+    pal.bitdepth = 8;
+    int w = 200;
+    int h = 200;
+    std::vector<unsigned char> img(w * h);
+    for(int y = 0; y < h; y++)
+    for(int x = 0; x < w; x++)
+    {
+      img[y * w + x] = x;
+    }
+
+    testBkgdChunk(100, 0, 0, 100, 100, 100, img, w, h, pal, pal, true, false);
+    testBkgdChunk(100, 0, 0, 100, 100, 100, img, w, h, pal, pal, false, false);
+    testBkgdChunk(250, 0, 0, 250, 250, 250, img, w, h, pal, pal, true, true);
+
+    std::vector<unsigned char> fourcolor(w * h);
+    for(int y = 0; y < h; y++)
+    for(int x = 0; x < w; x++)
+    {
+      fourcolor[y * w + x] = x & 3;
+    }
+    // palette index 4 expected for output bKGD: auto_convert should turn the 200-sized
+    // palette in one of size 5, 4 values for the fourcolor image above, and then a 5th for
+    // the bkgd index. The other two 4's actually shouldn't matter, it's not defined what
+    // they should be though currently lodepng sets them also to the palette index...
+    testBkgdChunk(100, 0, 0, 4, 4, 4, fourcolor, w, h, pal, pal, true, false);
+
+
+    std::vector<unsigned char> mini(4);
+    mini[0] = 1; mini[1] = 2; mini[2] = 3; mini[3] = 4;
+    // here we expect RGB color from the output image, since the image is tiny so it chooses to not add PLTE
+    testBkgdChunk(100, 0, 0, 100, 50, 0, mini, 2, 2, pal, pal, true, false);
+
+    lodepng_color_mode_cleanup(&pal);
+  }
+}
+
+void testBkgdChunk2()
+{
+  std::cout << "testBkgdChunk2" << std::endl;
+  Image image;
+  generateTestImageRequiringColorType8(image, LCT_GREY, 2, false);
+
+  // without background, it should choose 2-bit grey for this PNG
+  std::vector<unsigned char> png0;
+  ASSERT_NO_PNG_ERROR(lodepng::encode(png0, image.data, image.width, image.height));
+  lodepng::State state0;
+  unsigned w0, h0;
+  lodepng_inspect(&w0, &h0, &state0, png0.data(), png0.size());
+  ASSERT_EQUALS(2, state0.info_png.color.bitdepth);
+  ASSERT_EQUALS(LCT_GREY, state0.info_png.color.colortype);
+
+  // red background, with auto_convert, it is forced to choose RGB
+  lodepng::State state;
+  LodePNGInfo& info = state.info_png;
+  info.background_defined = 1;
+  info.background_r = 255;
+  info.background_g = 0;
+  info.background_b = 0;
+  std::vector<unsigned char> png1;
+  ASSERT_NO_PNG_ERROR(lodepng::encode(png1, image.data, image.width, image.height, state));
+  lodepng::State state1;
+  unsigned w1, h1;
+  lodepng_inspect(&w1, &h1, &state1, png1.data(), png1.size());
+  ASSERT_EQUALS(8, state1.info_png.color.bitdepth);
+  ASSERT_EQUALS(LCT_RGB, state1.info_png.color.colortype);
+
+  // grey output required, background color also interpreted as grey
+  state.info_raw.colortype = LCT_RGB;
+  state.info_png.color.colortype = LCT_GREY;
+  state.info_png.color.bitdepth = 1;
+  state.encoder.auto_convert = 0;
+  info.background_defined = 1;
+  info.background_r = 1;
+  info.background_g = 1;
+  info.background_b = 1;
+  std::vector<unsigned char> png2;
+  ASSERT_NO_PNG_ERROR(lodepng::encode(png2, image.data, image.width, image.height, state));
+  lodepng::State state2;
+  unsigned w2, h2;
+  lodepng_inspect(&w2, &h2, &state2, png2.data(), png2.size());
+  ASSERT_EQUALS(1, state2.info_png.color.bitdepth);
+  ASSERT_EQUALS(LCT_GREY, state2.info_png.color.colortype);
 }
 
 void doMain()
@@ -2208,6 +2573,8 @@ void doMain()
   testPaletteToPaletteDecode();
   testPaletteToPaletteDecode2();
   testColorProfile();
+  testBkgdChunk();
+  testBkgdChunk2();
 
   //Colors
 #ifndef DISABLE_SLOW
