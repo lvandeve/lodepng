@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2015 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -51,6 +51,7 @@ everything except huge output:
 #include <map>
 #include <sstream>
 #include <algorithm>
+#include <stdio.h>
 
 struct Options
 {
@@ -140,6 +141,34 @@ void displayPNGInfo(const LodePNGInfo& info, const Options& options)
                 << ", " << info.background_b << std::endl;
     }
   }
+  if(info.gama_defined)
+  {
+    std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
+              << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
+  }
+  if(info.chrm_defined)
+  {
+    std::cout << "cHRM defined: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0) << " "
+              << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0) << " "
+              << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0) << " "
+              << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0) << std::endl;
+  }
+  if(info.srgb_defined)
+  {
+    std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
+  }
+  if(info.iccp_defined)
+  {
+    std::cout << "iCCP defined: " << info.iccp_name << std::endl;
+    std::cout << "iCCP profile size: " << info.iccp_profile_size << std::endl;
+    for(size_t i = 0; i < info.iccp_profile_size; i++) {
+      unsigned char c = info.iccp_profile[i];
+      if(c > 32 && c < 127) printf(" %c ", c);
+      else printf("%02x ", c);
+      if(i % 80 == 79 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+    }
+    std::cout << std::endl;
+  }
   std::cout << "Interlace method: " << info.interlace_method << std::endl;
   if(options.show_extra_png_info) std::cout << "Texts: " << info.text_num << std::endl;
   for(size_t i = 0; i < info.text_num; i++)
@@ -184,7 +213,13 @@ void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& 
   std::vector<std::string> names;
   std::vector<size_t> sizes;
   unsigned error = lodepng::getChunkInfo(names, sizes, buffer);
-  if(error) std::cout << "Error while identifying chunks. Listing identified chunks anyway." << std::endl;
+  if(error) {
+    if(!names.empty() && names.back() == "IEND" && sizes.back() == 0) {
+      std::cout << "Corruption or superfluous data detected after the IEND chunk" << std::endl;
+    } else {
+      std::cout << "Error while identifying chunks. Listing identified chunks anyway." << std::endl;
+    }
+  }
 
   if(options.show_chunks2)
   {
@@ -693,14 +728,18 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
 void showHelp()
 {
   std::cout << "pngdetail by Lode Vandevenne\n"
-               "Shows detailed information about a PNG image and its compression\n"
+               "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
                "Usage: pngdetail [filename] [options]...\n"
+               "Without options shows a default set of stats. With options, shows only selected options.\n"
+               "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
                "-s: show PNG file summary on one line\n"
                "-p: show PNG file info\n"
                "-P: show extra PNG file info\n"
                "-l: show palette (if any)\n"
-               "-a: show ascii art rendering of PNG image. Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "-a: show ascii art rendering of PNG image.\n"
+               "    Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "    Symbols  .:-!*+=# indicate greyscale increasingly lighter from black to white.\n"
                "-A: show larger ascii art rendering of PNG image. Adding more A's makes it larger.\n"
                "-#: show every pixel color in CSS RGBA hex format (huge output)\n"
                "-@: show every pixel color with 16-bit per channel (huge output)\n"
@@ -743,7 +782,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
     int get(unsigned short r, unsigned short g, unsigned short b, unsigned short a) const {
       const ColorTree* tree = this;
       int bit = 0;
-      for(bit = 0; bit < 8; bit++)
+      for(bit = 0; bit < 16; bit++)
       {
         int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
         if(!tree->children[i]) return -1;
@@ -761,7 +800,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
     void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int index) {
       ColorTree* tree = this;
       int bit;
-      for(bit = 0; bit < 8; bit++)
+      for(bit = 0; bit < 16; bit++)
       {
         int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
         if(!tree->children[i])
@@ -797,6 +836,11 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   std::vector<unsigned char> image;
   unsigned w, h;
 
+  if(options.show_png_info)
+  {
+    std::cout << "pngdetail version: " << LODEPNG_VERSION_STRING << std::endl;
+  }
+
   unsigned error = lodepng::load_file(buffer, filename); //load the image file with given filename
 
   if(error)
@@ -810,27 +854,45 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
   state.info_raw.bitdepth = 16;
   error = lodepng::decode(image, w, h, state, buffer);
 
-  // In case of checksum errors, disable checksums
-  while (error == 57 || error == 58) {
+  // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
+  while (error) {
+    std::cerr << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+    unsigned error2 = error;
     if(error == 57)
     {
-      std::cout << "Error: invalid CRC checksum" << std::endl;
+      std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       error = lodepng::decode(image, w, h, state, buffer);
     }
-
-    if(error == 58)
+    else if(error == 58)
     {
-      std::cout << "Error: invalid Adler32 checksum" << std::endl;
+      std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       error = lodepng::decode(image, w, h, state, buffer);
     }
-  }
-
-  if(error)
-  {
-    std::cout << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-    // Do not return: some sections may still show partial info about a corrupted PNG.
+    else if(error == 69)
+    {
+      std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
+      state.decoder.ignore_critical = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+    else if(error == 30 || error == 63)
+    {
+      std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
+      state.decoder.ignore_end = 1;
+      error = lodepng::decode(image, w, h, state, buffer);
+    }
+    else
+    {
+      if(error == 0) std::cerr << "This error is unrecoverable" << std::endl;
+      break;  // other error that we cannot ignore
+    }
+    if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
+    if(error == error2)
+    {
+      std::cerr << "Failed to ignore the error" << std::endl;
+      break; // avoid infinite loop if ignoring did not fix the error code
+    }
   }
 
   bool extra_newlines = false;
@@ -853,20 +915,26 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
     std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
     if(options.show_extra_png_info && w > 0 && h > 0)
     {
-      double r = 0, g = 0, b = 0, a = 0;
+      double avg[4] = {0, 0, 0, 0};
+      double min[4] = {999999, 999999, 999999, 999999};
+      double max[4] = {0, 0, 0, 0};
       for(unsigned y = 0; y < h; y++) {
         for(unsigned x = 0; x < w; x++) {
-          r += 256 * image[y * 8 * w + x * 8 + 0] + image[y * 8 * w + x * 8 + 1];
-          g += 256 * image[y * 8 * w + x * 8 + 2] + image[y * 8 * w + x * 8 + 3];
-          b += 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
-          a += 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
+          for(int c = 0; c < 4; c++) {
+            double v = 256 * image[y * 8 * w + x * 8 + c * 2] + image[y * 8 * w + x * 8 + c * 2 + 1];
+            avg[c] += v;
+            min[c] = std::min(min[c], v);
+            max[c] = std::max(max[c], v);
+          }
         }
       }
-      r /= (w * h * 257.0);
-      g /= (w * h * 257.0);
-      b /= (w * h * 257.0);
-      a /= (w * h * 257.0);
-      std::cout << "Average color: " << r << ", " << g << ", " << b << ", " << a << std::endl;
+      for(int c = 0; c < 4; c++) {
+        avg[c] /= (w * h * 257.0);
+        min[c] /= 257.0;
+        max[c] /= 257.0;
+      }
+      std::cout << "Average color: " << avg[0] << ", " << avg[1] << ", " << avg[2] << ", " << avg[3] << std::endl;
+      std::cout << "Color ranges: " << min[0] << "-" << max[0] << ", " << min[1] << "-" << max[1] << ", " << min[2] << "-" << max[2] << ", " << min[3] << "-" << max[3] << std::endl;
     }
 
     displayPNGInfo(state.info_png, options);
@@ -970,9 +1038,16 @@ int main(int argc, char *argv[])
           options.use_hex = true;
           std::cout << std::hex;
         }
+        else if(c == '-')
+        {
+          if(s != "--help") std::cout << "Unknown flag: " << s << ". Use -h for help" << std::endl;
+          showHelp();
+          return 0;
+        }
         else
         {
           std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
+          showHelp();
           return 0;
         }
 
@@ -999,7 +1074,10 @@ int main(int argc, char *argv[])
 
   for(size_t i = 0; i < filenames.size(); i++)
   {
-    if(filenames.size() > 1) std::cout << filenames[i] << std::endl;
+    if(filenames.size() > 1) {
+      if(i > 0) std::cout << std::endl;
+      std::cout << filenames[i] << ":" << std::endl;
+    }
     showFileInfo(filenames[i], options);
   }
 }

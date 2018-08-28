@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2014 Lode Vandevenne
+Copyright (c) 2005-2018 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -52,9 +52,9 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
     if(std::string(type).size() != 4) return 1;
 
     unsigned length = lodepng_chunk_length(chunk);
-    if(chunk + length + 12 > end) return 1;
     names.push_back(type);
     sizes.push_back(length);
+    if(chunk + length + 12 > end) return 1;
 
     next = lodepng_chunk_next_const(chunk);
     if (next <= chunk) return 1; // integer overflow
@@ -185,7 +185,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
   {
     char type[5];
     lodepng_chunk_type(type, chunk);
-    if(std::string(type).size() != 4) return 1; //Probably not a PNG file
+    if(std::string(type).size() != 4) break; //Probably not a PNG file
 
     if(std::string(type) == "IDAT")
     {
@@ -203,11 +203,11 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
     }
 
     next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) return 1; // integer overflow
+    if (next <= chunk) break; // integer overflow
     chunk = next;
   }
 
-  //Decompress all IDAT data
+  //Decompress all IDAT data (if the while loop ended early, this might fail)
   std::vector<unsigned char> data;
   error = lodepng::decompress(data, &zdata[0], zdata.size());
 
