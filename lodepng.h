@@ -1,5 +1,5 @@
 /*
-LodePNG version 20180819
+LodePNG version 20180910
 
 Copyright (c) 2005-2018 Lode Vandevenne
 
@@ -770,6 +770,20 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h,
                          const unsigned char* in, size_t insize);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
+/*
+Reads one metadata chunk (other than IHDR) of the PNG file and outputs what it
+read in the state. Returns error code on failure.
+Use lodepng_inspect first with a new state, then e.g. lodepng_chunk_find_const
+to find the desired chunk type, and if non null use lodepng_inspect_chunk (with
+chunk_pointer - start_of_file as pos).
+Supports most metadata chunks from the PNG standard (gAMA, bKGD, tEXt, ...).
+Ignores unsupported, unknown, non-metadata or IHDR chunks (without error).
+Requirements: &in[pos] must point to start of a chunk, must use regular
+lodepng_inspect first since format of most other chunks depends on IHDR, and if
+there is a PLTE chunk, that one must be inspected before tRNS or bKGD.
+*/
+unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
+                               const unsigned char* in, size_t insize);
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /*This function allocates the out buffer with standard malloc and stores the size in *outsize.*/
@@ -788,7 +802,7 @@ the first byte of the 4 length bytes.
 
 In the PNG file format, chunks have the following format:
 -4 bytes length: length of the data of the chunk in bytes (chunk itself is 12 bytes longer)
--4 bytes chunk name (ASCII a-z,A-Z only, see below)
+-4 bytes chunk type (ASCII a-z,A-Z only, see below)
 -length bytes of data (may be 0 bytes if length was 0)
 -4 bytes of CRC, computed on chunk name + data
 
@@ -835,13 +849,22 @@ unsigned lodepng_chunk_check_crc(const unsigned char* chunk);
 void lodepng_chunk_generate_crc(unsigned char* chunk);
 
 /*
-Iterate to next chunks, allows iterating through all chunks of the PNG file. Expects at least 4 readable
-bytes of memory in the input pointer. Will output pointer to the start of the next chunk or the end of the
-file if there is no more chunk after this. Start this process at the 8th byte of the PNG file. In a non-corrupt
-PNG file, the last chunk should have name "IEND".
+Iterate to next chunks, allows iterating through all chunks of the PNG file.
+Input must be at the beginning of a chunk (result of a previous lodepng_chunk_next call,
+or the 8th byte of a PNG file which always has the first chunk), or alternatively may
+point to the first byte of the PNG file (which is not a chunk but the magic header, the
+function will then skip over it and return the first real chunk).
+Expects at least 8 readable bytes of memory in the input pointer.
+Will output pointer to the start of the next chunk or the end of the file if there
+is no more chunk after this. Start this process at the 8th byte of the PNG file.
+In a non-corrupt PNG file, the last chunk should have name "IEND".
 */
 unsigned char* lodepng_chunk_next(unsigned char* chunk);
 const unsigned char* lodepng_chunk_next_const(const unsigned char* chunk);
+
+/*Finds the first chunk with the given type in the range [chunk, end), or returns NULL if not found.*/
+unsigned char* lodepng_chunk_find(unsigned char* chunk, const unsigned char* end, const char type[5]);
+const unsigned char* lodepng_chunk_find_const(const unsigned char* chunk, const unsigned char* end, const char type[5]);
 
 /*
 Appends chunk to the data in out. The given chunk should already have its chunk header.
@@ -1738,8 +1761,9 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
-*) 19 aug 2018 (!): fixed color mode bKGD is encoded with and made it use palette
-   index in case of palette.
+*) 10 sep 2018: added way to inspect metadata chunks without full decoding.
+*) 19 aug 2018 (!): fixed color mode bKGD is encoded with and made it use
+   palette index in case of palette.
 *) 10 aug 2018 (!): added support for gAMA, cHRM, sRGB and iCCP chunks. This
    change is backwards compatible unless you relied on unknown_chunks for those.
 *) 11 jun 2018: less restrictive check for pixel size integer overflow

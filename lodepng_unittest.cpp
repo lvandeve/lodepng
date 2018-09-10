@@ -84,7 +84,7 @@ clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wa
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
 cat lodepng.cpp | grep iostream
-cat lodepng.cpp | grep "#include <"
+cat lodepng.cpp | grep "#include"
 
 *) check that no plain "free", "malloc" and "realloc" used, but the lodepng_* versions instead
 
@@ -183,7 +183,7 @@ void assertNoError(unsigned error)
 {\
   assertNotEquals(e, v, std::string() + "line " + STR(__LINE__) + ": " + STR(v) + " ASSERT_NOT_EQUALS(" + #e + ", " + #v + ")");\
 }
-
+#define ASSERT_STRING_EQUALS(e, v) ASSERT_EQUALS(std::string(e), std::string(v))
 #define ASSERT_NO_PNG_ERROR_MSG(error, message) assertNoPNGError(error, std::string("line ") + STR(__LINE__) + (std::string(message).empty() ? std::string("") : (": " + std::string(message))))
 #define ASSERT_NO_PNG_ERROR(error) ASSERT_NO_PNG_ERROR_MSG(error, std::string(""))
 
@@ -1245,35 +1245,106 @@ void testComplexPNG()
   std::vector<unsigned char> png;
   createComplexPNG(png);
 
+  {
+    lodepng::State state;
+    LodePNGInfo& info = state.info_png;
+    unsigned w, h;
+    std::vector<unsigned char> image;
+    unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
+    ASSERT_NO_PNG_ERROR(error);
+
+    ASSERT_EQUALS(16, w);
+    ASSERT_EQUALS(17, h);
+    ASSERT_EQUALS(1, info.background_defined);
+    ASSERT_EQUALS(127, info.background_r);
+    ASSERT_EQUALS(1, info.time_defined);
+    ASSERT_EQUALS(2012, info.time.year);
+    ASSERT_EQUALS(1, info.time.month);
+    ASSERT_EQUALS(2, info.time.day);
+    ASSERT_EQUALS(3, info.time.hour);
+    ASSERT_EQUALS(4, info.time.minute);
+    ASSERT_EQUALS(5, info.time.second);
+    ASSERT_EQUALS(1, info.phys_defined);
+    ASSERT_EQUALS(1, info.phys_x);
+    ASSERT_EQUALS(2, info.phys_y);
+    ASSERT_EQUALS(1, info.phys_unit);
+
+    std::string chunknames = extractChunkNames(png);
+    //std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME tEXt tEXt tEXt iTXt iTXt uNKc IEND";
+    std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME zTXt zTXt tEXt iTXt iTXt uNKc IEND";
+    ASSERT_EQUALS(expectednames, chunknames);
+
+    ASSERT_EQUALS(3, info.text_num);
+    ASSERT_STRING_EQUALS("key0", info.text_keys[0]);
+    ASSERT_STRING_EQUALS("string0", info.text_strings[0]);
+    ASSERT_STRING_EQUALS("key1", info.text_keys[1]);
+    ASSERT_STRING_EQUALS("string1", info.text_strings[1]);
+    ASSERT_STRING_EQUALS("LodePNG", info.text_keys[2]);
+    ASSERT_STRING_EQUALS(LODEPNG_VERSION_STRING, info.text_strings[2]);
+
+    ASSERT_EQUALS(2, info.itext_num);
+    ASSERT_STRING_EQUALS("ikey0", info.itext_keys[0]);
+    ASSERT_STRING_EQUALS("ilangtag0", info.itext_langtags[0]);
+    ASSERT_STRING_EQUALS("itranskey0", info.itext_transkeys[0]);
+    ASSERT_STRING_EQUALS("istring0", info.itext_strings[0]);
+    ASSERT_STRING_EQUALS("ikey1", info.itext_keys[1]);
+    ASSERT_STRING_EQUALS("ilangtag1", info.itext_langtags[1]);
+    ASSERT_STRING_EQUALS("itranskey1", info.itext_transkeys[1]);
+    ASSERT_STRING_EQUALS("istring1", info.itext_strings[1]);
+
+    // TODO: test if unknown chunks listed too
+  }
+
+
+  // Test that if read_text_chunks is disabled, we do not get the texts
+  {
+    lodepng::State state;
+    state.decoder.read_text_chunks = 0;
+    unsigned w, h;
+    std::vector<unsigned char> image;
+    unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
+    ASSERT_NO_PNG_ERROR(error);
+
+    ASSERT_EQUALS(0, state.info_png.text_num);
+    ASSERT_EQUALS(0, state.info_png.itext_num);
+
+    // But we should still get other values.
+    ASSERT_EQUALS(2012, state.info_png.time.year);
+  }
+}
+
+// Tests lodepng_inspect_chunk, and also lodepng_chunk_find to find the chunk to inspect
+void testInspectChunk()
+{
+  std::cout << "testInspectChunk" << std::endl;
+
+  std::vector<unsigned char> png;
+  createComplexPNG(png);
+
+  const unsigned char* chunk;
   lodepng::State state;
   LodePNGInfo& info = state.info_png;
-  unsigned w, h;
-  std::vector<unsigned char> image;
-  unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
-  ASSERT_NO_PNG_ERROR(error);
-
-  ASSERT_EQUALS(16, w);
-  ASSERT_EQUALS(17, h);
-  ASSERT_EQUALS(1, info.background_defined);
-  ASSERT_EQUALS(127, info.background_r);
+  state.decoder.read_text_chunks = 0;
+  lodepng_inspect(0, 0, &state, png.data(), png.size());
+  chunk = lodepng_chunk_find(png.data(), png.data() + png.size(), "tIME");
+  ASSERT_NOT_EQUALS((const unsigned char*)0, chunk);
+  ASSERT_EQUALS(0, info.time_defined);
+  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
   ASSERT_EQUALS(1, info.time_defined);
-  ASSERT_EQUALS(2012, info.time.year);
+  ASSERT_EQUALS(2012, state.info_png.time.year);
   ASSERT_EQUALS(1, info.time.month);
   ASSERT_EQUALS(2, info.time.day);
   ASSERT_EQUALS(3, info.time.hour);
   ASSERT_EQUALS(4, info.time.minute);
   ASSERT_EQUALS(5, info.time.second);
-  ASSERT_EQUALS(1, info.phys_defined);
-  ASSERT_EQUALS(1, info.phys_x);
-  ASSERT_EQUALS(2, info.phys_y);
-  ASSERT_EQUALS(1, info.phys_unit);
 
-  std::string chunknames = extractChunkNames(png);
-  //std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME tEXt tEXt tEXt iTXt iTXt uNKc IEND";
-  std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME zTXt zTXt tEXt iTXt iTXt uNKc IEND";
-  ASSERT_EQUALS(expectednames, chunknames);
-
-  //TODO: test strings and unknown chunks too
+  ASSERT_EQUALS(0, info.text_num);
+  chunk = lodepng_chunk_find_const(png.data(), png.data() + png.size(), "zTXt");
+  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
+  ASSERT_EQUALS(1, info.text_num);
+  chunk = lodepng_chunk_find_const(chunk, png.data() + png.size(), "zTXt");
+  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
+  ASSERT_EQUALS(2, info.text_num);
 }
 
 //test that, by default, it chooses filter type zero for all scanlines if the image has a palette
@@ -2567,6 +2638,7 @@ void doMain()
   testPngSuiteTiny();
   testPaletteFilterTypesZero();
   testComplexPNG();
+  testInspectChunk();
   testPredefinedFilters();
   testFuzzing();
   testEncoderErrors();
