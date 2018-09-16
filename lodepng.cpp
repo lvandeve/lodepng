@@ -2637,6 +2637,15 @@ unsigned lodepng_color_mode_copy(LodePNGColorMode* dest, const LodePNGColorMode*
   return 0;
 }
 
+LodePNGColorMode lodepng_color_mode_make(LodePNGColorType colortype, unsigned bitdepth)
+{
+  LodePNGColorMode result;
+  lodepng_color_mode_init(&result);
+  result.colortype = colortype;
+  result.bitdepth = bitdepth;
+  return result;
+}
+
 static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColorMode* b)
 {
   size_t i;
@@ -2656,20 +2665,6 @@ static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColo
   }
   return 1;
 }
-
-#ifdef LODEPNG_COMPILE_ENCODER
-#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
-/* Makes a temporary LodePNGColorMode that does not need cleanup (no palette) */
-static LodePNGColorMode lodepng_color_mode_make(LodePNGColorType colortype, unsigned bitdepth)
-{
-  LodePNGColorMode result;
-  lodepng_color_mode_init(&result);
-  result.colortype = colortype;
-  result.bitdepth = bitdepth;
-  return result;
-}
-#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-#endif /*LODEPNG_COMPILE_ENCODER*/
 
 void lodepng_palette_clear(LodePNGColorMode* info)
 {

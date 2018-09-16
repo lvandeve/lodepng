@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 
 #include "lodepng_util.h"
 #include <iostream>
+#include "math.h"
 
 namespace lodepng
 {
@@ -289,6 +290,214 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits)
   else if(bits == 1) return (data[i / 8] >> (i % 8)) & 1;
   else return 0;
 }
+
+
+
+
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+// Multiplies values with 3x3 matrix
+void mulMatrix(float* x2, float* y2, float* z2, const float* m, float x, float y, float z)
+{
+  *x2 = x * m[0] + y * m[1] + z * m[2];
+  *y2 = x * m[3] + y * m[4] + z * m[5];
+  *z2 = x * m[6] + y * m[7] + z * m[8];
+}
+
+// Inverts 3x3 matrix in place
+void invMatrix(float* matrix)
+{
+  float e0 = matrix[4] * matrix[8] - matrix[5] * matrix[7];
+  float e3 = matrix[5] * matrix[6] - matrix[3] * matrix[8];
+  float e6 = matrix[3] * matrix[7] - matrix[4] * matrix[6];
+  // inverse determinant
+  float f = 1.0f / (matrix[0] * e0 + matrix[1] * e3 + matrix[2] * e6);
+  float result[9];
+  result[0] = e0 * f;
+  result[1] = (matrix[2] * matrix[7] - matrix[1] * matrix[8]) * f;
+  result[2] = (matrix[1] * matrix[5] - matrix[2] * matrix[4]) * f;
+  result[3] = e3 * f;
+  result[4] = (matrix[0] * matrix[8] - matrix[2] * matrix[6]) * f;
+  result[5] = (matrix[3] * matrix[2] - matrix[0] * matrix[5]) * f;
+  result[6] = e6 * f;
+  result[7] = (matrix[6] * matrix[1] - matrix[0] * matrix[7]) * f;
+  result[8] = (matrix[0] * matrix[4] - matrix[3] * matrix[1]) * f;
+  for(int i = 0; i < 9; i++) matrix[i] = result[i];
+}
+
+// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace
+void getChrmMatrix(float* m, float wx, float wy, float rx, float ry, float gx, float gy, float bx, float by)
+{
+  float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
+  float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
+  float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
+  float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
+  float t[9] = {rX, gX, bX, rY, gY, bY, rZ, gZ, bZ};
+  invMatrix(t);
+  float rs, gs, bs;
+  mulMatrix(&rs, &gs, &bs, t, wX, wY, wZ);
+  float r[9] = {rs * rX, gs * gX, bs * bX, rs * rY, gs * gY, bs * bY, rs * rZ, gs * gZ, bs * bZ};
+  for(int i = 0; i < 9; i++) m[i] = r[i];
+}
+
+unsigned convertToXYZ(float* out, const unsigned char* in,
+                      unsigned w, unsigned h, const LodePNGColorMode* mode_in,
+                      const LodePNGInfo* info)
+{
+  std::vector<unsigned char> data(w * h * 8);
+  LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
+  lodepng_convert(data.data(), in, &mode16, mode_in, w, h);
+
+  if(info->iccp_defined && !info->gama_defined && !info->chrm_defined)
+  {
+    return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
+  }
+
+  size_t n = w * h;
+  for(unsigned i = 0; i < n; i++)
+  {
+    for(int c = 0; c < 4; c++)
+    {
+      size_t j = i * 8 + c * 2;
+      out[i * 4 + c] = (data[j + 0] * 256 + data[j + 1]) / 65535.0;
+    }
+  }
+
+  if(info->gama_defined && !info->srgb_defined)
+  {
+    float gamma = 100000.0f / info->gama_gamma;
+    for(unsigned i = 0; i < n; i++)
+    {
+      for(int c = 0; c < 3; c++)
+      {
+        out[i * 4 + c] = std::pow(out[i * 4 + c], gamma);
+      }
+    }
+  }
+  else
+  {
+    for(unsigned i = 0; i < n; i++)
+    {
+      for(int c = 0; c < 3; c++)
+      {
+        // sRGB gamma expand
+        float& v = out[i * 4 + c];
+        if(v < 0.04045) v = c / 12.92;
+        else v = std::pow((v + 0.055) / 1.055, 2.4);
+      }
+    }
+  }
+
+  if(info->chrm_defined && !info->srgb_defined)
+  {
+    float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
+    float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
+    float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
+    float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
+    float m[9];
+    getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by);
+    for(unsigned i = 0; i < n; i++)
+    {
+      size_t j = i * 4;
+      mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
+    }
+  }
+  else
+  {
+    // linear sRGB to XYZ matrix
+    float m[9] = {0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041};
+    for(unsigned i = 0; i < n; i++)
+    {
+      size_t j = i * 4;
+      mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
+    }
+  }
+
+  return 0; // ok
+}
+
+unsigned convertFromXYZ(unsigned char* out, const float* in,
+                        unsigned w, unsigned h, const LodePNGColorMode* mode_out,
+                        const LodePNGInfo* info)
+{
+  std::vector<float> im(in, in + w * h * 4);
+  std::vector<unsigned char> data(w * h * 8);
+
+  if(info->iccp_defined && !info->gama_defined && !info->chrm_defined)
+  {
+    return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
+  }
+
+  size_t n = w * h;
+
+  if(info->chrm_defined && !info->srgb_defined)
+  {
+    float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
+    float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
+    float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
+    float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
+    float m[9];
+    getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by);
+    invMatrix(m);
+    for(unsigned i = 0; i < n; i++)
+    {
+      size_t j = i * 4;
+      mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
+    }
+  }
+  else
+  {
+    // XYZ to linear sRGB matrix
+    float m[9] = {3.2404542, -1.5371385, -0.4985314, -0.9692660, 1.8760108, 0.0415560,
+                  0.0556434, -0.2040259, 1.0572252};
+    for(unsigned i = 0; i < n; i++)
+    {
+      size_t j = i * 4;
+      mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
+    }
+  }
+
+  if(info->gama_defined && !info->srgb_defined)
+  {
+    float gamma = info->gama_gamma / 100000.0f;
+    for(unsigned i = 0; i < n; i++)
+    {
+      for(int c = 0; c < 3; c++)
+      {
+        im[i * 4 + c] = std::pow(im[i * 4 + c], gamma);
+      }
+    }
+  }
+  else
+  {
+    for(unsigned i = 0; i < n; i++)
+    {
+      for(int c = 0; c < 3; c++)
+      {
+        // sRGB gamma compress
+        float& v = im[i * 4 + c];
+        if(v < 0.0031308) v *= 12.92;
+        else v = 1.055 * std::pow(v, 1/2.4) - 0.055;
+      }
+    }
+  }
+
+  for(unsigned i = 0; i < n; i++)
+  {
+    for(int c = 0; c < 4; c++)
+    {
+      size_t j = i * 8 + c * 2;
+      int i16 = (int)(0.5 + 65535 * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
+      data[j + 0] = i16 >> 8;
+      data[j + 1] = i16 & 255;
+    }
+  }
+
+  LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
+  lodepng_convert(out, data.data(), mode_out, &mode16, w, h);
+
+  return 0; // ok
+}
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 //This uses a stripped down version of picoPNG to extract detailed zlib information while decompressing.
 static const unsigned long LENBASE[29] =

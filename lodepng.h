@@ -360,6 +360,8 @@ void lodepng_color_mode_init(LodePNGColorMode* info);
 void lodepng_color_mode_cleanup(LodePNGColorMode* info);
 /*return value is error code (0 means no error)*/
 unsigned lodepng_color_mode_copy(LodePNGColorMode* dest, const LodePNGColorMode* source);
+/* Makes a temporary LodePNGColorMode that does not need cleanup (no palette) */
+LodePNGColorMode lodepng_color_mode_make(LodePNGColorType colortype, unsigned bitdepth);
 
 void lodepng_palette_clear(LodePNGColorMode* info);
 /*add 1 color to the palette*/

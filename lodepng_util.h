@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 
 /*
 Extra C++ utilities for LodePNG, for convenience.
+Not part of the stable API of lodepng, more loose separate utils.
 */
 
 #ifndef LODEPNG_UTIL_H
@@ -114,6 +115,45 @@ E.g. if bits is 4 and i is 5, it returns the 5th nibble (4-bit group), which
 is the second half of the 3th byte, in big endian (PNG's endian order).
 */
 int getPaletteValue(const unsigned char* data, size_t i, int bits);
+
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+/*
+Converts the RGB color to XYZ color given the color profile chunks in the PNG info.
+The data in "in" is in the format given by mode_in. The output data must have 4 channels (X,Y,Z,alpha),
+4 values per pixel allocated. The output will get all values normally in range 0-1 (not 0-255).
+Supports the gAMA, cHRM and sRGB colorimetry chunks, but not iCCP. If no colometry chunks are present,
+it assumes the format is sRGB.
+Some background:
+A PNG image contains RGB data inside, but this data may use a specific RGB model (by default sRGB but
+different if colorimetry chunks are given).
+The computer display and/or operating system can have another RGB model (typically sRGB, but not necessarily).
+The PNG chunks describe what format the data inside has, not the format of the display. To correctly
+display a PNG image on a display, a conversion is needed if their models differ.
+Some options to achieve that are:
+-If your use case already supports color management on its own, you can give it the RGB values straight from
+ the PNG image and give it the information from the cHRM, gAMA, sRGB and iCCP chunks (which you can find
+ in the LodePNGInfo), and the color management should then handle it correctly for you. You don't need
+ this function here in that case.
+-If your use case does not support color management, you may instead want to give it the RGB values in a
+ consistent color model, such as sRGB, but the PNG does not necessarily have it in this desired model.
+ In that case, use the function below (or similar other function from elsewhere, e.g. one that supports
+ iCCP too) to convert it to the absolute color space XYZ, and then you can convert it from XYZ to sRGB
+ or any other desired color space easily (since XYZ is absolute), e.g. with the counterpart convertFromXYZ
+ further below.
+*/
+unsigned convertToXYZ(float* out, const unsigned char* in,
+                      unsigned w, unsigned h, const LodePNGColorMode* mode_in,
+                      const LodePNGInfo* info);
+
+/*
+Converts from floating point XYZ with alpha channel to PNG color mode in the format
+of mode_out and with the colorimetry defined in info. Only supports cHRM and gAMA data.
+Does the opposite of convertToXYZ.
+*/
+unsigned convertFromXYZ(unsigned char* out, const float* in,
+                        unsigned w, unsigned h, const LodePNGColorMode* mode_out,
+                        const LodePNGInfo* info);
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 /*
 The information for extractZlibInfo.
