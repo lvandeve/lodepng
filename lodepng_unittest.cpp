@@ -31,8 +31,8 @@ Testing instructions:
 *) Ensure no tests commented out below or early return in doMain
 
 *) Compile with g++ or clang++ with all warnings and run the unit test
-g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
-clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ./a.out
+g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
+clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
@@ -301,7 +301,7 @@ void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorT
 
   if(colorType == LCT_PALETTE)
   {
-    w = 1 << bitDepth;
+    w = 1u << bitDepth;
     h = 256; // ensure it'll really choose palette, not omit it due to small image size
     image.data.resize(w * h * 8);
     for(size_t y = 0; y < h; y++)
@@ -334,7 +334,7 @@ void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorT
   else if(grey)
   {
     w = 2;
-    unsigned v = 255 / ((1 << bitDepth) - 1); // value that forces at least this bitdepth
+    unsigned v = 255u / ((1u << bitDepth) - 1u); // value that forces at least this bitdepth
     image.data.resize(w * h * 8);
     image.data[0] = v; image.data[1] = v;
     image.data[2] = v; image.data[3] = v;
@@ -383,7 +383,7 @@ void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorTy
 
   if(colorType == LCT_PALETTE)
   {
-    w = 1 << bitDepth;
+    w = 1u << bitDepth;
     h = 256; // ensure it'll really choose palette, not omit it due to small image size
     image.data.resize(w * h * 4);
     for(size_t y = 0; y < h; y++)
@@ -401,7 +401,7 @@ void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorTy
   else if(grey)
   {
     w = 2;
-    unsigned v = 255 / ((1 << bitDepth) - 1); // value that forces at least this bitdepth
+    unsigned v = 255u / ((1u << bitDepth) - 1u); // value that forces at least this bitdepth
     image.data.resize(w * h * 4);
     image.data[0] = v;
     image.data[1] = v;
@@ -1329,7 +1329,7 @@ void testInspectChunk()
   chunk = lodepng_chunk_find(png.data(), png.data() + png.size(), "tIME");
   ASSERT_NOT_EQUALS((const unsigned char*)0, chunk);
   ASSERT_EQUALS(0, info.time_defined);
-  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
+  lodepng_inspect_chunk(&state, (size_t)(chunk - png.data()), png.data(), png.size());
   ASSERT_EQUALS(1, info.time_defined);
   ASSERT_EQUALS(2012, state.info_png.time.year);
   ASSERT_EQUALS(1, info.time.month);
@@ -1340,10 +1340,10 @@ void testInspectChunk()
 
   ASSERT_EQUALS(0, info.text_num);
   chunk = lodepng_chunk_find_const(png.data(), png.data() + png.size(), "zTXt");
-  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
+  lodepng_inspect_chunk(&state, (size_t)(chunk - png.data()), png.data(), png.size());
   ASSERT_EQUALS(1, info.text_num);
   chunk = lodepng_chunk_find_const(chunk, png.data() + png.size(), "zTXt");
-  lodepng_inspect_chunk(&state, chunk - png.data(), png.data(), png.size());
+  lodepng_inspect_chunk(&state, (size_t)(chunk - png.data()), png.data(), png.size());
   ASSERT_EQUALS(2, info.text_num);
 }
 
@@ -2548,11 +2548,11 @@ void testBkgdChunk()
     for(int i = 0; i < 200; i++) lodepng_palette_add(&pal, i, i / 2, 0, 255);
     pal.colortype = LCT_PALETTE;
     pal.bitdepth = 8;
-    int w = 200;
-    int h = 200;
+    unsigned w = 200;
+    unsigned h = 200;
     std::vector<unsigned char> img(w * h);
-    for(int y = 0; y < h; y++)
-    for(int x = 0; x < w; x++)
+    for(unsigned y = 0; y < h; y++)
+    for(unsigned x = 0; x < w; x++)
     {
       img[y * w + x] = x;
     }
@@ -2562,8 +2562,8 @@ void testBkgdChunk()
     testBkgdChunk(250, 0, 0, 250, 250, 250, img, w, h, pal, pal, true, true);
 
     std::vector<unsigned char> fourcolor(w * h);
-    for(int y = 0; y < h; y++)
-    for(int x = 0; x < w; x++)
+    for(unsigned y = 0; y < h; y++)
+    for(unsigned x = 0; x < w; x++)
     {
       fourcolor[y * w + x] = x & 3;
     }

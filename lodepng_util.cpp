@@ -355,7 +355,7 @@ unsigned convertToXYZ(float* out, const unsigned char* in,
   size_t n = w * h;
   for(unsigned i = 0; i < n; i++)
   {
-    for(int c = 0; c < 4; c++)
+    for(unsigned c = 0; c < 4; c++)
     {
       size_t j = i * 8 + c * 2;
       out[i * 4 + c] = (data[j + 0] * 256 + data[j + 1]) / 65535.0;
@@ -367,7 +367,7 @@ unsigned convertToXYZ(float* out, const unsigned char* in,
     float gamma = 100000.0f / info->gama_gamma;
     for(unsigned i = 0; i < n; i++)
     {
-      for(int c = 0; c < 3; c++)
+      for(unsigned c = 0; c < 3; c++)
       {
         out[i * 4 + c] = std::pow(out[i * 4 + c], gamma);
       }
@@ -377,7 +377,7 @@ unsigned convertToXYZ(float* out, const unsigned char* in,
   {
     for(unsigned i = 0; i < n; i++)
     {
-      for(int c = 0; c < 3; c++)
+      for(unsigned c = 0; c < 3; c++)
       {
         // sRGB gamma expand
         float& v = out[i * 4 + c];
@@ -461,7 +461,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
     float gamma = info->gama_gamma / 100000.0f;
     for(unsigned i = 0; i < n; i++)
     {
-      for(int c = 0; c < 3; c++)
+      for(unsigned c = 0; c < 3; c++)
       {
         im[i * 4 + c] = std::pow(im[i * 4 + c], gamma);
       }
@@ -471,7 +471,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
   {
     for(unsigned i = 0; i < n; i++)
     {
-      for(int c = 0; c < 3; c++)
+      for(unsigned c = 0; c < 3; c++)
       {
         // sRGB gamma compress
         float& v = im[i * 4 + c];
@@ -483,10 +483,10 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
 
   for(unsigned i = 0; i < n; i++)
   {
-    for(int c = 0; c < 4; c++)
+    for(unsigned c = 0; c < 4; c++)
     {
       size_t j = i * 8 + c * 2;
-      int i16 = (int)(0.5 + 65535 * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
+      int i16 = (int)(0.5 + 65535.0 * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
       data[j + 0] = i16 >> 8;
       data[j + 1] = i16 & 255;
     }
