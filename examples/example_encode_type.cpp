@@ -30,7 +30,7 @@ freely, subject to the following restrictions:
 /*
 This example shows how to enforce a certain color type of the PNG image when
 encoding a PNG (because by default, LodePNG automatically chooses an optimal
-color type, no matter what your raw data's colro type is)
+color type, no matter what your raw data's color type is)
 */
 
 #include <cmath>
