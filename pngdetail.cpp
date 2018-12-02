@@ -23,7 +23,7 @@ freely, subject to the following restrictions:
     distribution.
 */
 
-//g++ lodepng_util.cpp lodepng.cpp pngdetail.cpp -ansi -pedantic -Wall -Wextra -o pngdetail -O3
+//g++ pngdetail.cpp lodepng_util.cpp lodepng.cpp -ansi -pedantic -Wall -Wextra -o pngdetail -O3
 
 
 /*
@@ -49,21 +49,33 @@ everything except huge output:
 #include <iostream>
 #include <iomanip>
 #include <map>
+#include <cmath>
 #include <sstream>
 #include <algorithm>
 #include <stdio.h>
+#include <inttypes.h>
+
+enum RenderMode {
+  RM_ASCII,
+  RM_HEX, // CSS
+  RM_HEX16,
+  RM_PAL // palette indices (only rendered if image is palette based)
+};
 
 struct Options
 {
-  bool show_png_summary; //show filesize, pixels and color type on single line
+  bool verbose;
+  bool show_one_line_summary; //show filesize, pixels and color type on single line
+  bool show_header;
+  bool show_color_stats;
   bool show_png_info; //show things like filesize, width, height, palette size, ...
-  bool show_extra_png_info; //in addition to show_png_info, show extra info
   bool show_palette; //show all palette values
   bool show_palette_pixels; //show palette indices of pixels
-  bool show_ascii_art; //show ascii art image of the whole PNG
-  int ascii_art_size;
-  bool show_colors_hex; //show all pixel colors in RGBA CSS hex format
-  bool show_colors_hex_16; //show all pixels colors with 16-bit per channel RGBA info
+
+  bool show_render;
+  RenderMode rendermode;
+  int rendersize;
+
   bool show_chunks; //show the PNG chunk names and their lengths
   bool show_chunks2; //alternate form to print chunks
   bool show_filters; //show the PNG filter of each scanline (not supported for interlaced PNGs currently)
@@ -73,12 +85,93 @@ struct Options
   bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
   bool use_hex; //show some sizes or positions in hexadecimal
 
-  Options() : show_png_summary(false), show_png_info(false), show_extra_png_info(false),
+  Options() : verbose(false), show_one_line_summary(false), show_header(false),
+              show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
-              show_ascii_art(false), ascii_art_size(40), show_colors_hex(false), show_colors_hex_16(false),
+              show_render(false), rendermode(RM_ASCII), rendersize(80),
               show_chunks(false), show_chunks2(false), show_filters(false),
               zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false)
   {
+  }
+};
+
+unsigned inspect_chunk_by_name(const unsigned char* data, const unsigned char* end,
+                               lodepng::State& state, const char type[5])
+{
+  const unsigned char* p = lodepng_chunk_find_const(data, end, type);
+  return lodepng_inspect_chunk(&state, p - data, data, end - data);
+}
+
+// Lazy loads the raw file, inspected header or entire image as needed
+struct Data
+{
+  std::string filename;
+  std::vector<unsigned char> buffer;
+  std::vector<unsigned char> pixels; // 16-bit
+  unsigned w;
+  unsigned h;
+  lodepng::State state;
+  unsigned error;
+  bool inspected;
+
+  Data(const std::string& filename) : filename(filename), error(0), inspected(false) {}
+
+
+  // Load the file if not already loaded
+  void loadFile()
+  {
+    if(buffer.empty())
+    {
+      error = lodepng::load_file(buffer, filename); //load the image file with given filename
+    }
+  }
+
+  // Load header info (plus a few more nearby light chunks) if not already loaded, and the file if needed
+  void loadInspect()
+  {
+    if(inspected) return;
+    inspected = true;
+    loadFile();
+    if(error) return;
+    const unsigned char* data = &buffer[0];
+    error = lodepng_inspect(&w, &h, &state, data, buffer.size());
+    if(error) return;
+    // end before first IDAT chunk: do not parse more than first part of file for all this.
+    const unsigned char* end = lodepng_chunk_find_const(data, data + buffer.size(), "IDAT");
+    if(!end) end = data + buffer.size(); // no IDAT, invalid PNG but extract info anyway
+    inspect_chunk_by_name(data, end, state, "PLTE");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "cHRM");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "gAMA");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "sBIT");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "bKGD");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "hIST");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "pHYs");
+    if(error) return;
+    inspect_chunk_by_name(data, end, state, "iCCP");
+    if(error) return;
+  }
+
+  // Load the pixels if not already loaded, and the file if needed
+  void loadPixels()
+  {
+    if(pixels.empty()) reloadPixels();
+  }
+
+  void reloadPixels()
+  {
+    loadFile();
+    if(error) return;
+    inspected = true;
+    state.info_raw.colortype = LCT_RGBA;
+    state.info_raw.bitdepth = 16;
+    pixels.clear();
+    error = lodepng::decode(pixels, w, h, state, buffer);
   }
 };
 
@@ -88,10 +181,10 @@ std::string colorTypeString(LodePNGColorType type)
   switch(type)
   {
     case LCT_GREY: name = "grey"; break;
-    case LCT_RGB: name = "rgb"; break;
+    case LCT_RGB: name = "RGB"; break;
     case LCT_PALETTE: name = "palette"; break;
-    case LCT_GREY_ALPHA: name = "grey with alpha"; break;
-    case LCT_RGBA: name = "rgba"; break;
+    case LCT_GREY_ALPHA: name = "grey+alpha"; break;
+    case LCT_RGBA: name = "RGBA"; break;
     default: name = "invalid"; break;
   }
   std::stringstream ss;
@@ -99,117 +192,25 @@ std::string colorTypeString(LodePNGColorType type)
   return ss.str();
 }
 
-/*
-Display general info about the PNG.
-*/
-void displayPNGInfo(const LodePNGInfo& info, const Options& options)
+template<typename T>
+T strtoval(const std::string& s)
 {
-  const LodePNGColorMode& color = info.color;
-
-  if(options.show_extra_png_info)
-  {
-    std::cout << "Compression method: " << info.compression_method << std::endl;
-    std::cout << "Filter method: " << info.filter_method << std::endl;
-  }
-  std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
-  std::cout << "Bit depth: " << color.bitdepth << std::endl;
-  if(options.show_extra_png_info)
-  {
-    std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
-    std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
-    std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
-    std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
-  }
-  if (!options.show_palette) std::cout << "Palette size: " << color.palettesize << std::endl;
-  if(options.show_extra_png_info) std::cout << "Has color key: " << color.key_defined << std::endl;
-  if(color.key_defined)
-  {
-    std::cout << "Color key rgb: " << color.key_r
-              << ", " << color.key_g
-              << ", " << color.key_b << std::endl;
-  }
-  if(info.background_defined)
-  {
-    if(color.colortype == LCT_PALETTE)
-    {
-      std::cout << "Background index: " << info.background_r << std::endl;
-    }
-    else
-    {
-      std::cout << "Background rgb: " << info.background_r
-                << ", " << info.background_g
-                << ", " << info.background_b << std::endl;
-    }
-  }
-  if(info.gama_defined)
-  {
-    std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
-              << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
-  }
-  if(info.chrm_defined)
-  {
-    std::cout << "cHRM defined: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0) << " "
-              << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0) << " "
-              << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0) << " "
-              << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0) << std::endl;
-  }
-  if(info.srgb_defined)
-  {
-    std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
-  }
-  if(info.iccp_defined)
-  {
-    std::cout << "iCCP defined: " << info.iccp_name << std::endl;
-    std::cout << "iCCP profile size: " << info.iccp_profile_size << std::endl;
-    for(size_t i = 0; i < info.iccp_profile_size; i++) {
-      unsigned char c = info.iccp_profile[i];
-      if(c > 32 && c < 127) printf(" %c ", c);
-      else printf("%02x ", c);
-      if(i % 80 == 79 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
-    }
-    std::cout << std::endl;
-  }
-  std::cout << "Interlace method: " << info.interlace_method << std::endl;
-  if(options.show_extra_png_info) std::cout << "Texts: " << info.text_num << std::endl;
-  for(size_t i = 0; i < info.text_num; i++)
-  {
-    std::cout << "Text: " << info.text_keys[i] << ": " << info.text_strings[i] << std::endl;
-  }
-  if(options.show_extra_png_info) std::cout << "International texts: " << info.itext_num << std::endl;
-  for(size_t i = 0; i < info.itext_num; i++)
-  {
-    std::cout << "Text: "
-              << info.itext_keys[i] << ", "
-              << info.itext_langtags[i] << ", "
-              << info.itext_transkeys[i] << ": "
-              << info.itext_strings[i] << std::endl;
-  }
-  if(options.show_extra_png_info) std::cout << "Time defined: " << info.time_defined << std::endl;
-  if(info.time_defined)
-  {
-    const LodePNGTime& time = info.time;
-    std::cout << "year: " << time.year << std::endl;
-    std::cout << "month: " << time.month << std::endl;
-    std::cout << "day: " << time.day << std::endl;
-    std::cout << "hour: " << time.hour << std::endl;
-    std::cout << "minute: " << time.minute << std::endl;
-    std::cout << "second: " << time.second << std::endl;
-  }
-  if(options.show_extra_png_info) std::cout << "Physics defined: " << info.phys_defined << std::endl;
-  if(info.phys_defined)
-  {
-    std::cout << "physics X: " << info.phys_x << std::endl;
-    std::cout << "physics Y: " << info.phys_y << std::endl;
-    std::cout << "physics unit: " << info.phys_unit << std::endl;
-  }
+  std::istringstream sstream(s);
+  T val;
+  sstream >> val;
+  return val;
 }
 
 
 /*
 Display the names and sizes of all chunks in the PNG file.
 */
-void displayChunkNames(const std::vector<unsigned char>& buffer, const Options& options)
+void displayChunkNames(Data& data, const Options& options)
 {
+  data.loadFile();
+  if(data.error) return;
+  std::cout << (options.use_hex ? std::hex: std::dec);
+  const std::vector<unsigned char>& buffer = data.buffer;
   std::vector<std::string> names;
   std::vector<size_t> sizes;
   unsigned error = lodepng::getChunkInfo(names, sizes, buffer);
@@ -376,35 +377,119 @@ char RGBtoLetter(unsigned char r, unsigned char g, unsigned char b, unsigned cha
   }
 }
 
+std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
+                                   int w0, int h0, int w1, int h1, bool smooth)
+{
+  int numchannels = in.size() / (w0 * h0);
+  std::vector<unsigned char> out(w1 * h1 * numchannels);
+  if(smooth)
+  {
+    // box filter.
+    std::vector<unsigned char> temp(w1 * h0 * numchannels);
+    for (int c = 0; c < numchannels; c++)
+    {
+      for (int x = 0; x < w1; x++)
+      {
+        float xaf = x * 1.0 * w0 / w1;
+        float xbf = (x + 1.0) * w0 / w1;
+        int xa = (int)xaf;
+        int xb = (int)xbf;
+        double norm = 1.0 / (xbf - xaf);
+        xaf -= std::floor(xaf);
+        xbf -= std::floor(xbf);
+        for (int y = 0; y < h0; y++)
+        {
+          int index1 = x * numchannels + y * w1 * numchannels;
+          double val = 0;
+          for(int x0 = xa; x0 <= xb; x0++)
+          {
+            int index0 = x0 * numchannels + y * w0 * numchannels;
+            double v = 1;
+            if(x0 == xa) v -= xaf;
+            if(x0 == xb) v -= (1 - xbf);
+            val += v * in[index0 + c];
+          }
+          temp[index1 + c] = val * norm;
+        }
+      }
+      for (int y = 0; y < h1; y++)
+      {
+        float yaf = y * 1.0 * h0 / h1;
+        float ybf = (y + 1.0) * h0 / h1;
+        int ya = (int)yaf;
+        int yb = (int)ybf;
+        double norm = 1.0 / (ybf - yaf);
+        yaf -= std::floor(yaf);
+        ybf -= std::floor(ybf);
+        for (int x = 0; x < w1; x++)
+        {
+          int index1 = x * numchannels + y * w1 * numchannels;
+          double val = 0;
+          for(int y0 = ya; y0 <= yb; y0++)
+          {
+            int index0 = x * numchannels + y0 * w1 * numchannels;
+            double v = 1;
+            if(y0 == ya) v -= yaf;
+            if(y0 == yb) v -= (1 - ybf);
+            val += v * temp[index0 + c];
+          }
+          out[index1 + c] = val * norm;
+        }
+      }
+    }
+  } else {
+    for(int y = 0; y < h1; y++)
+    {
+      int y0 = (int)((y + 0.5) * h0 / h1 - 0.5);
+      for (int x = 0; x < w1; x++)
+      {
+        int x0 = (int)((x + 0.5) * w0 / w1 - 0.5);
+        int index0 = x0 * numchannels + y0 * w0 * numchannels;
+        int index1 = x * numchannels + y * w1 * numchannels;
+        for (int c = 0; c < numchannels; c++)
+        {
+          out[index1 + c] = in[index0 + c];
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /*
 Show ASCII art preview of the image
 image is given in 16-bit big endian
 */
 void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h, unsigned asciiw)
 {
+  const std::vector<unsigned char>* imagep = &image;
+  std::vector<unsigned char> image2;
+  if(asciiw < w)
+  {
+    unsigned w2 = asciiw;
+    unsigned h2 = h * w2 / w;
+    image2 = rescale(image, w, h, w2, h2, true);
+    imagep = &image2;
+    w = w2;
+    h = h2;
+  }
   if(w > 0 && h > 0)
   {
-    //std::cout << "ASCII Art Preview: " << std::endl;
-    unsigned w2 = asciiw;
-    if(w < w2) w2 = w;
-    unsigned h2 = h * w2 / w;
-    h2 = (h2 * 2) / 3; //compensate for non-square characters in terminal
-    if(h2 > (w2 * 2)) h2 = w2 * 2; //avoid too large output
-
+    std::cout << "ASCII Art Preview: " << std::endl;
+    unsigned h2 = 1 + ((h - 1) * 4) / 7; //compensate for non-square characters in terminal
     std::cout << '+';
-    for(unsigned x = 0; x < w2; x++) std::cout << '-';
+    for(unsigned x = 0; x < w; x++) std::cout << '-';
     std::cout << '+' << std::endl;
     for(unsigned y = 0; y < h2; y++)
     {
       std::cout << "|";
-      for(unsigned x = 0; x < w2; x++)
+      unsigned y2 = y * h / h2;
+      for(unsigned x = 0; x < w; x++)
       {
-        unsigned x2 = x * w / w2;
-        unsigned y2 = y * h / h2;
-        int r = image[y2 * w * 8 + x2 * 8 + 0];
-        int g = image[y2 * w * 8 + x2 * 8 + 2];
-        int b = image[y2 * w * 8 + x2 * 8 + 4];
-        int a = image[y2 * w * 8 + x2 * 8 + 6];
+        int r = (*imagep)[y2 * w * 8 + x * 8 + 0];
+        int g = (*imagep)[y2 * w * 8 + x * 8 + 2];
+        int b = (*imagep)[y2 * w * 8 + x * 8 + 4];
+        int a = (*imagep)[y2 * w * 8 + x * 8 + 6];
         char symbol = RGBtoLetter(r, g, b, a, x, y, true, false);
         std::cout << (char)symbol;
       }
@@ -412,7 +497,7 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
       std::cout << std::endl;
     }
     std::cout << '+';
-    for(unsigned x = 0; x < w2; x++) std::cout << '-';
+    for(unsigned x = 0; x < w; x++) std::cout << '-';
     std::cout << '+' << std::endl;
   }
 }
@@ -463,8 +548,12 @@ void displayColorsHex(const std::vector<unsigned char>& image, unsigned w, unsig
 /*
 Show the filtertypes of each scanline in this PNG image.
 */
-void displayFilterTypes(const std::vector<unsigned char>& buffer)
+void displayFilterTypes(Data& data, const Options& options)
 {
+  std::cout << (options.use_hex ? std::hex: std::dec);
+  data.loadFile();
+  if(data.error) return;
+  const std::vector<unsigned char>& buffer = data.buffer;
   std::vector<std::vector<unsigned char> > types;
   unsigned error = lodepng::getFilterTypesInterlaced(types, buffer);
   if(error)
@@ -498,66 +587,64 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer)
 }
 
 //image type MUST be palette
-void displayPalette(const std::vector<unsigned char>& buffer)
+void displayPalette(Data& data, const Options& options)
 {
-  unsigned w, h;
-  lodepng::State state;
-  std::vector<unsigned char> out;
+  data.loadInspect();
+  if(data.error) return;
+  std::cout << (options.use_hex ? std::hex: std::dec);
 
-  state.decoder.color_convert = 0;
+  const LodePNGInfo& info = data.state.info_png;
+  const LodePNGColorMode& color = info.color;
 
-  lodepng::decode(out, w, h, state, buffer);
-
-  std::cout << "Palette size: " << state.info_png.color.palettesize << std::endl;
+  std::cout << "Palette size: " << color.palettesize << std::endl;
   std::cout << "Palette colors: ";
   std::ios_base::fmtflags flags = std::cout.flags();
   std::cout << std::hex << std::setfill('0');
-  for(size_t i = 0; i < state.info_png.color.palettesize; i++)
+  for(size_t i = 0; i < color.palettesize; i++)
   {
-    unsigned char* p = &state.info_png.color.palette[i * 4];
+    unsigned char* p = &color.palette[i * 4];
     std::cout << "#" << std::setw(2) << (int)p[0] << std::setw(2) << (int)p[1] << std::setw(2) << (int)p[2] << std::setw(2) << (int)p[3] << " ";
   }
   std::cout.flags(flags);
   std::cout << std::endl;
-
-
-  if (state.info_png.color.colortype == LCT_PALETTE)
-  {
-    std::vector<size_t> count(256, 0);
-    size_t outofbounds = 0;
-
-    for(size_t i = 0; i < w * h; i++)
-    {
-      int value = lodepng::getPaletteValue(&out[0], i, state.info_raw.bitdepth);
-      count[value]++;
-      if(value >= (int)state.info_raw.palettesize) outofbounds++;
-    }
-
-    std::cout << "Palette count: ";
-    for(size_t i = 0; i < state.info_raw.palettesize; i++)
-    {
-      std::cout << count[i] << " ";
-    }
-    std::cout << std::endl;
-
-    if(outofbounds > 0) std::cout << "Out of bounds palette values: " << outofbounds << std::endl;
-  }
 }
 
 //image type MUST be palette
-void displayPalettePixels(const std::vector<unsigned char>& buffer)
+void displayPalettePixels(const std::vector<unsigned char>& buffer, const Options& options)
 {
   unsigned w, h;
   lodepng::State state;
   std::vector<unsigned char> out;
+  std::cout << (options.use_hex ? std::hex: std::dec);
 
   state.decoder.color_convert = 0;
 
   lodepng::decode(out, w, h, state, buffer);
 
-
-  if (state.info_png.color.colortype == LCT_PALETTE)
+  if(state.info_png.color.colortype == LCT_PALETTE)
   {
+    if (options.show_color_stats)
+    {
+      std::vector<size_t> count(256, 0);
+      size_t outofbounds = 0;
+
+      for(size_t i = 0; i < w * h; i++)
+      {
+        int value = lodepng::getPaletteValue(&out[0], i, state.info_raw.bitdepth);
+        count[value]++;
+        if(value >= (int)state.info_raw.palettesize) outofbounds++;
+      }
+
+      std::cout << "Palette count: ";
+      for(size_t i = 0; i < state.info_raw.palettesize; i++)
+      {
+        std::cout << count[i] << " ";
+      }
+      std::cout << std::endl;
+
+      if(outofbounds > 0) std::cout << "Out of bounds palette values: " << outofbounds << std::endl;
+    }
+
     std::cout << "Pixel palette indices:" << std::endl;
     for(size_t i = 0; i < w * h; i++)
     {
@@ -566,11 +653,18 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer)
       if(i % w == w - 1) std::cout << std::endl;
     }
   }
+  else
+  {
+    std::cout << "Pixel palette indices: not shown, not a palette image\n" << std::endl;
+  }
 }
 
-void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
+void printZlibInfo(Data& data, const Options& options)
 {
-  if(!options.zlib_info && !options.zlib_blocks) return;
+  data.loadFile();
+  if(data.error) return;
+  const std::vector<unsigned char>& in = data.buffer;
+  std::cout << (options.use_hex ? std::hex: std::dec);
 
   std::vector<lodepng::ZlibBlockInfo> zlibinfo;
   lodepng::extractZlibInfo(zlibinfo, in);
@@ -590,6 +684,7 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
       boundaries_uncompressed.push_back(uncompressed);
     }
 
+    std::cout << "IDAT zlib info: " << compressed << std::endl;
     std::cout << "Compressed size: " << compressed << std::endl;
     std::cout << "Uncompressed size: " << uncompressed << std::endl;
     std::cout << "Amount of zlib blocks: " << zlibinfo.size() << std::endl;
@@ -727,22 +822,24 @@ void printZlibInfo(const std::vector<unsigned char>& in, const Options& options)
 
 void showHelp()
 {
-  std::cout << "pngdetail by Lode Vandevenne\n"
-               "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
+  std::cout << "pngdetail by Lode Vandevenne" << std::endl;
+  std::cout << "version: " << LODEPNG_VERSION_STRING << std::endl;
+  std::cout << "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
                "Usage: pngdetail [filename] [options]...\n"
                "Without options shows a default set of stats. With options, shows only selected options.\n"
                "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
-               "-s: show PNG file summary on one line\n"
+               "-s: show header summary on one line\n"
+               "-i: show header info\n"
                "-p: show PNG file info\n"
-               "-P: show extra PNG file info\n"
                "-l: show palette (if any)\n"
-               "-a: show ascii art rendering of PNG image.\n"
-               "    Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
-               "    Symbols  .:-!*+=# indicate greyscale increasingly lighter from black to white.\n"
-               "-A: show larger ascii art rendering of PNG image. Adding more A's makes it larger.\n"
-               "-#: show every pixel color in CSS RGBA hex format (huge output)\n"
-               "-@: show every pixel color with 16-bit per channel (huge output)\n"
+               "-r: render the PNG image in terminal (with --mode and --size)\n"
+               "--mode=<mode>: render mode for -r:\n"
+               "    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "    hex:     CSS hex notation for every pixel.\n"
+               "    hex16:   Like hex but shows 16 bits values per channel.\n"
+               "    palette: Shows palette index of each pixel, only for palette images.\n"
+               "--size=<width>: render width (not used by hex, hex16 or palette):\n"
                "-c: show PNG chunks\n"
                "-C: show PNG chunks (alternate format)\n"
                "-f: show PNG filters\n"
@@ -750,109 +847,58 @@ void showHelp()
                "-b: show Zlib blocks\n"
                "-B: show Zlib block symbol counts\n"
                "-7: show all lz77 values (huge output)\n"
+               "-v: be more verbose\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
-            << std::endl;
+               "-h: show this help" << std::endl;
 }
 
-// number of unique RGBA colors in the image
+// returns number of unique RGBA colors in the image
+// also fills unique r, g, b, a counts in the output parameters
 // the input image is in 16-bit per channel color, so 8 chars per pixel
-size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h) {
-  struct ColorTree
-  {
-    ColorTree* children[16]; /*up to 16 pointers to ColorTree of next level*/
-    int index; /*the payload. Only has a meaningful value if this is in the last level*/
-
-    ColorTree()
-    {
-      int i;
-      for(i = 0; i < 16; i++) children[i] = 0;
-      index = -1;
-    }
-
-    ~ColorTree()
-    {
-      int i;
-      for(i = 0; i < 16; i++)
-      {
-        if(children[i]) delete children[i];
-      }
-    }
-
-    /*returns -1 if color not present, its index otherwise*/
-    int get(unsigned short r, unsigned short g, unsigned short b, unsigned short a) const {
-      const ColorTree* tree = this;
-      int bit = 0;
-      for(bit = 0; bit < 16; bit++)
-      {
-        int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
-        if(!tree->children[i]) return -1;
-        else tree = tree->children[i];
-      }
-      return tree ? tree->index : -1;
-    }
-
-    bool has(unsigned short r, unsigned short g, unsigned short b, unsigned short a) {
-      return get(r, g, b, a) >= 0;
-    }
-
-    /*color is not allowed to already exist.
-    Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")*/
-    void add(unsigned short r, unsigned short g, unsigned short b, unsigned short a, int index) {
-      ColorTree* tree = this;
-      int bit;
-      for(bit = 0; bit < 16; bit++)
-      {
-        int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
-        if(!tree->children[i])
-        {
-          tree->children[i] = new ColorTree();
-        }
-        tree = tree->children[i];
-      }
-      tree->index = index;
-    }
-  };
-
-  size_t count = 0;
-  ColorTree tree;
+size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
+    size_t* ro, size_t* go, size_t* bo, size_t* ao) {
+  typedef std::pair<std::pair<unsigned short, unsigned short>, std::pair<unsigned short, unsigned short> > RGBA;
+  std::map<RGBA, size_t> rgbam;
+  //std::map<uint64_t, size_t> rgbam;
+  std::vector<unsigned char> rm(65536, 0);
+  std::vector<unsigned char> gm(65536, 0);
+  std::vector<unsigned char> bm(65536, 0);
+  std::vector<unsigned char> am(65536, 0);
   for(unsigned y = 0; y < h; y++) {
     for(unsigned x = 0; x < w; x++) {
       unsigned short r = 256 * image[y * 8 * w + x * 8 + 0] + image[y * 8 * w + x * 8 + 1];
       unsigned short g = 256 * image[y * 8 * w + x * 8 + 2] + image[y * 8 * w + x * 8 + 3];
       unsigned short b = 256 * image[y * 8 * w + x * 8 + 4] + image[y * 8 * w + x * 8 + 5];
       unsigned short a = 256 * image[y * 8 * w + x * 8 + 6] + image[y * 8 * w + x * 8 + 7];
-      if(!tree.has(r, g, b, a)) {
-        tree.add(r, g, b, a, count);
-        count++;
-      }
+      RGBA rgba(std::make_pair(r, g), std::make_pair(b, a));
+      //uint64_t rgba = (uint64_t)r + ((uint64_t)g << 16) + ((uint64_t)b << 32) + ((uint64_t)a << 48);
+      rgbam[rgba]++;
+      rm[r] = 1;
+      gm[g] = 1;
+      bm[b] = 1;
+      am[a] = 1;
     }
   }
-  return count;
+  *ro = *go = *bo = *ao = 0;
+  for(size_t i = 0; i < rm.size(); i++)
+  {
+    *ro += rm[i];
+    *go += gm[i];
+    *bo += bm[i];
+    *ao += am[i];
+  }
+
+  return rgbam.size();
 }
 
-unsigned showFileInfo(const std::string& filename, const Options& options)
+
+void loadWithErrorRecovery(Data& data, const Options& options)
 {
-  std::vector<unsigned char> buffer;
-  std::vector<unsigned char> image;
-  unsigned w, h;
+  (void)options;
+  unsigned& error = data.error;
+  lodepng::State& state = data.state;
 
-  if(options.show_png_info)
-  {
-    std::cout << "pngdetail version: " << LODEPNG_VERSION_STRING << std::endl;
-  }
-
-  unsigned error = lodepng::load_file(buffer, filename); //load the image file with given filename
-
-  if(error)
-  {
-    std::cout << "Loading error " << error << ": " << lodepng_error_text(error) << std::endl;
-    return error;
-  }
-
-  lodepng::State state;
-  state.info_raw.colortype = LCT_RGBA;
-  state.info_raw.bitdepth = 16;
-  error = lodepng::decode(image, w, h, state, buffer);
+  data.loadPixels();
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
   while (error) {
@@ -862,25 +908,25 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
     {
       std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
-      error = lodepng::decode(image, w, h, state, buffer);
+      data.reloadPixels();
     }
     else if(error == 58)
     {
       std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
-      error = lodepng::decode(image, w, h, state, buffer);
+      data.reloadPixels();
     }
     else if(error == 69)
     {
       std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
       state.decoder.ignore_critical = 1;
-      error = lodepng::decode(image, w, h, state, buffer);
+      data.reloadPixels();
     }
     else if(error == 30 || error == 63)
     {
       std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
       state.decoder.ignore_end = 1;
-      error = lodepng::decode(image, w, h, state, buffer);
+      data.reloadPixels();
     }
     else
     {
@@ -894,91 +940,241 @@ unsigned showFileInfo(const std::string& filename, const Options& options)
       break; // avoid infinite loop if ignoring did not fix the error code
     }
   }
+}
 
-  bool extra_newlines = false;
 
-  if(!error && options.show_png_summary)
+
+
+void showError(Data& data, const Options& options)
+{
+  std::cout << (options.use_hex ? std::hex: std::dec);
+  std::string prefix = (options.use_hex ? "0x": "");
+  if(!data.error)
   {
-    std::cout << "Filesize: " << buffer.size() << " (" << buffer.size() / 1024 << "K)" << ", ";
-    std::cout << w << "x" << h << ", ";
-    std::cout << "Color: " << colorTypeString(state.info_png.color.colortype) << ", " << state.info_png.color.bitdepth << " bit" << std::endl;
-    if(extra_newlines) std::cout << std::endl;
+    std::cout << "No error" << std::endl;
   }
+  std::cout << "Decoding error " << prefix << data.error << ": " << lodepng_error_text(data.error) << std::endl;
+}
 
-  if(!error && options.show_png_info)
+void showSingleLineSummary(Data& data, const Options& options)
+{
+  data.loadInspect();
+  if(data.error) return;
+  std::cout << (options.use_hex ? std::hex: std::dec);
+
+  std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << ", ";
+  std::cout << data.w << "x" << data.h << ", ";
+  std::cout << "Color: " << colorTypeString(data.state.info_png.color.colortype) << ", " << data.state.info_png.color.bitdepth << " bit" << std::endl;
+}
+
+void showHeaderInfo(Data& data, const Options& options)
+{
+  data.loadInspect();
+  if(data.error) return;
+  std::cout << (options.use_hex ? std::hex: std::dec);
+
+  const LodePNGInfo& info = data.state.info_png;
+  const LodePNGColorMode& color = info.color;
+  std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
+  std::cout << "Width: " << data.w << std::endl;
+  std::cout << "Height: " << data.h << std::endl;
+  std::cout << "Interlace method: " << info.interlace_method << std::endl;
+  if(options.verbose)
   {
-    std::cout << "Filesize: " << buffer.size() << " (" << buffer.size() / 1024 << "K)" << std::endl;
-    std::cout << "Width: " << w << std::endl;
-    std::cout << "Height: " << h << std::endl;
-
-    if(options.show_extra_png_info) std::cout << "Num pixels: " << w * h << std::endl;
-    std::cout << "Num unique colors: " << countColors(image, w, h) << std::endl;
-    if(options.show_extra_png_info && w > 0 && h > 0)
+    std::cout << "Compression method: " << info.compression_method << std::endl;
+    std::cout << "Filter method: " << info.filter_method << std::endl;
+  }
+  std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
+  std::cout << "Bit depth: " << color.bitdepth << std::endl;
+  if(options.verbose)
+  {
+    std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
+    std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
+    std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
+    std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
+    std::cout << "Has color key: " << color.key_defined << std::endl;
+  }
+  if (color.colortype == LCT_PALETTE)
+  {
+    std::cout << "Palette size: " << color.palettesize << std::endl;
+  }
+  if(color.key_defined)
+  {
+    std::cout << "Color key rgb: " << color.key_r
+              << ", " << color.key_g
+              << ", " << color.key_b << std::endl;
+  }
+  if(info.background_defined)
+  {
+    if(color.colortype == LCT_PALETTE)
     {
-      double avg[4] = {0, 0, 0, 0};
-      double min[4] = {999999, 999999, 999999, 999999};
-      double max[4] = {0, 0, 0, 0};
-      for(unsigned y = 0; y < h; y++) {
-        for(unsigned x = 0; x < w; x++) {
-          for(int c = 0; c < 4; c++) {
-            double v = 256 * image[y * 8 * w + x * 8 + c * 2] + image[y * 8 * w + x * 8 + c * 2 + 1];
-            avg[c] += v;
-            min[c] = std::min(min[c], v);
-            max[c] = std::max(max[c], v);
-          }
+      std::cout << "Background index: " << info.background_r << std::endl;
+    }
+    else
+    {
+      std::cout << "Background rgb: " << info.background_r
+                << ", " << info.background_g
+                << ", " << info.background_b << std::endl;
+    }
+  }
+  if(info.gama_defined)
+  {
+    std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
+              << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
+  }
+  if(info.chrm_defined)
+  {
+    std::cout << "cHRM defined: w: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0)
+              << ", r: " << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0)
+              << ", g: " << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0)
+              << ", b: " << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0)
+              << std::endl;
+  }
+  if(info.srgb_defined)
+  {
+    std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
+  }
+  if(info.iccp_defined)
+  {
+    std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
+    if(options.verbose && !options.show_png_info) std::cout << "Use -p to show full ICC profile" << std::endl;
+    if(options.show_png_info)
+    {
+      for(size_t i = 0; i < info.iccp_profile_size; i++) {
+        unsigned char c = info.iccp_profile[i];
+        if(c > 32 && c < 127) printf(" %c ", c);
+        else printf("%02x ", c);
+        if(i % 80 == 79 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+      }
+      std::cout << std::endl;
+    }
+  }
+  if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
+  if(info.phys_defined)
+  {
+    std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
+  }
+}
+
+// A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
+void showPNGInfo(Data& data, const Options& options)
+{
+  loadWithErrorRecovery(data, options);
+  if(data.error) return;
+  std::cout << (options.use_hex ? std::hex: std::dec);
+
+  const LodePNGInfo& info = data.state.info_png;
+
+  if(options.verbose) std::cout << "Texts: " << info.text_num << std::endl;
+  for(size_t i = 0; i < info.text_num; i++)
+  {
+    std::cout << "Text: " << info.text_keys[i] << ": " << info.text_strings[i] << std::endl;
+  }
+  if(options.verbose) std::cout << "International texts: " << info.itext_num << std::endl;
+  for(size_t i = 0; i < info.itext_num; i++)
+  {
+    std::cout << "Text: "
+              << info.itext_keys[i] << ", "
+              << info.itext_langtags[i] << ", "
+              << info.itext_transkeys[i] << ": "
+              << info.itext_strings[i] << std::endl;
+  }
+  if(options.verbose) std::cout << "Time defined: " << info.time_defined << std::endl;
+  if(info.time_defined)
+  {
+    const LodePNGTime& time = info.time;
+    std::cout << "year: " << time.year << std::endl;
+    std::cout << "month: " << time.month << std::endl;
+    std::cout << "day: " << time.day << std::endl;
+    std::cout << "hour: " << time.hour << std::endl;
+    std::cout << "minute: " << time.minute << std::endl;
+    std::cout << "second: " << time.second << std::endl;
+  }
+}
+
+void showColorStats(Data& data, const Options& options)
+{
+  std::cout << (options.use_hex ? std::hex: std::dec);
+  std::vector<unsigned char>& image = data.pixels;
+  unsigned& w = data.w;
+  unsigned& h = data.h;
+
+  data.loadPixels();
+  if(data.error) return;
+  // TODO: move to show color stats function
+  if(options.verbose) std::cout << "Num pixels: " << w * h << std::endl;
+  size_t rc, gc, bc, ac;
+  std::cout << "Num unique colors: " << countColors(image, w, h, &rc, &gc, &bc, &ac);
+  std::cout << " (r: " << rc << ", g: " << gc << ", b: " << bc << ", a: " << ac << ")";
+  std::cout << std::endl;
+  if(w > 0 && h > 0)
+  {
+    double avg[4] = {0, 0, 0, 0};
+    double min[4] = {999999, 999999, 999999, 999999};
+    double max[4] = {0, 0, 0, 0};
+    for(unsigned y = 0; y < h; y++) {
+      for(unsigned x = 0; x < w; x++) {
+        for(int c = 0; c < 4; c++) {
+          double v = 256 * image[y * 8 * w + x * 8 + c * 2] + image[y * 8 * w + x * 8 + c * 2 + 1];
+          avg[c] += v;
+          min[c] = std::min(min[c], v);
+          max[c] = std::max(max[c], v);
         }
       }
-      for(int c = 0; c < 4; c++) {
-        avg[c] /= (w * h * 257.0);
-        min[c] /= 257.0;
-        max[c] /= 257.0;
-      }
-      std::cout << "Average color: " << avg[0] << ", " << avg[1] << ", " << avg[2] << ", " << avg[3] << std::endl;
-      std::cout << "Color ranges: " << min[0] << "-" << max[0] << ", " << min[1] << "-" << max[1] << ", " << min[2] << "-" << max[2] << ", " << min[3] << "-" << max[3] << std::endl;
     }
-
-    displayPNGInfo(state.info_png, options);
-    if(extra_newlines) std::cout << std::endl;
+    for(int c = 0; c < 4; c++) {
+      avg[c] /= (w * h * 257.0);
+      min[c] /= 257.0;
+      max[c] /= 257.0;
+    }
+    if(options.verbose) std::cout << "Ranges shown as 0.0-255.0, even for 16-bit data:" << std::endl;
+    std::cout << "Average color: " << avg[0] << ", " << avg[1] << ", " << avg[2] << ", " << avg[3] << std::endl;
+    std::cout << "Color ranges: " << min[0] << "-" << max[0] << ", " << min[1] << "-" << max[1] << ", " << min[2] << "-" << max[2] << ", " << min[3] << "-" << max[3] << std::endl;
   }
+}
 
-  if(options.show_chunks || options.show_chunks2)
+void showRender(Data& data, const Options& options)
+{
+  data.loadPixels();
+  if(data.error) return;
+  if(options.rendermode == RM_ASCII)
   {
-    displayChunkNames(buffer, options);
-    if(extra_newlines) std::cout << std::endl;
+    displayAsciiArt(data.pixels, data.w, data.h, options.rendersize);
   }
 
-  if(options.show_filters)
+  if(options.rendermode == RM_HEX)
   {
-    displayFilterTypes(buffer);
-    if(extra_newlines) std::cout << std::endl;
+    displayColorsHex(data.pixels, data.w, data.h, false);
   }
 
-  if(options.show_palette)
+  if(options.rendermode == RM_HEX16)
   {
-    displayPalette(buffer);
-    if(extra_newlines) std::cout << std::endl;
+    displayColorsHex(data.pixels, data.w, data.h, true);
   }
 
-  if(options.show_palette_pixels)
+  if(options.rendermode == RM_PAL)
   {
-    displayPalettePixels(buffer);
-    if(extra_newlines) std::cout << std::endl;
+    displayPalettePixels(data.buffer, options);
   }
+}
 
-  if (!error && options.show_ascii_art)
+
+void showInfos(Data& data, const Options& options)
+{
+  if(options.show_one_line_summary) showSingleLineSummary(data, options);
+  if(options.show_header) showHeaderInfo(data, options);
+  if(options.show_color_stats) showColorStats(data, options);
+  if(options.show_png_info) showPNGInfo(data, options);
+  if(options.show_palette) displayPalette(data, options);
+  if(options.show_chunks || options.show_chunks2) displayChunkNames(data, options);
+  if(options.show_filters) displayFilterTypes(data, options);
+  if(options.show_render) showRender(data, options);
+  if(options.zlib_info || options.zlib_blocks || options.zlib_counts || options.zlib_full)
   {
-    displayAsciiArt(image, w, h, options.ascii_art_size);
-    if(extra_newlines) std::cout << std::endl;
+    printZlibInfo(data, options);
   }
 
-  if (!error && (options.show_colors_hex || options.show_colors_hex_16))
-  {
-    displayColorsHex(image, w, h, options.show_colors_hex_16);
-    if(extra_newlines) std::cout << std::endl;
-  }
-
-  printZlibInfo(buffer, options);
-  return 0;
+  if(data.error) showError(data, options);
 }
 
 int main(int argc, char *argv[])
@@ -990,9 +1186,10 @@ int main(int argc, char *argv[])
   for (int i = 1; i < argc; i++)
   {
     std::string s = argv[i];
-    if(s[0] == '-' && s.size() > 1)
+    if(s.size() > 1 && s[0] == '-' && s[1] != '-')
     {
-      if(s != "-x") options_chosen = true; //only selecting hexadecimal is no choice, keep the defaults
+      // anything that chooses actual set disables the defaults
+      if(s != "-x" && s != "-v") options_chosen = true;
       for(size_t j = 1; j < s.size(); j++)
       {
         char c = s[j];
@@ -1001,23 +1198,14 @@ int main(int argc, char *argv[])
           showHelp();
           return 0;
         }
-        else if(c == 's') options.show_png_summary = true;
-        else if(c == 'p') options.show_png_info = true;
-        else if(c == 'P')
-        {
-          options.show_png_info = true;
-          options.show_extra_png_info = true;
-        }
+        else if(c == 'o') options.show_one_line_summary = true;
+        else if(c == 'i') options.show_header = true;
+        else if(c == 'v') options.verbose = true;
+        else if(c == 's') options.show_color_stats = true;
+        else if(c == 'p') options.show_header = options.show_png_info = true;
+        else if(c == 'r') options.show_render = true;
         else if(c == 'l') options.show_palette = true;
         else if(c == 'L') options.show_palette_pixels = true;
-        else if(c == 'a') options.show_ascii_art = true;
-        else if(c == 'A')
-        {
-          options.show_ascii_art = true;
-          options.ascii_art_size += 40;
-        }
-        else if(c == '#') options.show_colors_hex = true;
-        else if(c == '@') options.show_colors_hex_16 = true;
         else if(c == 'c') options.show_chunks = true;
         else if(c == 'C') options.show_chunks2 = true;
         else if(c == 'f') options.show_filters = true;
@@ -1053,6 +1241,25 @@ int main(int argc, char *argv[])
 
       }
     }
+    else if(s.size() > 1 && s[0] == '-' && s[1] == '-')
+    {
+      size_t eqpos = 2;
+      while(eqpos < s.size() && s[eqpos] != '=') eqpos++;
+      std::string key = s.substr(2, eqpos - 2);
+      std::string value = (eqpos + 1) < s.size() ? s.substr(eqpos + 1) : "";
+      if(key == "mode")
+      {
+        if(value == "ascii") options.rendermode = RM_ASCII;
+        else if(value == "hex") options.rendermode = RM_HEX;
+        else if(value == "hex16") options.rendermode = RM_HEX16;
+        else if(value == "palette") options.rendermode = RM_PAL;
+      }
+      if(key == "size")
+      {
+        int size = strtoval<int>(value);
+        if(options.rendersize >= 1 && options.rendersize <= 4096) options.rendersize = size;
+      }
+    }
     else filenames.push_back(s);
   }
 
@@ -1066,18 +1273,25 @@ int main(int argc, char *argv[])
   if(!options_chosen)
   {
     //fill in defaults
-    options.show_png_info = true;
-    options.show_chunks = true;
-    options.show_filters = true;
-    options.zlib_info = true;
+    options.show_header = true;
   }
 
   for(size_t i = 0; i < filenames.size(); i++)
   {
     if(filenames.size() > 1) {
-      if(i > 0) std::cout << std::endl;
-      std::cout << filenames[i] << ":" << std::endl;
+      if(i > 0 && !options.show_one_line_summary) std::cout << std::endl;
+      std::cout << filenames[i] << ":";
+      if(!options.show_one_line_summary) std::cout << std::endl; else std::cout << " ";
     }
-    showFileInfo(filenames[i], options);
+    Data data(filenames[i]);
+    showInfos(data, options);
   }
 }
+
+
+/*
+te testen:
+iccp chunk
+output met non-png file: moet max 1 error tonen
+output met dir als file path: moet max 1 error tonen
+*/
