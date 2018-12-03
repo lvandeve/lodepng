@@ -170,6 +170,10 @@ struct Data
     {
       error = lodepng::load_file(buffer, filename); //load the image file with given filename
     }
+    else
+    {
+      error = 0; // for reloadpixels, reset error if file was already successfully loaded
+    }
   }
 
   // Load header info (plus a few more nearby light chunks) if not already loaded, and the file if needed
@@ -926,7 +930,8 @@ void loadWithErrorRecovery(Data& data, const Options& options)
   data.loadPixels();
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
-  while (error) {
+  while(error)
+  {
     // Not showing regular error here, is shown at end of program.
     unsigned error2 = error;
     if(error == 57)
