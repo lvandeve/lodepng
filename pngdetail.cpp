@@ -55,6 +55,43 @@ everything except huge output:
 #include <stdio.h>
 #include <inttypes.h>
 
+void showHelp()
+{
+  std::cout << "pngdetail by Lode Vandevenne" << std::endl;
+  std::cout << "version: " << LODEPNG_VERSION_STRING << std::endl;
+  std::cout << "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
+               "Usage: pngdetail [filename] [options]...\n"
+               "Without options shows a default set of stats. With options, shows only selected options.\n"
+               "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
+               "Options:\n"
+               "-s: show header summary on one line\n"
+               "-h: show header info\n"
+               "-p: show PNG file info\n"
+               "-i: show ICC profile in full (if any)\n"
+               "--format=<format>: hex display mode for -i:\n"
+               "    mix: Use printable ASCII characters, hex for others\n"
+               "    hex: Use only hex\n"
+               "--size=<width>: render width (not used by hex, hex16 or palette):\n"
+               "-l: show palette (if any)\n"
+               "-r: render the PNG image in terminal (with --mode and --size)\n"
+               "--mode=<mode>: render mode for -r:\n"
+               "    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
+               "    hex:     CSS hex notation for every pixel.\n"
+               "    hex16:   Like hex but shows 16 bits values per channel.\n"
+               "    palette: Shows palette index of each pixel, only for palette images.\n"
+               "--size=<width>: render width (not used by hex, hex16 or palette):\n"
+               "-c: show PNG chunks\n"
+               "-C: show PNG chunks (alternate format)\n"
+               "-f: show PNG filters\n"
+               "-z: show Zlib info\n"
+               "-b: show Zlib blocks\n"
+               "-B: show Zlib block symbol counts\n"
+               "-7: show all lz77 values (huge output)\n"
+               "-v: be more verbose\n"
+               "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
+               "-?, --help: show this help" << std::endl;
+}
+
 enum RenderMode {
   RM_ASCII,
   RM_HEX, // CSS
@@ -62,15 +99,24 @@ enum RenderMode {
   RM_PAL // palette indices (only rendered if image is palette based)
 };
 
+// for displaying ICC profile
+enum HexFormat {
+  HF_HEX,
+  HF_MIX // hex and ascii
+};
+
 struct Options
 {
   bool verbose;
   bool show_one_line_summary; //show filesize, pixels and color type on single line
   bool show_header;
+  bool show_icc; // show ICC color profile in full
   bool show_color_stats;
   bool show_png_info; //show things like filesize, width, height, palette size, ...
   bool show_palette; //show all palette values
   bool show_palette_pixels; //show palette indices of pixels
+
+  HexFormat hexformat;
 
   bool show_render;
   RenderMode rendermode;
@@ -85,10 +131,10 @@ struct Options
   bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
   bool use_hex; //show some sizes or positions in hexadecimal
 
-  Options() : verbose(false), show_one_line_summary(false), show_header(false),
+  Options() : verbose(false), show_one_line_summary(false), show_header(false), show_icc(false),
               show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
-              show_render(false), rendermode(RM_ASCII), rendersize(80),
+              hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
               show_chunks(false), show_chunks2(false), show_filters(false),
               zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false)
   {
@@ -820,38 +866,6 @@ void printZlibInfo(Data& data, const Options& options)
   }
 }
 
-void showHelp()
-{
-  std::cout << "pngdetail by Lode Vandevenne" << std::endl;
-  std::cout << "version: " << LODEPNG_VERSION_STRING << std::endl;
-  std::cout << "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
-               "Usage: pngdetail [filename] [options]...\n"
-               "Without options shows a default set of stats. With options, shows only selected options.\n"
-               "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
-               "Options:\n"
-               "-s: show header summary on one line\n"
-               "-i: show header info\n"
-               "-p: show PNG file info\n"
-               "-l: show palette (if any)\n"
-               "-r: render the PNG image in terminal (with --mode and --size)\n"
-               "--mode=<mode>: render mode for -r:\n"
-               "    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
-               "    hex:     CSS hex notation for every pixel.\n"
-               "    hex16:   Like hex but shows 16 bits values per channel.\n"
-               "    palette: Shows palette index of each pixel, only for palette images.\n"
-               "--size=<width>: render width (not used by hex, hex16 or palette):\n"
-               "-c: show PNG chunks\n"
-               "-C: show PNG chunks (alternate format)\n"
-               "-f: show PNG filters\n"
-               "-z: show Zlib info\n"
-               "-b: show Zlib blocks\n"
-               "-B: show Zlib block symbol counts\n"
-               "-7: show all lz77 values (huge output)\n"
-               "-v: be more verbose\n"
-               "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
-               "-h: show this help" << std::endl;
-}
-
 // returns number of unique RGBA colors in the image
 // also fills unique r, g, b, a counts in the output parameters
 // the input image is in 16-bit per channel color, so 8 chars per pixel
@@ -892,6 +906,17 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
 }
 
 
+void showError(Data& data, const Options& options)
+{
+  std::cout << (options.use_hex ? std::hex: std::dec);
+  std::string prefix = (options.use_hex ? "0x": "");
+  if(!data.error)
+  {
+    std::cout << "No error" << std::endl;
+  }
+  std::cout << "Decoding error " << prefix << data.error << ": " << lodepng_error_text(data.error) << std::endl;
+}
+
 void loadWithErrorRecovery(Data& data, const Options& options)
 {
   (void)options;
@@ -902,28 +927,32 @@ void loadWithErrorRecovery(Data& data, const Options& options)
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
   while (error) {
-    std::cerr << "Decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+    // Not showing regular error here, is shown at end of program.
     unsigned error2 = error;
     if(error == 57)
     {
+      showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       data.reloadPixels();
     }
     else if(error == 58)
     {
+      showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       data.reloadPixels();
     }
     else if(error == 69)
     {
+      showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
       state.decoder.ignore_critical = 1;
       data.reloadPixels();
     }
     else if(error == 30 || error == 63)
     {
+      showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
       state.decoder.ignore_end = 1;
       data.reloadPixels();
@@ -945,17 +974,6 @@ void loadWithErrorRecovery(Data& data, const Options& options)
 
 
 
-void showError(Data& data, const Options& options)
-{
-  std::cout << (options.use_hex ? std::hex: std::dec);
-  std::string prefix = (options.use_hex ? "0x": "");
-  if(!data.error)
-  {
-    std::cout << "No error" << std::endl;
-  }
-  std::cout << "Decoding error " << prefix << data.error << ": " << lodepng_error_text(data.error) << std::endl;
-}
-
 void showSingleLineSummary(Data& data, const Options& options)
 {
   data.loadInspect();
@@ -975,84 +993,91 @@ void showHeaderInfo(Data& data, const Options& options)
 
   const LodePNGInfo& info = data.state.info_png;
   const LodePNGColorMode& color = info.color;
-  std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
-  std::cout << "Width: " << data.w << std::endl;
-  std::cout << "Height: " << data.h << std::endl;
-  std::cout << "Interlace method: " << info.interlace_method << std::endl;
-  if(options.verbose)
+  if(options.show_header)
   {
-    std::cout << "Compression method: " << info.compression_method << std::endl;
-    std::cout << "Filter method: " << info.filter_method << std::endl;
-  }
-  std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
-  std::cout << "Bit depth: " << color.bitdepth << std::endl;
-  if(options.verbose)
-  {
-    std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
-    std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
-    std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
-    std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
-    std::cout << "Has color key: " << color.key_defined << std::endl;
-  }
-  if (color.colortype == LCT_PALETTE)
-  {
-    std::cout << "Palette size: " << color.palettesize << std::endl;
-  }
-  if(color.key_defined)
-  {
-    std::cout << "Color key rgb: " << color.key_r
-              << ", " << color.key_g
-              << ", " << color.key_b << std::endl;
-  }
-  if(info.background_defined)
-  {
-    if(color.colortype == LCT_PALETTE)
+    std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
+    std::cout << "Width: " << data.w << std::endl;
+    std::cout << "Height: " << data.h << std::endl;
+    std::cout << "Interlace method: " << info.interlace_method << std::endl;
+    if(options.verbose)
     {
-      std::cout << "Background index: " << info.background_r << std::endl;
+      std::cout << "Compression method: " << info.compression_method << std::endl;
+      std::cout << "Filter method: " << info.filter_method << std::endl;
     }
-    else
+    std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
+    std::cout << "Bit depth: " << color.bitdepth << std::endl;
+    if(options.verbose)
     {
-      std::cout << "Background rgb: " << info.background_r
-                << ", " << info.background_g
-                << ", " << info.background_b << std::endl;
+      std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
+      std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
+      std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
+      std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
+      std::cout << "Has color key: " << color.key_defined << std::endl;
     }
-  }
-  if(info.gama_defined)
-  {
-    std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
-              << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
-  }
-  if(info.chrm_defined)
-  {
-    std::cout << "cHRM defined: w: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0)
-              << ", r: " << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0)
-              << ", g: " << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0)
-              << ", b: " << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0)
-              << std::endl;
-  }
-  if(info.srgb_defined)
-  {
-    std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
-  }
-  if(info.iccp_defined)
-  {
-    std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
-    if(options.verbose && !options.show_png_info) std::cout << "Use -p to show full ICC profile" << std::endl;
-    if(options.show_png_info)
+    if (color.colortype == LCT_PALETTE)
     {
-      for(size_t i = 0; i < info.iccp_profile_size; i++) {
-        unsigned char c = info.iccp_profile[i];
-        if(c > 32 && c < 127) printf(" %c ", c);
-        else printf("%02x ", c);
-        if(i % 80 == 79 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+      std::cout << "Palette size: " << color.palettesize << std::endl;
+    }
+    if(color.key_defined)
+    {
+      std::cout << "Color key rgb: " << color.key_r
+                << ", " << color.key_g
+                << ", " << color.key_b << std::endl;
+    }
+    if(info.background_defined)
+    {
+      if(color.colortype == LCT_PALETTE)
+      {
+        std::cout << "Background index: " << info.background_r << std::endl;
       }
-      std::cout << std::endl;
+      else
+      {
+        std::cout << "Background rgb: " << info.background_r
+                  << ", " << info.background_g
+                  << ", " << info.background_b << std::endl;
+      }
+    }
+    if(info.gama_defined)
+    {
+      std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
+                << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
+    }
+    if(info.chrm_defined)
+    {
+      std::cout << "cHRM defined: w: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0)
+                << ", r: " << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0)
+                << ", g: " << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0)
+                << ", b: " << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0)
+                << std::endl;
+    }
+    if(info.srgb_defined)
+    {
+      std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
+    }
+    if(info.iccp_defined)
+    {
+      std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
+      if(options.verbose && !options.show_icc) std::cout << "Use -i to show full ICC profile" << std::endl;
     }
   }
-  if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
-  if(info.phys_defined)
+  if(info.iccp_defined && options.show_icc)
   {
-    std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
+    for(size_t i = 0; i < info.iccp_profile_size; i++) {
+      unsigned char c = info.iccp_profile[i];
+      if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
+      else printf("%02x ", c);
+      if(i % 40 == 39 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+    }
+    std::cout << std::endl;
+  }
+
+  if(options.show_header)
+  {
+    if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
+    if(info.phys_defined)
+    {
+      std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
+    }
   }
 }
 
@@ -1162,7 +1187,7 @@ void showRender(Data& data, const Options& options)
 void showInfos(Data& data, const Options& options)
 {
   if(options.show_one_line_summary) showSingleLineSummary(data, options);
-  if(options.show_header) showHeaderInfo(data, options);
+  if(options.show_header || options.show_icc) showHeaderInfo(data, options);
   if(options.show_color_stats) showColorStats(data, options);
   if(options.show_png_info) showPNGInfo(data, options);
   if(options.show_palette) displayPalette(data, options);
@@ -1193,13 +1218,14 @@ int main(int argc, char *argv[])
       for(size_t j = 1; j < s.size(); j++)
       {
         char c = s[j];
-        if(c == 'h')
+        if(c == '?')
         {
           showHelp();
           return 0;
         }
         else if(c == 'o') options.show_one_line_summary = true;
-        else if(c == 'i') options.show_header = true;
+        else if(c == 'h') options.show_header = true;
+        else if(c == 'i') options.show_icc = true;
         else if(c == 'v') options.verbose = true;
         else if(c == 's') options.show_color_stats = true;
         else if(c == 'p') options.show_header = options.show_png_info = true;
@@ -1247,6 +1273,11 @@ int main(int argc, char *argv[])
       while(eqpos < s.size() && s[eqpos] != '=') eqpos++;
       std::string key = s.substr(2, eqpos - 2);
       std::string value = (eqpos + 1) < s.size() ? s.substr(eqpos + 1) : "";
+      if(key == "help")
+      {
+        showHelp();
+        return 0;
+      }
       if(key == "mode")
       {
         if(value == "ascii") options.rendermode = RM_ASCII;
@@ -1258,6 +1289,11 @@ int main(int argc, char *argv[])
       {
         int size = strtoval<int>(value);
         if(options.rendersize >= 1 && options.rendersize <= 4096) options.rendersize = size;
+      }
+      if(key == "format")
+      {
+        if(value == "mix") options.hexformat = HF_MIX;
+        else if(value == "hex") options.hexformat = HF_HEX;
       }
     }
     else filenames.push_back(s);
@@ -1288,10 +1324,3 @@ int main(int argc, char *argv[])
   }
 }
 
-
-/*
-te testen:
-iccp chunk
-output met non-png file: moet max 1 error tonen
-output met dir als file path: moet max 1 error tonen
-*/
