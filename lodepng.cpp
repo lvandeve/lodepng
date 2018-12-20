@@ -3785,7 +3785,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
     for(i = 0; i < profile->numcolors; i++)
     {
       const unsigned char* color = &profile->palette[i * 4];
-      color_tree_add(&tree, color[0], color[1], color[2], color[3], i);
+      color_tree_add(&tree, color[0], color[1], color[2], color[3], static_cast<unsigned>(i));
     }
   }
 
@@ -4234,12 +4234,12 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
       break;
     case 1:
       for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-      for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + recon[i - bytewidth];
+      for(i = bytewidth; i < length; ++i) recon[i] = (scanline[i] + recon[i - bytewidth]) & 0xFF;
       break;
     case 2:
       if(precon)
       {
-        for(i = 0; i != length; ++i) recon[i] = scanline[i] + precon[i];
+        for(i = 0; i != length; ++i) recon[i] = (scanline[i] + precon[i]) & 0xFF;
       }
       else
       {
@@ -4249,13 +4249,13 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
     case 3:
       if(precon)
       {
-        for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i] + (precon[i] >> 1);
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + ((recon[i - bytewidth] + precon[i]) >> 1);
+        for(i = 0; i != bytewidth; ++i) recon[i] = (scanline[i] + (precon[i] >> 1)) & 0xFF;
+        for(i = bytewidth; i < length; ++i) recon[i] = (scanline[i] + ((recon[i - bytewidth] + precon[i]) >> 1)) & 0xFF;
       }
       else
       {
         for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + (recon[i - bytewidth] >> 1);
+        for(i = bytewidth; i < length; ++i) recon[i] = (scanline[i] + (recon[i - bytewidth] >> 1)) & 0xFF;
       }
       break;
     case 4:
@@ -4263,11 +4263,11 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
       {
         for(i = 0; i != bytewidth; ++i)
         {
-          recon[i] = (scanline[i] + precon[i]); /*paethPredictor(0, precon[i], 0) is always precon[i]*/
+          recon[i] = (scanline[i] + precon[i]) & 0xFF; /*paethPredictor(0, precon[i], 0) is always precon[i]*/
         }
         for(i = bytewidth; i < length; ++i)
         {
-          recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth]));
+          recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth])) & 0xFF;
         }
       }
       else
@@ -4279,7 +4279,7 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
         for(i = bytewidth; i < length; ++i)
         {
           /*paethPredictor(recon[i - bytewidth], 0, 0) is always recon[i - bytewidth]*/
-          recon[i] = (scanline[i] + recon[i - bytewidth]);
+          recon[i] = (scanline[i] + recon[i - bytewidth]) & 0xFF;
         }
       }
       break;
@@ -4840,7 +4840,7 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSetting
                           (unsigned char*)(&data[string2_begin]),
                           length, zlibsettings);
   if(!error) {
-    info->iccp_profile_size = decoded.size;
+    info->iccp_profile_size = static_cast<unsigned>(decoded.size);
     info->iccp_profile = (unsigned char*)lodepng_malloc(decoded.size);
     if(info->iccp_profile) {
       memcpy(info->iccp_profile, decoded.data, decoded.size);
