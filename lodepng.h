@@ -267,7 +267,7 @@ struct LodePNGDecompressSettings
   zlib function will call custom_deflate*/
   unsigned (*custom_inflate)(unsigned char**, size_t*,
                              const unsigned char*, size_t,
-                             const LodePNGDecompressSettings*);
+                             const LodePNGDecompressSettings*, size_t outbuffsize);
 
   const void* custom_context; /*optional custom settings for custom functions*/
 };
@@ -637,6 +637,7 @@ typedef struct LodePNGDecoderSettings
 } LodePNGDecoderSettings;
 
 void lodepng_decoder_settings_init(LodePNGDecoderSettings* settings);
+void lodepng_decoder_settings_user_regist(LodePNGDecoderSettings* settings);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
