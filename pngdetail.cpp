@@ -55,8 +55,7 @@ everything except huge output:
 #include <stdio.h>
 #include <inttypes.h>
 
-void showHelp()
-{
+void showHelp() {
   std::cout << "pngdetail by Lode Vandevenne" << std::endl;
   std::cout << "version: " << LODEPNG_VERSION_STRING << std::endl;
   std::cout << "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
@@ -105,8 +104,7 @@ enum HexFormat {
   HF_MIX // hex and ascii
 };
 
-struct Options
-{
+struct Options {
   bool verbose;
   bool show_one_line_summary; //show filesize, pixels and color type on single line
   bool show_header;
@@ -136,21 +134,18 @@ struct Options
               show_palette(false), show_palette_pixels(false),
               hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
               show_chunks(false), show_chunks2(false), show_filters(false),
-              zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false)
-  {
+              zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false) {
   }
 };
 
 unsigned inspect_chunk_by_name(const unsigned char* data, const unsigned char* end,
-                               lodepng::State& state, const char type[5])
-{
+                               lodepng::State& state, const char type[5]) {
   const unsigned char* p = lodepng_chunk_find_const(data, end, type);
   return lodepng_inspect_chunk(&state, p - data, data, end - data);
 }
 
 // Lazy loads the raw file, inspected header or entire image as needed
-struct Data
-{
+struct Data {
   std::string filename;
   std::vector<unsigned char> buffer;
   std::vector<unsigned char> pixels; // 16-bit
@@ -164,21 +159,16 @@ struct Data
 
 
   // Load the file if not already loaded
-  void loadFile()
-  {
-    if(buffer.empty())
-    {
+  void loadFile() {
+    if(buffer.empty()) {
       error = lodepng::load_file(buffer, filename); //load the image file with given filename
-    }
-    else
-    {
+    } else {
       error = 0; // for reloadpixels, reset error if file was already successfully loaded
     }
   }
 
   // Load header info (plus a few more nearby light chunks) if not already loaded, and the file if needed
-  void loadInspect()
-  {
+  void loadInspect() {
     if(inspected) return;
     inspected = true;
     loadFile();
@@ -208,13 +198,11 @@ struct Data
   }
 
   // Load the pixels if not already loaded, and the file if needed
-  void loadPixels()
-  {
+  void loadPixels() {
     if(pixels.empty()) reloadPixels();
   }
 
-  void reloadPixels()
-  {
+  void reloadPixels() {
     loadFile();
     if(error) return;
     inspected = true;
@@ -225,11 +213,9 @@ struct Data
   }
 };
 
-std::string colorTypeString(LodePNGColorType type)
-{
+std::string colorTypeString(LodePNGColorType type) {
   std::string name;
-  switch(type)
-  {
+  switch(type) {
     case LCT_GREY: name = "grey"; break;
     case LCT_RGB: name = "RGB"; break;
     case LCT_PALETTE: name = "palette"; break;
@@ -243,8 +229,7 @@ std::string colorTypeString(LodePNGColorType type)
 }
 
 template<typename T>
-T strtoval(const std::string& s)
-{
+T strtoval(const std::string& s) {
   std::istringstream sstream(s);
   T val;
   sstream >> val;
@@ -255,8 +240,7 @@ T strtoval(const std::string& s)
 /*
 Display the names and sizes of all chunks in the PNG file.
 */
-void displayChunkNames(Data& data, const Options& options)
-{
+void displayChunkNames(Data& data, const Options& options) {
   data.loadFile();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -272,23 +256,18 @@ void displayChunkNames(Data& data, const Options& options)
     }
   }
 
-  if(options.show_chunks2)
-  {
+  if(options.show_chunks2) {
     std::cout << "Chunk types: ";
     for(size_t i = 0; i < names.size(); i++) std::cout << names[i] << " ";
     std::cout << std::endl;
     std::cout << "Chunk sizes: ";
     for(size_t i = 0; i < sizes.size(); i++) std::cout << sizes[i] << " ";
     std::cout << std::endl;
-  }
-  else
-  {
+  } else {
     std::cout << "Chunks (type: lengths):";
     std::string last_type;
-    for(size_t i = 0; i < names.size(); i++)
-    {
-      if(last_type != names[i])
-      {
+    for(size_t i = 0; i < names.size(); i++) {
+      if(last_type != names[i]) {
         std::cout << std::endl;
         std::cout << " " << names[i] << ": ";
       }
@@ -428,18 +407,14 @@ char RGBtoLetter(unsigned char r, unsigned char g, unsigned char b, unsigned cha
 }
 
 std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
-                                   int w0, int h0, int w1, int h1, bool smooth)
-{
+                                   int w0, int h0, int w1, int h1, bool smooth) {
   int numchannels = in.size() / (w0 * h0);
   std::vector<unsigned char> out(w1 * h1 * numchannels);
-  if(smooth)
-  {
+  if(smooth) {
     // box filter.
     std::vector<unsigned char> temp(w1 * h0 * numchannels);
-    for (int c = 0; c < numchannels; c++)
-    {
-      for (int x = 0; x < w1; x++)
-      {
+    for (int c = 0; c < numchannels; c++) {
+      for (int x = 0; x < w1; x++) {
         float xaf = x * 1.0 * w0 / w1;
         float xbf = (x + 1.0) * w0 / w1;
         int xa = (int)xaf;
@@ -447,12 +422,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (xbf - xaf);
         xaf -= std::floor(xaf);
         xbf -= std::floor(xbf);
-        for (int y = 0; y < h0; y++)
-        {
+        for (int y = 0; y < h0; y++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int x0 = xa; x0 <= xb; x0++)
-          {
+          for(int x0 = xa; x0 <= xb; x0++) {
             int index0 = x0 * numchannels + y * w0 * numchannels;
             double v = 1;
             if(x0 == xa) v -= xaf;
@@ -462,8 +435,7 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
           temp[index1 + c] = val * norm;
         }
       }
-      for (int y = 0; y < h1; y++)
-      {
+      for (int y = 0; y < h1; y++) {
         float yaf = y * 1.0 * h0 / h1;
         float ybf = (y + 1.0) * h0 / h1;
         int ya = (int)yaf;
@@ -471,12 +443,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (ybf - yaf);
         yaf -= std::floor(yaf);
         ybf -= std::floor(ybf);
-        for (int x = 0; x < w1; x++)
-        {
+        for (int x = 0; x < w1; x++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int y0 = ya; y0 <= yb; y0++)
-          {
+          for(int y0 = ya; y0 <= yb; y0++) {
             int index0 = x * numchannels + y0 * w1 * numchannels;
             double v = 1;
             if(y0 == ya) v -= yaf;
@@ -488,16 +458,13 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
       }
     }
   } else {
-    for(int y = 0; y < h1; y++)
-    {
+    for(int y = 0; y < h1; y++) {
       int y0 = (int)((y + 0.5) * h0 / h1 - 0.5);
-      for (int x = 0; x < w1; x++)
-      {
+      for (int x = 0; x < w1; x++) {
         int x0 = (int)((x + 0.5) * w0 / w1 - 0.5);
         int index0 = x0 * numchannels + y0 * w0 * numchannels;
         int index1 = x * numchannels + y * w1 * numchannels;
-        for (int c = 0; c < numchannels; c++)
-        {
+        for (int c = 0; c < numchannels; c++) {
           out[index1 + c] = in[index0 + c];
         }
       }
@@ -510,12 +477,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
 Show ASCII art preview of the image
 image is given in 16-bit big endian
 */
-void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h, unsigned asciiw)
-{
+void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h, unsigned asciiw) {
   const std::vector<unsigned char>* imagep = &image;
   std::vector<unsigned char> image2;
-  if(asciiw < w)
-  {
+  if(asciiw < w) {
     unsigned w2 = asciiw;
     unsigned h2 = h * w2 / w;
     image2 = rescale(image, w, h, w2, h2, true);
@@ -523,19 +488,16 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
     w = w2;
     h = h2;
   }
-  if(w > 0 && h > 0)
-  {
+  if(w > 0 && h > 0) {
     std::cout << "ASCII Art Preview: " << std::endl;
     unsigned h2 = 1 + ((h - 1) * 4) / 7; //compensate for non-square characters in terminal
     std::cout << '+';
     for(unsigned x = 0; x < w; x++) std::cout << '-';
     std::cout << '+' << std::endl;
-    for(unsigned y = 0; y < h2; y++)
-    {
+    for(unsigned y = 0; y < h2; y++) {
       std::cout << "|";
       unsigned y2 = y * h / h2;
-      for(unsigned x = 0; x < w; x++)
-      {
+      for(unsigned x = 0; x < w; x++) {
         int r = (*imagep)[y2 * w * 8 + x * 8 + 0];
         int g = (*imagep)[y2 * w * 8 + x * 8 + 2];
         int b = (*imagep)[y2 * w * 8 + x * 8 + 4];
@@ -555,31 +517,24 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
 //sixteen: print 16 bits per pixel
 //alpha: print alpha channel
 //input image ALWAYS given in 16-bit per channel RGBA
-void displayColorsHex(const std::vector<unsigned char>& image, unsigned w, unsigned h, bool sixteen)
-{
+void displayColorsHex(const std::vector<unsigned char>& image, unsigned w, unsigned h, bool sixteen) {
   std::ios_base::fmtflags flags = std::cout.flags();
 
-  if(w > 0 && h > 0)
-  {
+  if(w > 0 && h > 0) {
     std::cout << "Colors (CSS RGBA hex format):" << std::endl;
 
-    for(unsigned y = 0; y < h; y++)
-    {
+    for(unsigned y = 0; y < h; y++) {
       std::cout.flags(flags); //print line numbers in hex or dec whatever it originally was
       std::cout << y << ":";
-      for(unsigned x = 0; x < w; x++)
-      {
+      for(unsigned x = 0; x < w; x++) {
         size_t index = y * w * 8 + x * 8;
-        if (sixteen)
-        {
+        if (sixteen) {
           int r = image[index + 0] * 256 + image[index + 1];
           int g = image[index + 2] * 256 + image[index + 3];
           int b = image[index + 4] * 256 + image[index + 5];
           int a = image[index + 6] * 256 + image[index + 7];
           std::cout << std::hex << std::setfill('0') << " #" << std::setw(4) << r << std::setw(4) << g << std::setw(4) << b << std::setw(4) << a;
-        }
-        else
-        {
+        } else {
           int r = image[index + 0];
           int g = image[index + 2];
           int b = image[index + 4];
@@ -598,38 +553,30 @@ void displayColorsHex(const std::vector<unsigned char>& image, unsigned w, unsig
 /*
 Show the filtertypes of each scanline in this PNG image.
 */
-void displayFilterTypes(Data& data, const Options& options)
-{
+void displayFilterTypes(Data& data, const Options& options) {
   std::cout << (options.use_hex ? std::hex: std::dec);
   data.loadFile();
   if(data.error) return;
   const std::vector<unsigned char>& buffer = data.buffer;
   std::vector<std::vector<unsigned char> > types;
   unsigned error = lodepng::getFilterTypesInterlaced(types, buffer);
-  if(error)
-  {
+  if(error) {
     std::cout << "Error getting filter types" << std::endl;
     return;
   }
 
-  if(types.size() == 7)
-  {
+  if(types.size() == 7) {
     std::cout << "Filter types (Adam7 interlaced):" << std::endl;
-    for(int j = 0; j < 7; j++)
-    {
+    for(int j = 0; j < 7; j++) {
       std::cout << " Pass " << (j + 1) << ": ";
-      for(size_t i = 0; i < types[j].size(); i++)
-      {
+      for(size_t i = 0; i < types[j].size(); i++) {
         std::cout << (int)(types[j][i]);
       }
       std::cout << std::endl;
     }
-  }
-  else
-  {
+  } else {
     std::cout << "Filter types: ";
-    for(size_t i = 0; i < types[0].size(); i++)
-    {
+    for(size_t i = 0; i < types[0].size(); i++) {
       std::cout << (int)(types[0][i]);
     }
     std::cout << std::endl;
@@ -637,8 +584,7 @@ void displayFilterTypes(Data& data, const Options& options)
 }
 
 //image type MUST be palette
-void displayPalette(Data& data, const Options& options)
-{
+void displayPalette(Data& data, const Options& options) {
   data.loadInspect();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -650,8 +596,7 @@ void displayPalette(Data& data, const Options& options)
   std::cout << "Palette colors: ";
   std::ios_base::fmtflags flags = std::cout.flags();
   std::cout << std::hex << std::setfill('0');
-  for(size_t i = 0; i < color.palettesize; i++)
-  {
+  for(size_t i = 0; i < color.palettesize; i++) {
     unsigned char* p = &color.palette[i * 4];
     std::cout << "#" << std::setw(2) << (int)p[0] << std::setw(2) << (int)p[1] << std::setw(2) << (int)p[2] << std::setw(2) << (int)p[3] << " ";
   }
@@ -660,8 +605,7 @@ void displayPalette(Data& data, const Options& options)
 }
 
 //image type MUST be palette
-void displayPalettePixels(const std::vector<unsigned char>& buffer, const Options& options)
-{
+void displayPalettePixels(const std::vector<unsigned char>& buffer, const Options& options) {
   unsigned w, h;
   lodepng::State state;
   std::vector<unsigned char> out;
@@ -671,23 +615,19 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer, const Option
 
   lodepng::decode(out, w, h, state, buffer);
 
-  if(state.info_png.color.colortype == LCT_PALETTE)
-  {
-    if (options.show_color_stats)
-    {
+  if(state.info_png.color.colortype == LCT_PALETTE) {
+    if (options.show_color_stats) {
       std::vector<size_t> count(256, 0);
       size_t outofbounds = 0;
 
-      for(size_t i = 0; i < w * h; i++)
-      {
+      for(size_t i = 0; i < w * h; i++) {
         int value = lodepng::getPaletteValue(&out[0], i, state.info_raw.bitdepth);
         count[value]++;
         if(value >= (int)state.info_raw.palettesize) outofbounds++;
       }
 
       std::cout << "Palette count: ";
-      for(size_t i = 0; i < state.info_raw.palettesize; i++)
-      {
+      for(size_t i = 0; i < state.info_raw.palettesize; i++) {
         std::cout << count[i] << " ";
       }
       std::cout << std::endl;
@@ -696,21 +636,17 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer, const Option
     }
 
     std::cout << "Pixel palette indices:" << std::endl;
-    for(size_t i = 0; i < w * h; i++)
-    {
+    for(size_t i = 0; i < w * h; i++) {
       int value = lodepng::getPaletteValue(&out[0], i, state.info_raw.bitdepth);
       std::cout << value << ", ";
       if(i % w == w - 1) std::cout << std::endl;
     }
-  }
-  else
-  {
+  } else {
     std::cout << "Pixel palette indices: not shown, not a palette image\n" << std::endl;
   }
 }
 
-void printZlibInfo(Data& data, const Options& options)
-{
+void printZlibInfo(Data& data, const Options& options) {
   data.loadFile();
   if(data.error) return;
   const std::vector<unsigned char>& in = data.buffer;
@@ -719,15 +655,13 @@ void printZlibInfo(Data& data, const Options& options)
   std::vector<lodepng::ZlibBlockInfo> zlibinfo;
   lodepng::extractZlibInfo(zlibinfo, in);
 
-  if(options.zlib_info)
-  {
+  if(options.zlib_info) {
     //std::cout << "Zlib info: " << std::endl;
     size_t compressed = 0;
     size_t uncompressed = 0;
     std::vector<size_t> boundaries_compressed;
     std::vector<size_t> boundaries_uncompressed;
-    for(size_t i = 0; i < zlibinfo.size(); i++)
-    {
+    for(size_t i = 0; i < zlibinfo.size(); i++) {
       compressed += zlibinfo[i].compressedbits / 8;
       uncompressed += zlibinfo[i].uncompressedbytes;
       boundaries_compressed.push_back(compressed);
@@ -738,8 +672,7 @@ void printZlibInfo(Data& data, const Options& options)
     std::cout << "Compressed size: " << compressed << std::endl;
     std::cout << "Uncompressed size: " << uncompressed << std::endl;
     std::cout << "Amount of zlib blocks: " << zlibinfo.size() << std::endl;
-    if(zlibinfo.size() > 1)
-    {
+    if(zlibinfo.size() > 1) {
       std::cout << "Block sizes (uncompressed): ";
       for(size_t i = 0; i < zlibinfo.size(); i++)
           std::cout << zlibinfo[i].uncompressedbytes << " ";
@@ -759,10 +692,8 @@ void printZlibInfo(Data& data, const Options& options)
     }
   }
 
-  if(options.zlib_blocks)
-  {
-    for(size_t i = 0; i < zlibinfo.size(); i++)
-    {
+  if(options.zlib_blocks) {
+    for(size_t i = 0; i < zlibinfo.size(); i++) {
       const lodepng::ZlibBlockInfo& info = zlibinfo[i];
 
       std::cout << "Zlib block " << i << ":" << std::endl;
@@ -773,14 +704,12 @@ void printZlibInfo(Data& data, const Options& options)
       std::cout << " block compressed: " << compressedsize << " (" << compressedsize / 1024 << "K) (" << info.compressedbits << " bits)" << std::endl;
       std::cout << " block uncompressed: " << uncompressedsize << " (" << uncompressedsize / 1024 << "K)" << std::endl;
 
-      if(info.btype > 2)
-      {
+      if(info.btype > 2) {
         std::cout << "Error: Invalid Block Type" << std::endl;
         return;
       }
 
-      if(info.btype == 2)
-      {
+      if(info.btype == 2) {
         std::cout << " encoded trees size: " << info.treebits / 8 << " (" << info.treebits << " bits)" << std::endl;
         std::cout << " HLIT: " << info.hlit << std::endl;
         std::cout << " HDIST: " << info.hdist << std::endl;
@@ -788,17 +717,12 @@ void printZlibInfo(Data& data, const Options& options)
         std::cout << std::hex;
         std::cout << " code length code lengths: "; for(size_t j = 0; j < 19; j++) std::cout << info.clcl[j]; std::cout << std::endl;
         if(!options.use_hex) std::cout << std::dec;
-        if(options.zlib_full)
-        {
-          for(size_t j = 0; j < info.treecodes.size(); j++)
-          {
+        if(options.zlib_full) {
+          for(size_t j = 0; j < info.treecodes.size(); j++) {
             int code = info.treecodes[j];
-            if(code < 17)
-            {
+            if(code < 17) {
                std::cout << " tree: " << code << std::endl;
-            }
-            else
-            {
+            } else {
               j++;
               std::cout << " tree: " << code << " rep: " << info.treecodes[j] << std::endl;
             }
@@ -816,43 +740,30 @@ void printZlibInfo(Data& data, const Options& options)
       }
 
 
-      if(info.btype != 0)
-      {
+      if(info.btype != 0) {
         std::cout << " code counts: lit: " << info.numlit << ", len/dist: " << info.numlen << ", total: " << (info.numlit + info.numlen + 1) << ", with dists: " << (info.numlit + 2 * info.numlen + 1) << std::endl;
 
-        if(options.zlib_full)
-        {
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++)
-          {
+        if(options.zlib_full) {
+          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
             int symbol = info.lz77_lcode[j];
-            if(symbol == 256)
-            {
+            if(symbol == 256) {
               std::cout << " end" << std::endl;
-            }
-            else if(symbol < 256)
-            {
+            } else if(symbol < 256) {
               std::cout << " lit: " << symbol << std::endl;
-            }
-            else
-            {
+            } else {
               std::cout << " len: " << info.lz77_lvalue[j] << ", dist: " << info.lz77_dvalue[j] << std::endl;
             }
           }
         }
 
-        if(options.zlib_counts)
-        {
+        if(options.zlib_counts) {
           std::vector<size_t> ll_count(288, 0);
           std::vector<size_t> d_count(32, 0);
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++)
-          {
+          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
             int symbol = info.lz77_lcode[j];
-            if(symbol <= 256)
-            {
+            if(symbol <= 256) {
               ll_count[symbol]++;
-            }
-            else
-            {
+            } else {
               ll_count[symbol]++;
               d_count[info.lz77_dcode[j]]++;
             }
@@ -898,8 +809,7 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
     }
   }
   *ro = *go = *bo = *ao = 0;
-  for(size_t i = 0; i < rm.size(); i++)
-  {
+  for(size_t i = 0; i < rm.size(); i++) {
     *ro += rm[i];
     *go += gm[i];
     *bo += bm[i];
@@ -910,19 +820,16 @@ size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
 }
 
 
-void showError(Data& data, const Options& options)
-{
+void showError(Data& data, const Options& options) {
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::string prefix = (options.use_hex ? "0x": "");
-  if(!data.error)
-  {
+  if(!data.error) {
     std::cout << "No error" << std::endl;
   }
   std::cout << "Decoding error " << prefix << data.error << ": " << lodepng_error_text(data.error) << std::endl;
 }
 
-void loadWithErrorRecovery(Data& data, const Options& options)
-{
+void loadWithErrorRecovery(Data& data, const Options& options) {
   (void)options;
   unsigned& error = data.error;
   lodepng::State& state = data.state;
@@ -930,46 +837,35 @@ void loadWithErrorRecovery(Data& data, const Options& options)
   data.loadPixels();
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
-  while(error)
-  {
+  while(error) {
     // Not showing regular error here, is shown at end of program.
     unsigned error2 = error;
-    if(error == 57)
-    {
+    if(error == 57) {
       showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       data.reloadPixels();
-    }
-    else if(error == 58)
-    {
+    } else if(error == 58) {
       showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       data.reloadPixels();
-    }
-    else if(error == 69)
-    {
+    } else if(error == 69) {
       showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
       state.decoder.ignore_critical = 1;
       data.reloadPixels();
-    }
-    else if(error == 30 || error == 63)
-    {
+    } else if(error == 30 || error == 63) {
       showError(data, options);
       std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
       state.decoder.ignore_end = 1;
       data.reloadPixels();
-    }
-    else
-    {
+    } else {
       if(error == 0) std::cerr << "This error is unrecoverable" << std::endl;
       break;  // other error that we cannot ignore
     }
     if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
-    if(error == error2)
-    {
+    if(error == error2) {
       std::cerr << "Failed to ignore the error" << std::endl;
       break; // avoid infinite loop if ignoring did not fix the error code
     }
@@ -979,8 +875,7 @@ void loadWithErrorRecovery(Data& data, const Options& options)
 
 
 
-void showSingleLineSummary(Data& data, const Options& options)
-{
+void showSingleLineSummary(Data& data, const Options& options) {
   data.loadInspect();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -990,83 +885,68 @@ void showSingleLineSummary(Data& data, const Options& options)
   std::cout << "Color: " << colorTypeString(data.state.info_png.color.colortype) << ", " << data.state.info_png.color.bitdepth << " bit" << std::endl;
 }
 
-void showHeaderInfo(Data& data, const Options& options)
-{
+void showHeaderInfo(Data& data, const Options& options) {
   data.loadInspect();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
 
   const LodePNGInfo& info = data.state.info_png;
   const LodePNGColorMode& color = info.color;
-  if(options.show_header)
-  {
+  if(options.show_header) {
     std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
     std::cout << "Width: " << data.w << std::endl;
     std::cout << "Height: " << data.h << std::endl;
     std::cout << "Interlace method: " << info.interlace_method << std::endl;
-    if(options.verbose)
-    {
+    if(options.verbose) {
       std::cout << "Compression method: " << info.compression_method << std::endl;
       std::cout << "Filter method: " << info.filter_method << std::endl;
     }
     std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
     std::cout << "Bit depth: " << color.bitdepth << std::endl;
-    if(options.verbose)
-    {
+    if(options.verbose) {
       std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
       std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
       std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
       std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
       std::cout << "Has color key: " << color.key_defined << std::endl;
     }
-    if (color.colortype == LCT_PALETTE)
-    {
+    if (color.colortype == LCT_PALETTE) {
       std::cout << "Palette size: " << color.palettesize << std::endl;
     }
-    if(color.key_defined)
-    {
+    if(color.key_defined) {
       std::cout << "Color key rgb: " << color.key_r
                 << ", " << color.key_g
                 << ", " << color.key_b << std::endl;
     }
-    if(info.background_defined)
-    {
-      if(color.colortype == LCT_PALETTE)
-      {
+    if(info.background_defined) {
+      if(color.colortype == LCT_PALETTE) {
         std::cout << "Background index: " << info.background_r << std::endl;
-      }
-      else
-      {
+      } else {
         std::cout << "Background rgb: " << info.background_r
                   << ", " << info.background_g
                   << ", " << info.background_b << std::endl;
       }
     }
-    if(info.gama_defined)
-    {
+    if(info.gama_defined) {
       std::cout << "gAMA defined: " << info.gama_gamma << " (" << (info.gama_gamma / 100000.0)
                 << ", " << (100000.0 / info.gama_gamma) << ")" << std::endl;
     }
-    if(info.chrm_defined)
-    {
+    if(info.chrm_defined) {
       std::cout << "cHRM defined: w: " << (info.chrm_white_x / 100000.0) << " " << (info.chrm_white_y / 100000.0)
                 << ", r: " << (info.chrm_red_x / 100000.0) << " " << (info.chrm_red_y / 100000.0)
                 << ", g: " << (info.chrm_green_x / 100000.0) << " " << (info.chrm_green_y / 100000.0)
                 << ", b: " << (info.chrm_blue_x / 100000.0) << " " << (info.chrm_blue_y / 100000.0)
                 << std::endl;
     }
-    if(info.srgb_defined)
-    {
+    if(info.srgb_defined) {
       std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
     }
-    if(info.iccp_defined)
-    {
+    if(info.iccp_defined) {
       std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
       if(options.verbose && !options.show_icc) std::cout << "Use -i to show full ICC profile" << std::endl;
     }
   }
-  if(info.iccp_defined && options.show_icc)
-  {
+  if(info.iccp_defined && options.show_icc) {
     for(size_t i = 0; i < info.iccp_profile_size; i++) {
       unsigned char c = info.iccp_profile[i];
       if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
@@ -1076,19 +956,16 @@ void showHeaderInfo(Data& data, const Options& options)
     std::cout << std::endl;
   }
 
-  if(options.show_header)
-  {
+  if(options.show_header) {
     if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
-    if(info.phys_defined)
-    {
+    if(info.phys_defined) {
       std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
     }
   }
 }
 
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
-void showPNGInfo(Data& data, const Options& options)
-{
+void showPNGInfo(Data& data, const Options& options) {
   loadWithErrorRecovery(data, options);
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -1096,13 +973,11 @@ void showPNGInfo(Data& data, const Options& options)
   const LodePNGInfo& info = data.state.info_png;
 
   if(options.verbose) std::cout << "Texts: " << info.text_num << std::endl;
-  for(size_t i = 0; i < info.text_num; i++)
-  {
+  for(size_t i = 0; i < info.text_num; i++) {
     std::cout << "Text: " << info.text_keys[i] << ": " << info.text_strings[i] << std::endl;
   }
   if(options.verbose) std::cout << "International texts: " << info.itext_num << std::endl;
-  for(size_t i = 0; i < info.itext_num; i++)
-  {
+  for(size_t i = 0; i < info.itext_num; i++) {
     std::cout << "Text: "
               << info.itext_keys[i] << ", "
               << info.itext_langtags[i] << ", "
@@ -1110,8 +985,7 @@ void showPNGInfo(Data& data, const Options& options)
               << info.itext_strings[i] << std::endl;
   }
   if(options.verbose) std::cout << "Time defined: " << info.time_defined << std::endl;
-  if(info.time_defined)
-  {
+  if(info.time_defined) {
     const LodePNGTime& time = info.time;
     std::cout << "year: " << time.year << std::endl;
     std::cout << "month: " << time.month << std::endl;
@@ -1122,8 +996,7 @@ void showPNGInfo(Data& data, const Options& options)
   }
 }
 
-void showColorStats(Data& data, const Options& options)
-{
+void showColorStats(Data& data, const Options& options) {
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::vector<unsigned char>& image = data.pixels;
   unsigned& w = data.w;
@@ -1137,8 +1010,7 @@ void showColorStats(Data& data, const Options& options)
   std::cout << "Num unique colors: " << countColors(image, w, h, &rc, &gc, &bc, &ac);
   std::cout << " (r: " << rc << ", g: " << gc << ", b: " << bc << ", a: " << ac << ")";
   std::cout << std::endl;
-  if(w > 0 && h > 0)
-  {
+  if(w > 0 && h > 0) {
     double avg[4] = {0, 0, 0, 0};
     double min[4] = {999999, 999999, 999999, 999999};
     double max[4] = {0, 0, 0, 0};
@@ -1163,34 +1035,28 @@ void showColorStats(Data& data, const Options& options)
   }
 }
 
-void showRender(Data& data, const Options& options)
-{
+void showRender(Data& data, const Options& options) {
   data.loadPixels();
   if(data.error) return;
-  if(options.rendermode == RM_ASCII)
-  {
+  if(options.rendermode == RM_ASCII) {
     displayAsciiArt(data.pixels, data.w, data.h, options.rendersize);
   }
 
-  if(options.rendermode == RM_HEX)
-  {
+  if(options.rendermode == RM_HEX) {
     displayColorsHex(data.pixels, data.w, data.h, false);
   }
 
-  if(options.rendermode == RM_HEX16)
-  {
+  if(options.rendermode == RM_HEX16) {
     displayColorsHex(data.pixels, data.w, data.h, true);
   }
 
-  if(options.rendermode == RM_PAL)
-  {
+  if(options.rendermode == RM_PAL) {
     displayPalettePixels(data.buffer, options);
   }
 }
 
 
-void showInfos(Data& data, const Options& options)
-{
+void showInfos(Data& data, const Options& options) {
   if(options.show_one_line_summary) showSingleLineSummary(data, options);
   if(options.show_header || options.show_icc) showHeaderInfo(data, options);
   if(options.show_color_stats) showColorStats(data, options);
@@ -1199,32 +1065,26 @@ void showInfos(Data& data, const Options& options)
   if(options.show_chunks || options.show_chunks2) displayChunkNames(data, options);
   if(options.show_filters) displayFilterTypes(data, options);
   if(options.show_render) showRender(data, options);
-  if(options.zlib_info || options.zlib_blocks || options.zlib_counts || options.zlib_full)
-  {
+  if(options.zlib_info || options.zlib_blocks || options.zlib_counts || options.zlib_full) {
     printZlibInfo(data, options);
   }
 
   if(data.error) showError(data, options);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   Options options;
   bool options_chosen = false;
 
   std::vector<std::string> filenames;
-  for (int i = 1; i < argc; i++)
-  {
+  for (int i = 1; i < argc; i++) {
     std::string s = argv[i];
-    if(s.size() > 1 && s[0] == '-' && s[1] != '-')
-    {
+    if(s.size() > 1 && s[0] == '-' && s[1] != '-') {
       // anything that chooses actual set disables the defaults
       if(s != "-x" && s != "-v") options_chosen = true;
-      for(size_t j = 1; j < s.size(); j++)
-      {
+      for(size_t j = 1; j < s.size(); j++) {
         char c = s[j];
-        if(c == '?')
-        {
+        if(c == '?') {
           showHelp();
           return 0;
         }
@@ -1242,61 +1102,50 @@ int main(int argc, char *argv[])
         else if(c == 'f') options.show_filters = true;
         else if(c == 'z') options.zlib_info = true;
         else if(c == 'b') options.zlib_blocks = true;
-        else if(c == 'B')
-        {
+        else if(c == 'B') {
           options.zlib_blocks = true;
           options.zlib_counts = true;
         }
-        else if(c == '7')
-        {
+        else if(c == '7') {
           options.zlib_blocks = true;
           options.zlib_full = true;
         }
-        else if(c == 'x')
-        {
+        else if(c == 'x') {
           options.use_hex = true;
           std::cout << std::hex;
         }
-        else if(c == '-')
-        {
+        else if(c == '-') {
           if(s != "--help") std::cout << "Unknown flag: " << s << ". Use -h for help" << std::endl;
           showHelp();
           return 0;
         }
-        else
-        {
+        else {
           std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
           showHelp();
           return 0;
         }
 
       }
-    }
-    else if(s.size() > 1 && s[0] == '-' && s[1] == '-')
-    {
+    } else if(s.size() > 1 && s[0] == '-' && s[1] == '-') {
       size_t eqpos = 2;
       while(eqpos < s.size() && s[eqpos] != '=') eqpos++;
       std::string key = s.substr(2, eqpos - 2);
       std::string value = (eqpos + 1) < s.size() ? s.substr(eqpos + 1) : "";
-      if(key == "help")
-      {
+      if(key == "help") {
         showHelp();
         return 0;
       }
-      if(key == "mode")
-      {
+      if(key == "mode") {
         if(value == "ascii") options.rendermode = RM_ASCII;
         else if(value == "hex") options.rendermode = RM_HEX;
         else if(value == "hex16") options.rendermode = RM_HEX16;
         else if(value == "palette") options.rendermode = RM_PAL;
       }
-      if(key == "size")
-      {
+      if(key == "size") {
         int size = strtoval<int>(value);
         if(options.rendersize >= 1 && options.rendersize <= 4096) options.rendersize = size;
       }
-      if(key == "format")
-      {
+      if(key == "format") {
         if(value == "mix") options.hexformat = HF_MIX;
         else if(value == "hex") options.hexformat = HF_HEX;
       }
@@ -1304,21 +1153,18 @@ int main(int argc, char *argv[])
     else filenames.push_back(s);
   }
 
-  if(filenames.empty())
-  {
+  if(filenames.empty()) {
     std::cout << "Please provide a filename to preview" << std::endl;
     showHelp();
     return 0;
   }
 
-  if(!options_chosen)
-  {
+  if(!options_chosen) {
     //fill in defaults
     options.show_header = true;
   }
 
-  for(size_t i = 0; i < filenames.size(); i++)
-  {
+  for(size_t i = 0; i < filenames.size(); i++) {
     if(filenames.size() > 1) {
       if(i > 0 && !options.show_one_line_summary) std::cout << std::endl;
       std::cout << filenames[i] << ":";

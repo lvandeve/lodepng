@@ -42,8 +42,7 @@ Press any key to see next image, or esc to quit.
 #include <SDL/SDL.h>
 
 /*shows image with SDL. Returns 1 if user wants to fully quit, 0 if user wants to see next image.*/
-int show(const char* filename)
-{
+int show(const char* filename) {
   unsigned error;
   unsigned char* image;
   unsigned w, h, x, y;
@@ -58,8 +57,7 @@ int show(const char* filename)
   error = lodepng_decode32_file(&image, &w, &h, filename);
 
   /*stop if there is an error*/
-  if(error)
-  {
+  if(error) {
     printf("decoder error %u: %s\n", error, lodepng_error_text(error));
     return 0;
   }
@@ -70,14 +68,12 @@ int show(const char* filename)
   if(h / 1024 >= jump) jump = h / 1024 + 1;
 
   /*init SDL*/
-  if(SDL_Init(SDL_INIT_VIDEO) < 0)
-  {
+  if(SDL_Init(SDL_INIT_VIDEO) < 0) {
     printf("Error, SDL video init failed\n");
     return 0;
   }
   scr = SDL_SetVideoMode(w / jump, h / jump, 32, SDL_HWSURFACE);
-  if(!scr)
-  {
+  if(!scr) {
     printf("Error, no SDL screen\n");
     return 0;
   }
@@ -85,8 +81,7 @@ int show(const char* filename)
 
   /*plot the pixels of the PNG file*/
   for(y = 0; y + jump - 1 < h; y += jump)
-  for(x = 0; x + jump - 1 < w; x += jump)
-  {
+  for(x = 0; x + jump - 1 < w; x += jump) {
     int checkerColor;
     Uint32* bufp;
     Uint32 r, g, b, a;
@@ -110,10 +105,8 @@ int show(const char* filename)
 
   /*pause until you press escape and meanwhile redraw screen*/
   done = 0;
-  while(done == 0)
-  {
-    while(SDL_PollEvent(&event))
-    {
+  while(done == 0) {
+    while(SDL_PollEvent(&event)) {
       if(event.type == SDL_QUIT) done = 2;
       else if(SDL_GetKeyState(NULL)[SDLK_ESCAPE]) done = 2;
       else if(event.type == SDL_KEYDOWN) done = 1; /*press any other key for next image*/
@@ -128,14 +121,12 @@ int show(const char* filename)
   return done == 2 ? 1 : 0;
 }
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   int i;
 
   if(argc <= 1) printf("Please enter PNG file name(s) to display\n");;
 
-  for(i = 1; i < argc; i++)
-  {
+  for(i = 1; i < argc; i++) {
     if(show(argv[i])) return 0;
   }
   return 0;

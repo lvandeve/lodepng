@@ -38,8 +38,7 @@ etc...
 /*
 Display general info about the PNG.
 */
-void displayPNGInfo(const LodePNGInfo& info)
-{
+void displayPNGInfo(const LodePNGInfo& info) {
   const LodePNGColorMode& color = info.color;
 
   std::cout << "Compression method: " << info.compression_method << std::endl;
@@ -53,20 +52,17 @@ void displayPNGInfo(const LodePNGInfo& info)
   std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
   std::cout << "Palette size: " << color.palettesize << std::endl;
   std::cout << "Has color key: " << color.key_defined << std::endl;
-  if(color.key_defined)
-  {
+  if(color.key_defined) {
     std::cout << "Color key r: " << color.key_r << std::endl;
     std::cout << "Color key g: " << color.key_g << std::endl;
     std::cout << "Color key b: " << color.key_b << std::endl;
   }
   std::cout << "Texts: " << info.text_num << std::endl;
-  for(size_t i = 0; i < info.text_num; i++)
-  {
+  for(size_t i = 0; i < info.text_num; i++) {
     std::cout << "Text: " << info.text_keys[i] << ": " << info.text_strings[i] << std::endl << std::endl;
   }
   std::cout << "International texts: " << info.itext_num << std::endl;
-  for(size_t i = 0; i < info.itext_num; i++)
-  {
+  for(size_t i = 0; i < info.itext_num; i++) {
     std::cout << "Text: "
               << info.itext_keys[i] << ", "
               << info.itext_langtags[i] << ", "
@@ -74,8 +70,7 @@ void displayPNGInfo(const LodePNGInfo& info)
               << info.itext_strings[i] << std::endl << std::endl;
   }
   std::cout << "Time defined: " << info.time_defined << std::endl;
-  if(info.time_defined)
-  {
+  if(info.time_defined) {
     const LodePNGTime& time = info.time;
     std::cout << "year: " << time.year << std::endl;
     std::cout << "month: " << time.month << std::endl;
@@ -85,8 +80,7 @@ void displayPNGInfo(const LodePNGInfo& info)
     std::cout << "second: " << time.second << std::endl;
   }
   std::cout << "Physics defined: " << info.phys_defined << std::endl;
-  if(info.phys_defined)
-  {
+  if(info.phys_defined) {
     std::cout << "physics X: " << info.phys_x << std::endl;
     std::cout << "physics Y: " << info.phys_y << std::endl;
     std::cout << "physics unit: " << info.phys_unit << std::endl;
@@ -97,8 +91,7 @@ void displayPNGInfo(const LodePNGInfo& info)
 /*
 Display the names and sizes of all chunks in the PNG file.
 */
-void displayChunkNames(const std::vector<unsigned char>& buffer)
-{
+void displayChunkNames(const std::vector<unsigned char>& buffer) {
   // Listing chunks is based on the original file, not the decoded png info.
   const unsigned char *chunk, *begin, *end, *next;
   end = &buffer.back() + 1;
@@ -107,18 +100,15 @@ void displayChunkNames(const std::vector<unsigned char>& buffer)
   std::cout << std::endl << "Chunks:" << std::endl;
   std::cout << " type: length(s)";
   std::string last_type;
-  while(chunk + 8 < end && chunk >= begin)
-  {
+  while(chunk + 8 < end && chunk >= begin) {
     char type[5];
     lodepng_chunk_type(type, chunk);
-    if(std::string(type).size() != 4)
-    {
+    if(std::string(type).size() != 4) {
       std::cout << "this is probably not a PNG" << std::endl;
       return;
     }
 
-    if(last_type != type)
-    {
+    if(last_type != type) {
       std::cout << std::endl;
       std::cout << " " << type << ": ";
     }
@@ -137,10 +127,8 @@ void displayChunkNames(const std::vector<unsigned char>& buffer)
 /*
 Show ASCII art preview of the image
 */
-void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h)
-{
-  if(w > 0 && h > 0)
-  {
+void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h) {
+  if(w > 0 && h > 0) {
     std::cout << std::endl << "ASCII Art Preview: " << std::endl;
     unsigned w2 = 48;
     if(w < w2) w2 = w;
@@ -151,11 +139,9 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
     std::cout << '+';
     for(unsigned x = 0; x < w2; x++) std::cout << '-';
     std::cout << '+' << std::endl;
-    for(unsigned y = 0; y < h2; y++)
-    {
+    for(unsigned y = 0; y < h2; y++) {
       std::cout << "|";
-      for(unsigned x = 0; x < w2; x++)
-      {
+      for(unsigned x = 0; x < w2; x++) {
         unsigned x2 = x * w / w2;
         unsigned y2 = y * h / h2;
         int r = image[y2 * w * 4 + x2 * 4 + 0];
@@ -167,8 +153,7 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
         int max = (r > g && r > b) ? r : (g > b ? g : b);
         int saturation = max - min;
         int letter = 'i'; //i for grey, or r,y,g,c,b,m for colors
-        if(saturation > 32)
-        {
+        if(saturation > 32) {
           int h = lightness >= (min + max) / 2;
           if(h) letter = (min == r ? 'c' : (min == g ? 'm' : 'y'));
           else letter = (max == r ? 'r' : (max == g ? 'g' : 'b'));
@@ -193,12 +178,10 @@ void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsign
 /*
 Show the filtertypes of each scanline in this PNG image.
 */
-void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_checksums)
-{
+void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_checksums) {
   //Get color type and interlace type
   lodepng::State state;
-  if(ignore_checksums)
-  {
+  if(ignore_checksums) {
     state.decoder.ignore_crc = 1;
     state.decoder.zlibsettings.ignore_adler32 = 1;
   }
@@ -206,14 +189,12 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
   unsigned error;
   error = lodepng_inspect(&w, &h, &state, &buffer[0], buffer.size());
 
-  if(error)
-  {
+  if(error) {
     std::cout << "inspect error " << error << ": " << lodepng_error_text(error) << std::endl;
     return;
   }
 
-  if(state.info_png.interlace_method == 1)
-  {
+  if(state.info_png.interlace_method == 1) {
     std::cout << "showing filtertypes for interlaced PNG not supported by this example" << std::endl;
     return;
   }
@@ -225,18 +206,15 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
 
   std::vector<unsigned char> zdata;
 
-  while(chunk + 8 < end && chunk >= begin)
-  {
+  while(chunk + 8 < end && chunk >= begin) {
     char type[5];
     lodepng_chunk_type(type, chunk);
-    if(std::string(type).size() != 4)
-    {
+    if(std::string(type).size() != 4) {
       std::cout << "this is probably not a PNG" << std::endl;
       return;
     }
 
-    if(std::string(type) == "IDAT")
-    {
+    if(std::string(type) == "IDAT") {
       const unsigned char* cdata = lodepng_chunk_data_const(chunk);
       unsigned clength = lodepng_chunk_length(chunk);
       if(chunk + clength + 12 > end || clength > buffer.size() || chunk + clength + 12 < begin) {
@@ -244,8 +222,7 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
         return;
       }
 
-      for(unsigned i = 0; i < clength; i++)
-      {
+      for(unsigned i = 0; i < clength; i++) {
         zdata.push_back(cdata[i]);
       }
     }
@@ -259,8 +236,7 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
   std::vector<unsigned char> data;
   error = lodepng::decompress(data, &zdata[0], zdata.size());
 
-  if(error)
-  {
+  if(error) {
     std::cout << "decompress error " << error << ": " << lodepng_error_text(error) << std::endl;
     return;
   }
@@ -268,15 +244,13 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
   //A line is 1 filter byte + all pixels
   size_t linebytes = 1 + lodepng_get_raw_size(w, 1, &state.info_png.color);
 
-  if(linebytes == 0)
-  {
+  if(linebytes == 0) {
     std::cout << "error: linebytes is 0" << std::endl;
     return;
   }
 
   std::cout << "Filter types: ";
-  for(size_t i = 0; i < data.size(); i += linebytes)
-  {
+  for(size_t i = 0; i < data.size(); i += linebytes) {
     std::cout << (int)(data[i]) << " ";
   }
   std::cout << std::endl;
@@ -287,17 +261,14 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
 /*
 Main
 */
-int main(int argc, char *argv[]) /*list the chunks*/
-{
+int main(int argc, char *argv[]) /*list the chunks*/ {
   bool ignore_checksums = false;
   std::string filename = "";
-  for (int i = 1; i < argc; i++)
-  {
+  for (int i = 1; i < argc; i++) {
     if(std::string(argv[i]) == "--ignore_checksums") ignore_checksums = true;
     else filename = argv[i];
   }
-  if(filename == "")
-  {
+  if(filename == "") {
     std::cout << "Please provide a filename to preview" << std::endl;
     return 0;
   }
@@ -309,16 +280,14 @@ int main(int argc, char *argv[]) /*list the chunks*/
   lodepng::load_file(buffer, filename); //load the image file with given filename
 
   lodepng::State state;
-  if(ignore_checksums)
-  {
+  if(ignore_checksums) {
     state.decoder.ignore_crc = 1;
     state.decoder.zlibsettings.ignore_adler32 = 1;
   }
 
   unsigned error = lodepng::decode(image, w, h, state, buffer);
 
-  if(error)
-  {
+  if(error) {
     std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 0;
   }
@@ -328,8 +297,7 @@ int main(int argc, char *argv[]) /*list the chunks*/
   std::cout << "Height: " << h << std::endl;
   std::cout << "Num pixels: " << w * h << std::endl;
 
-  if(w > 0 && h > 0)
-  {
+  if(w > 0 && h > 0) {
     std::cout << "Top left pixel color:"
               << " r: " << (int)image[0]
               << " g: " << (int)image[1]

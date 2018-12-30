@@ -38,8 +38,7 @@ Example 1
 Encode from raw pixels to disk with a single function call
 The image argument has width * height RGBA pixels or width * height * 4 bytes
 */
-void encodeOneStep(const char* filename, const unsigned char* image, unsigned width, unsigned height)
-{
+void encodeOneStep(const char* filename, const unsigned char* image, unsigned width, unsigned height) {
   /*Encode the image*/
   unsigned error = lodepng_encode32_file(filename, image, width, height);
 
@@ -52,8 +51,7 @@ Example 2
 Encode from raw pixels to an in-memory PNG file first, then write it to disk
 The image argument has width * height RGBA pixels or width * height * 4 bytes
 */
-void encodeTwoSteps(const char* filename, const unsigned char* image, unsigned width, unsigned height)
-{
+void encodeTwoSteps(const char* filename, const unsigned char* image, unsigned width, unsigned height) {
   unsigned char* png;
   size_t pngsize;
 
@@ -71,8 +69,7 @@ Example 3
 Save a PNG file to disk using a State, normally needed for more advanced usage.
 The image argument has width * height RGBA pixels or width * height * 4 bytes
 */
-void encodeWithState(const char* filename, const unsigned char* image, unsigned width, unsigned height)
-{
+void encodeWithState(const char* filename, const unsigned char* image, unsigned width, unsigned height) {
   unsigned error;
   unsigned char* png;
   size_t pngsize;
@@ -91,8 +88,7 @@ void encodeWithState(const char* filename, const unsigned char* image, unsigned 
   free(png);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   const char* filename = argc > 1 ? argv[1] : "test.png";
 
   /*generate some image*/
@@ -100,8 +96,7 @@ int main(int argc, char *argv[])
   unsigned char* image = malloc(width * height * 4);
   unsigned x, y;
   for(y = 0; y < height; y++)
-  for(x = 0; x < width; x++)
-  {
+  for(x = 0; x < width; x++) {
     image[4 * width * y + 4 * x + 0] = 255 * !(x & y);
     image[4 * width * y + 4 * x + 1] = x ^ y;
     image[4 * width * y + 4 * x + 2] = x | y;

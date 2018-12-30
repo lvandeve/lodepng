@@ -38,11 +38,9 @@ color type, no matter what your raw data's color type is)
 
 #include "lodepng.h"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   //check if user gave a filename
-  if(argc < 2)
-  {
+  if(argc < 2) {
     std::cout << "please provide a filename to save to" << std::endl;
     return 0;
   }
@@ -52,8 +50,7 @@ int main(int argc, char *argv[])
   const unsigned h = 256;
   std::vector<unsigned char> image(w * h * 4);
   for(unsigned y = 0; y < h; y++)
-  for(unsigned x = 0; x < w; x++)
-  {
+  for(unsigned x = 0; x < w; x++) {
     int index = y * w * 4 + x * 4;
     image[index + 0] = 0;
     image[index + 1] = 0;

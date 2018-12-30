@@ -37,35 +37,32 @@ NOTE: This is not as good as a true PNG optimizer like optipng or pngcrush.
 
 #include <iostream>
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   std::vector<unsigned char> image;
   unsigned w, h;
   std::vector<unsigned char> buffer;
   unsigned error;
-  
+
   //check if user gave a filename
-  if(argc < 3)
-  {
+  if(argc < 3) {
     std::cout << "please provide in and out filename" << std::endl;
     return 0;
   }
-  
+
   lodepng::load_file(buffer, argv[1]);
   error = lodepng::decode(image, w, h, buffer);
 
-  if(error)
-  {
+  if(error) {
     std::cout << "decoding error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 0;
   }
-  
+
   size_t origsize = buffer.size();
   std::cout << "Original size: " << origsize << " (" << (origsize / 1024) << "K)" << std::endl;
   buffer.clear();
-  
+
   //Now encode as hard as possible with several filter types and window sizes
-  
+
   lodepng::State state;
   state.encoder.filter_palette_zero = 0; //We try several filter types, including zero, allow trying them all on palette images too.
   state.encoder.add_id = false; //Don't add LodePNG version chunk to save more bytes
@@ -84,7 +81,7 @@ int main(int argc, char *argv[])
   // min match 3 allows all deflate lengths. min match 6 is similar to "Z_FILTERED" of zlib.
   int minmatches[2] = { 3, 6 };
   int bestminmatch = 0;
-  
+
   int autoconverts[2] = { 0, 1 };
   std::string autoconvertnames[2] = { "0", "1" };
   int bestautoconvert = 0;
@@ -92,11 +89,10 @@ int main(int argc, char *argv[])
   int bestblocktype = 0;
 
   // Try out all combinations of everything
-  for(int i = 0; i < 4; i++) //filter strategy
-  for(int j = 0; j < 2; j++) //min match
-  for(int k = 0; k < 2; k++) //block type (for small images only)
-  for(int l = 0; l < 2; l++) //color convert strategy
-  {
+  for(int i = 0; i < 4; i++)   //filter strategy
+  for(int j = 0; j < 2; j++)   //min match
+  for(int k = 0; k < 2; k++)   //block type (for small images only)
+  for(int l = 0; l < 2; l++) { //color convert strategy
     if(bestsize > 3000 && (k > 0 || l > 0)) continue; /* these only make sense on small images */
     std::vector<unsigned char> temp;
     state.encoder.filter_strategy = strategies[i];
@@ -122,12 +118,12 @@ int main(int argc, char *argv[])
       inited = true;
     }
   }
-  
+
   std::cout << "Chosen filter strategy: " << strategynames[beststrategy] << std::endl;
   std::cout << "Chosen min match: " << bestminmatch << std::endl;
   std::cout << "Chosen block type: " << bestblocktype << std::endl;
   std::cout << "Chosen auto convert: " << autoconvertnames[bestautoconvert] << std::endl;
-  
+
   lodepng::save_file(buffer, argv[2]);
   std::cout << "New size: " << buffer.size() << " (" << (buffer.size() / 1024) << "K)" << std::endl;
 }

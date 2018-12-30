@@ -50,31 +50,25 @@ bool verbose = false;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-double getTime()
-{
+double getTime() {
   return SDL_GetTicks() / 1000.0;
 }
 
-void fail()
-{
+void fail() {
   throw 1; //that's how to let a unittest fail
 }
 
 template<typename T, typename U>
-void assertEquals(const T& expected, const U& actual, const std::string& message = "")
-{
-  if(expected != (T)actual)
-  {
+void assertEquals(const T& expected, const U& actual, const std::string& message = "") {
+  if(expected != (T)actual) {
     std::cout << "Error: Not equal! Expected " << expected << " got " << actual << "." << std::endl;
     std::cout << "Message: " << message << std::endl;
     fail();
   }
 }
 
-void assertTrue(bool value, const std::string& message = "")
-{
-  if(!value)
-  {
+void assertTrue(bool value, const std::string& message = "") {
+  if(!value) {
     std::cout << "Error: expected true." << std::endl;
     std::cout << "Message: " << message << std::endl;
     fail();
@@ -82,8 +76,7 @@ void assertTrue(bool value, const std::string& message = "")
 }
 
 //Test image data
-struct Image
-{
+struct Image {
   std::vector<unsigned char> data;
   unsigned width;
   unsigned height;
@@ -93,28 +86,24 @@ struct Image
 
 //Utility for debug messages
 template<typename T>
-std::string valtostr(const T& val)
-{
+std::string valtostr(const T& val) {
   std::ostringstream sstream;
   sstream << val;
   return sstream.str();
 }
 
 template<typename T>
-void printValue(const std::string& name, const T& value, const std::string& unit = "")
-{
+void printValue(const std::string& name, const T& value, const std::string& unit = "") {
   std::cout << name << ": " << value << unit << std::endl;
 }
 
 template<typename T, typename U>
-void printValue(const std::string& name, const T& value, const std::string& s2, const U& value2, const std::string& unit = "")
-{
+void printValue(const std::string& name, const T& value, const std::string& s2, const U& value2, const std::string& unit = "") {
   std::cout << name << ": " << value << s2 << value2 << unit << std::endl;
 }
 
 //Test LodePNG encoding and decoding the encoded result, using the C interface
-void doCodecTest(Image& image)
-{
+void doCodecTest(Image& image) {
   unsigned char* encoded = 0;
   size_t encoded_size = 0;
   unsigned char* decoded = 0;
@@ -131,8 +120,7 @@ void doCodecTest(Image& image)
   assertEquals(0, error_enc, "encoder error C");
 
   double t_dec0 = getTime();
-  for(int i = 0; i < NUM_DECODE; i++)
-  {
+  for(int i = 0; i < NUM_DECODE; i++) {
     unsigned error_dec = lodepng_decode_memory(&decoded, &decoded_w, &decoded_h,
                                                encoded, encoded_size, image.colorType, image.bitDepth);
     assertEquals(0, error_dec, "decoder error C");
@@ -151,8 +139,7 @@ void doCodecTest(Image& image)
   colormode.bitdepth = image.bitDepth;
   total_in_size += lodepng_get_raw_size(image.width, image.height, &colormode);
 
-  if(verbose)
-  {
+  if(verbose) {
     printValue("encoding time", t_enc1 - t_enc0, "s");
     std::cout << "compression: " << ((double)(encoded_size) / (double)(image.data.size())) * 100 << "%"
               << " ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
@@ -169,8 +156,7 @@ void doCodecTest(Image& image)
 
 static const int IMGSIZE = 4096;
 
-void testPatternSine()
-{
+void testPatternSine() {
   if(verbose) std::cout << "sine pattern" << std::endl;
 
   /*
@@ -188,8 +174,7 @@ void testPatternSine()
   image.bitDepth = 8;
   image.data.resize(w * h * 4);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     //pattern 1
     image.data[4 * w * y + 4 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
     image.data[4 * w * y + 4 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
@@ -200,8 +185,7 @@ void testPatternSine()
   doCodecTest(image);
 }
 
-void testPatternSineNoAlpha()
-{
+void testPatternSineNoAlpha() {
   if(verbose) std::cout << "sine pattern w/o alpha" << std::endl;
 
   /*
@@ -219,8 +203,7 @@ void testPatternSineNoAlpha()
   image.bitDepth = 8;
   image.data.resize(w * h * 3);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     //pattern 1
     image.data[3 * w * y + 3 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
     image.data[3 * w * y + 3 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
@@ -230,8 +213,7 @@ void testPatternSineNoAlpha()
   doCodecTest(image);
 }
 
-void testPatternXor()
-{
+void testPatternXor() {
   if(verbose) std::cout << "xor pattern" << std::endl;
 
   Image image;
@@ -243,8 +225,7 @@ void testPatternXor()
   image.bitDepth = 8;
   image.data.resize(w * h * 3);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     image.data[3 * w * y + 3 * x + 0] = x ^ y;
     image.data[3 * w * y + 3 * x + 1] = x ^ y;
     image.data[3 * w * y + 3 * x + 2] = x ^ y;
@@ -257,15 +238,13 @@ static unsigned int m_w = 1;
 static unsigned int m_z = 2;
 
 //"Multiply-With-Carry" generator of G. Marsaglia
-unsigned int getRandomUint()
-{
+unsigned int getRandomUint() {
   m_z = 36969 * (m_z & 65535) + (m_z >> 16);
   m_w = 18000 * (m_w & 65535) + (m_w >> 16);
   return (m_z << 16) + m_w;  //32-bit result
 }
 
-void testPatternPseudoRan()
-{
+void testPatternPseudoRan() {
   if(verbose) std::cout << "pseudorandom pattern" << std::endl;
 
   Image image;
@@ -277,8 +256,7 @@ void testPatternPseudoRan()
   image.bitDepth = 8;
   image.data.resize(w * h * 3);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     unsigned int random = getRandomUint();
     image.data[3 * w * y + 3 * x + 0] = random % 256;
     image.data[3 * w * y + 3 * x + 1] = (random >> 8) % 256;
@@ -288,8 +266,7 @@ void testPatternPseudoRan()
   doCodecTest(image);
 }
 
-void testPatternSineXor()
-{
+void testPatternSineXor() {
   if(verbose) std::cout << "sine+xor pattern" << std::endl;
 
   Image image;
@@ -301,8 +278,7 @@ void testPatternSineXor()
   image.bitDepth = 8;
   image.data.resize(w * h * 4);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     //pattern 1
     image.data[4 * w * y + 4 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
     image.data[4 * w * y + 4 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
@@ -317,8 +293,7 @@ void testPatternSineXor()
   doCodecTest(image);
 }
 
-void testPatternGreyMandel()
-{
+void testPatternGreyMandel() {
   if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
 
   Image image;
@@ -337,14 +312,12 @@ void testPatternGreyMandel()
   int maxIterations = 300;
 
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     pr = 1.5 * (x - w / 2) / (0.5 * zoom * w) + moveX;
     pi = (y - h / 2) / (0.5 * zoom * h) + moveY;
     newRe = newIm = oldRe = oldIm = 0; //these should start at 0,0
     int i;
-    for(i = 0; i < maxIterations; i++)
-    {
+    for(i = 0; i < maxIterations; i++) {
         oldRe = newRe;
         oldIm = newIm;
         newRe = oldRe * oldRe - oldIm * oldIm + pr;
@@ -357,8 +330,7 @@ void testPatternGreyMandel()
   doCodecTest(image);
 }
 
-void testPatternGreyMandelSmall()
-{
+void testPatternGreyMandelSmall() {
   if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
 
   Image image;
@@ -377,14 +349,12 @@ void testPatternGreyMandelSmall()
   int maxIterations = 300;
 
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     pr = 1.5 * (x - w / 2) / (0.5 * zoom * w) + moveX;
     pi = (y - h / 2) / (0.5 * zoom * h) + moveY;
     newRe = newIm = oldRe = oldIm = 0; //these should start at 0,0
     int i;
-    for(i = 0; i < maxIterations; i++)
-    {
+    for(i = 0; i < maxIterations; i++) {
         oldRe = newRe;
         oldIm = newIm;
         newRe = oldRe * oldRe - oldIm * oldIm + pr;
@@ -397,8 +367,7 @@ void testPatternGreyMandelSmall()
   doCodecTest(image);
 }
 
-void testPatternX()
-{
+void testPatternX() {
   if(verbose) std::cout << "x pattern" << std::endl;
 
   Image image;
@@ -410,16 +379,14 @@ void testPatternX()
   image.bitDepth = 8;
   image.data.resize(w * h * 4);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     image.data[w * y + x + 0] = x % 256;
   }
 
   doCodecTest(image);
 }
 
-void testPatternY()
-{
+void testPatternY() {
   if(verbose) std::cout << "y pattern" << std::endl;
 
   Image image;
@@ -431,16 +398,14 @@ void testPatternY()
   image.bitDepth = 8;
   image.data.resize(w * h * 4);
   for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++)
-  {
+  for(int x = 0; x < w; x++) {
     image.data[w * y + x + 0] = y % 256;
   }
 
   doCodecTest(image);
 }
 
-void testPatternDisk(const std::string& filename)
-{
+void testPatternDisk(const std::string& filename) {
   if(verbose) std::cout << "file " << filename << std::endl;
 
   Image image;
@@ -451,14 +416,12 @@ void testPatternDisk(const std::string& filename)
   doCodecTest(image);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   verbose = false;
 
   std::vector<std::string> files;
 
-  for(int i = 1; i < argc; i++)
-  {
+  for(int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if(arg == "-v") verbose = true;
     else files.push_back(arg);
@@ -466,8 +429,7 @@ int main(int argc, char *argv[])
 
   std::cout << "NUM_DECODE: " << NUM_DECODE << std::endl;
 
-  if(files.empty())
-  {
+  if(files.empty()) {
     //testPatternDisk("testdata/frymire.png");
     //testPatternGreyMandel();
 
@@ -490,11 +452,8 @@ int main(int argc, char *argv[])
 
     /*testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
     testPatternSine();*/
-  }
-  else
-  {
-    for(size_t i = 0; i < files.size(); i++)
-    {
+  } else {
+    for(size_t i = 0; i < files.size(); i++) {
       testPatternDisk(files[i]);
     }
   }

@@ -36,8 +36,7 @@ NOTE: this samples overwrite the file or test.png without warning!
 //Example 1
 //Encode from raw pixels to disk with a single function call
 //The image argument has width * height RGBA pixels or width * height * 4 bytes
-void encodeOneStep(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height)
-{
+void encodeOneStep(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height) {
   //Encode the image
   unsigned error = lodepng::encode(filename, image, width, height);
 
@@ -48,8 +47,7 @@ void encodeOneStep(const char* filename, std::vector<unsigned char>& image, unsi
 //Example 2
 //Encode from raw pixels to an in-memory PNG file first, then write it to disk
 //The image argument has width * height RGBA pixels or width * height * 4 bytes
-void encodeTwoSteps(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height)
-{
+void encodeTwoSteps(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height) {
   std::vector<unsigned char> png;
 
   unsigned error = lodepng::encode(png, image, width, height);
@@ -62,8 +60,7 @@ void encodeTwoSteps(const char* filename, std::vector<unsigned char>& image, uns
 //Example 3
 //Save a PNG file to disk using a State, normally needed for more advanced usage.
 //The image argument has width * height RGBA pixels or width * height * 4 bytes
-void encodeWithState(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height)
-{
+void encodeWithState(const char* filename, std::vector<unsigned char>& image, unsigned width, unsigned height) {
   std::vector<unsigned char> png;
   lodepng::State state; //optionally customize this one
 
@@ -75,8 +72,7 @@ void encodeWithState(const char* filename, std::vector<unsigned char>& image, un
 }
 
 //saves image to filename given as argument. Warning, this overwrites the file without warning!
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   //NOTE: this sample will overwrite the file or test.png without warning!
   const char* filename = argc > 1 ? argv[1] : "test.png";
 
@@ -85,8 +81,7 @@ int main(int argc, char *argv[])
   std::vector<unsigned char> image;
   image.resize(width * height * 4);
   for(unsigned y = 0; y < height; y++)
-  for(unsigned x = 0; x < width; x++)
-  {
+  for(unsigned x = 0; x < width; x++) {
     image[4 * width * y + 4 * x + 0] = 255 * !(x & y);
     image[4 * width * y + 4 * x + 1] = x ^ y;
     image[4 * width * y + 4 * x + 2] = x | y;

@@ -35,42 +35,38 @@ This sample shows how LodePNG can be used for a conforming PNG editor.
 
 #include <iostream>
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   std::vector<unsigned char> image;
   unsigned w, h;
   std::vector<unsigned char> buffer;
   lodepng::State state;
   unsigned error;
-  
+
   //check if user gave a filename
-  if(argc < 3)
-  {
+  if(argc < 3) {
     std::cout << "please provide in and out filename" << std::endl;
     return 0;
   }
-  
+
   state.decoder.color_convert = 0;
   state.decoder.remember_unknown_chunks = 1; //make it reproduce even unknown chunks in the saved image
-  
+
   lodepng::load_file(buffer, argv[1]);
   error = lodepng::decode(image, w, h, state, buffer);
-  if(error)
-  {
+  if(error) {
     std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 0;
   }
-  
+
   buffer.clear();
-  
+
   state.encoder.text_compression = 1;
-  
+
   error = lodepng::encode(buffer, image, w, h, state);
-  if(error)
-  {
+  if(error) {
     std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 0;
   }
-  
+
   lodepng::save_file(buffer, argv[2]);
 }

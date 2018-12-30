@@ -44,11 +44,9 @@ Gimp 2.8 image editor (until you set mode to RGB).
 
 #include "lodepng.h"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   //check if user gave a filename
-  if(argc < 2)
-  {
+  if(argc < 2) {
     std::cout << "please provide a filename to save to" << std::endl;
     return 0;
   }
@@ -57,8 +55,7 @@ int main(int argc, char *argv[])
   lodepng::State state;
 
   //generate palette
-  for(int i = 0; i < 16; i++)
-  {
+  for(int i = 0; i < 16; i++) {
     unsigned char r = 127 * (1 + std::sin(5 * i * 6.28318531 / 16));
     unsigned char g = 127 * (1 + std::sin(2 * i * 6.28318531 / 16));
     unsigned char b = 127 * (1 + std::sin(3 * i * 6.28318531 / 16));
@@ -83,8 +80,7 @@ int main(int argc, char *argv[])
   std::vector<unsigned char> image;
   image.resize((w * h * 4 + 7) / 8, 0);
   for(unsigned y = 0; y < h; y++)
-  for(unsigned x = 0; x < w; x++)
-  {
+  for(unsigned x = 0; x < w; x++) {
     size_t byte_index = (y * w + x) / 2;
     bool byte_half = (y * w + x) % 2 == 1;
 
@@ -97,8 +93,7 @@ int main(int argc, char *argv[])
   //encode and save
   std::vector<unsigned char> buffer;
   unsigned error = lodepng::encode(buffer, image.empty() ? 0 : &image[0], w, h, state);
-  if(error)
-  {
+  if(error) {
     std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
     return 0;
   }

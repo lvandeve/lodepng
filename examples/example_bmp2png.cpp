@@ -44,10 +44,9 @@ NOTE: it overwrites the output file without warning if it exists!
 
 //returns 0 if all went ok, non-0 if error
 //output image is always given in RGBA (with alpha channel), even if it's a BMP without alpha channel
-unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, const std::vector<unsigned char>& bmp)
-{
+unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, const std::vector<unsigned char>& bmp) {
   static const unsigned MINHEADER = 54; //minimum BMP header size
-  
+
   if(bmp.size() < MINHEADER) return -1;
   if(bmp[0] != 'B' || bmp[1] != 'M') return 1; //It's not a BMP file if it doesn't start with marker 'BM'
   unsigned pixeloffset = bmp[10] + 256 * bmp[11]; //where the pixel data starts
@@ -76,21 +75,17 @@ unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, 
   The 2D for loop below does all these 3 conversions at once.
   */
   for(unsigned y = 0; y < h; y++)
-  for(unsigned x = 0; x < w; x++)
-  {
+  for(unsigned x = 0; x < w; x++) {
     //pixel start byte position in the BMP
     unsigned bmpos = pixeloffset + (h - y - 1) * scanlineBytes + numChannels * x;
     //pixel start byte position in the new raw image
     unsigned newpos = 4 * y * w + 4 * x;
-    if(numChannels == 3)
-    {
+    if(numChannels == 3) {
       image[newpos + 0] = bmp[bmpos + 2]; //R
       image[newpos + 1] = bmp[bmpos + 1]; //G
       image[newpos + 2] = bmp[bmpos + 0]; //B
       image[newpos + 3] = 255;            //A
-    }
-    else
-    {
+    } else {
       image[newpos + 0] = bmp[bmpos + 3]; //R
       image[newpos + 1] = bmp[bmpos + 2]; //G
       image[newpos + 2] = bmp[bmpos + 1]; //B
@@ -100,10 +95,8 @@ unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, 
   return 0;
 }
 
-int main(int argc, char *argv[])
-{
-  if(argc < 3)
-  {
+int main(int argc, char *argv[]) {
+  if(argc < 3) {
     std::cout << "Please provice input PNG and output BMP file names" << std::endl;
     return 0;
   }
@@ -114,21 +107,19 @@ int main(int argc, char *argv[])
   unsigned w, h;
   unsigned error = decodeBMP(image, w, h, bmp);
 
-  if(error)
-  {
+  if(error) {
     std::cout << "BMP decoding error " << error << std::endl;
     return 0;
   }
-  
+
   std::vector<unsigned char> png;
   error = lodepng::encode(png, image, w, h);
 
-  if(error)
-  {
+  if(error) {
     std::cout << "PNG encoding error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 0;
   }
-  
+
   lodepng::save_file(png, argv[2]);
-  
+
 }

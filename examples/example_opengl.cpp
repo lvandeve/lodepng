@@ -46,10 +46,8 @@ shows LodePNG can be used to load PNG images as textures in OpenGL.
 #include <SDL/SDL.h>
 #include <GL/gl.h>
 
-int main(int argc, char *argv[])
-{
-  if(argc < 2)
-  {
+int main(int argc, char *argv[]) {
+  if(argc < 2) {
     std::cout << "Please provide a filename." << std::endl;
     return 1;
   }
@@ -61,12 +59,11 @@ int main(int argc, char *argv[])
   unsigned error = lodepng::decode(image, width, height, filename);
 
   // If there's an error, display it.
-  if(error != 0)
-  {
+  if(error != 0) {
     std::cout << "error " << error << ": " << lodepng_error_text(error) << std::endl;
     return 1;
   }
-  
+
   // Here the PNG is loaded in "image". All the rest of the code is SDL and OpenGL stuff.
 
   int screenw = width;
@@ -74,16 +71,14 @@ int main(int argc, char *argv[])
   int screenh = height;
   if(screenh > 768) screenw = 768;
 
-  if(SDL_Init(SDL_INIT_VIDEO) < 0)
-  {
+  if(SDL_Init(SDL_INIT_VIDEO) < 0) {
     std::cout << "Error: Unable to init SDL: " << SDL_GetError() << std::endl;
     return 1;
   }
-  
+
   SDL_Surface* scr = SDL_SetVideoMode(screenw, screenh, 32, SDL_OPENGL);
 
-  if(scr == 0)
-  {
+  if(scr == 0) {
     std::cout << "Error: Unable to set video. SDL error message: " << SDL_GetError() << std::endl;
     return 1;
   }
@@ -103,12 +98,11 @@ int main(int argc, char *argv[])
   glEnable(GL_BLEND);
   glDisable(GL_ALPHA_TEST);
 
-  if(glGetError() != GL_NO_ERROR)
-  {
+  if(glGetError() != GL_NO_ERROR) {
     std::cout << "Error initing GL" << std::endl;
     return 1;
   }
-  
+
   // Texture size must be power of two for the primitive OpenGL version this is written for. Find next power of two.
   size_t u2 = 1; while(u2 < width) u2 *= 2;
   size_t v2 = 1; while(v2 < height) v2 *= 2;
@@ -120,29 +114,26 @@ int main(int argc, char *argv[])
   std::vector<unsigned char> image2(u2 * v2 * 4);
   for(size_t y = 0; y < height; y++)
   for(size_t x = 0; x < width; x++)
-  for(size_t c = 0; c < 4; c++)
-  {
+  for(size_t c = 0; c < 4; c++) {
     image2[4 * u2 * y + 4 * x + c] = image[4 * width * y + 4 * x + c];
   }
-  
+
   // Enable the texture for OpenGL.
   glEnable(GL_TEXTURE_2D);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); //GL_NEAREST = no smoothing
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexImage2D(GL_TEXTURE_2D, 0, 4, u2, v2, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image2[0]);
-  
+
   bool done = false;
   SDL_Event event = {0};
   glColor4ub(255, 255, 255, 255);
-  
-  while(!done)
-  {
+
+  while(!done) {
     // Quit the loop when receiving quit event.
-    while(SDL_PollEvent(&event))
-    {
+    while(SDL_PollEvent(&event)) {
       if(event.type == SDL_QUIT) done = 1;
     }
-    
+
     // Draw the texture on a quad, using u3 and v3 to correct non power of two texture size.
     glBegin(GL_QUADS);
       glTexCoord2d( 0,  0); glVertex2f(    0,      0);
@@ -150,12 +141,12 @@ int main(int argc, char *argv[])
       glTexCoord2d(u3, v3); glVertex2f(width, height);
       glTexCoord2d( 0, v3); glVertex2f(    0, height);
     glEnd();
-    
+
     // Redraw and clear screen.
     SDL_GL_SwapBuffers();
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+
     //Limit frames per second, to not heat up the CPU and GPU too much.
     SDL_Delay(16);
   }

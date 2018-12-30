@@ -35,8 +35,7 @@ Not part of the stable API of lodepng, more loose separate utils.
 #include <vector>
 #include "lodepng.h"
 
-namespace lodepng
-{
+namespace lodepng {
 
 /*
 Returns info from the header of the PNG by value, purely for convenience.
@@ -172,8 +171,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
 /*
 The information for extractZlibInfo.
 */
-struct ZlibBlockInfo
-{
+struct ZlibBlockInfo {
   int btype; //block type (0-2)
   size_t compressedbits; //size of compressed block in bits
   size_t uncompressedbytes; //size of uncompressed block in bytes
