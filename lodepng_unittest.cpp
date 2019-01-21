@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2018 Lode Vandevenne
+Copyright (c) 2005-2019 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -83,8 +83,9 @@ clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wa
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -g3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there
-cat lodepng.cpp | grep iostream
-cat lodepng.cpp | grep "#include"
+cat lodepng.cpp lodepng_util.cpp | grep iostream
+cat lodepng.cpp lodepng_util.cpp | grep stdio
+cat lodepng.cpp lodepng_util.cpp | grep "#include"
 
 *) check that no plain "free", "malloc" and "realloc" used, but the lodepng_* versions instead
 
@@ -122,24 +123,42 @@ void fail() {
   throw 1; //that's how to let a unittest fail
 }
 
+//Utility for debug messages
+template<typename T>
+std::string valtostr(const T& val) {
+  std::ostringstream sstream;
+  sstream << val;
+  return sstream.str();
+}
+
+//Print char as a numeric value rather than a character
+template<>
+std::string valtostr(const unsigned char& val) {
+  std::ostringstream sstream;
+  sstream << (int)val;
+  return sstream.str();
+}
+
+//Print char pointer as pointer, not as string
+template<typename T>
+std::string valtostr(const T* val) {
+  std::ostringstream sstream;
+  sstream << (const void*)val;
+  return sstream.str();
+}
+
+// TODO: remove, use only ASSERT_EQUALS (it prints line number). Requires adding extra message ability to ASSERT_EQUALS
 template<typename T, typename U>
 void assertEquals(const T& expected, const U& actual, const std::string& message = "") {
   if(expected != (T)actual) {
-    std::cout << "Error: Not equal! Expected " << expected << " got " << (T)actual << ". "
+    std::cout << "Error: Not equal! Expected " << valtostr(expected)
+              << " got " << valtostr((T)actual) << ". "
               << "Message: " << message << std::endl;
     fail();
   }
 }
 
-template<typename T, typename U>
-void assertNotEquals(const T& expected, const U& actual, const std::string& message = "") {
-  if(expected == (T)actual) {
-    std::cout << "Error: Equal but expected not equal! Expected not " << expected << " got " << (T)actual << ". "
-              << "Message: " << message << std::endl;
-    fail();
-  }
-}
-
+// TODO: turn into ASSERT_TRUE with line number printed
 void assertTrue(bool value, const std::string& message = "") {
   if(!value) {
     std::cout << "Error: expected true. " << "Message: " << message << std::endl;
@@ -165,11 +184,35 @@ void assertNoError(unsigned error) {
 #define STR_EXPAND(s) #s
 #define STR(s) STR_EXPAND(s)
 #define ASSERT_EQUALS(e, v) {\
-  assertEquals(e, v, std::string() + "line " + STR(__LINE__) + ": " + STR(v) + " ASSERT_EQUALS(" + #e + ", " + #v + ")");\
+  if(e != v) {\
+    std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_EQUALS failed: ";\
+    std::cout << "Expected " << valtostr(e) << " but got " << valtostr(v) << ". " << std::endl;\
+    fail();\
+  }\
 }
 #define ASSERT_NOT_EQUALS(e, v) {\
-  assertNotEquals(e, v, std::string() + "line " + STR(__LINE__) + ": " + STR(v) + " ASSERT_NOT_EQUALS(" + #e + ", " + #v + ")");\
+  if(e == v) {\
+    std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_NOT_EQUALS failed: ";\
+    std::cout << "Expected not " << valtostr(e) << " but got " << valtostr(v) << ". " << std::endl;\
+    fail();\
+  }\
 }
+
+template<typename T, typename U, typename V>
+bool isNear(T e, U v, V maxdist) {
+  T dist = e > (T)v ? e - (T)v : (T)v - e;
+  return dist <= (T)maxdist;
+}
+
+#define ASSERT_NEAR(e, v, maxdist) {\
+  if(!isNear(e, v, maxdist)) {\
+    std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_NEAR failed: ";\
+    std::cout << "dist too great! Expected " << valtostr(e) << " near " << valtostr(v) << " with max dist: " << valtostr(maxdist)\
+              << " but got dist " << valtostr(v > e ? v - e : e - v) << ". " << std::endl;\
+    fail();\
+  }\
+}
+
 #define ASSERT_STRING_EQUALS(e, v) ASSERT_EQUALS(std::string(e), std::string(v))
 #define ASSERT_NO_PNG_ERROR_MSG(error, message) assertNoPNGError(error, std::string("line ") + STR(__LINE__) + (std::string(message).empty() ? std::string("") : (": " + std::string(message))))
 #define ASSERT_NO_PNG_ERROR(error) ASSERT_NO_PNG_ERROR_MSG(error, std::string(""))
@@ -214,6 +257,15 @@ void fromBase64(T& out, const U& in) {
   }
 }
 
+unsigned getRandom() {
+  static unsigned s = 1000000000;
+  // xorshift32, good enough for testing
+  s ^= (s << 13);
+  s ^= (s >> 17);
+  s ^= (s << 5);
+  return s;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 //Test image data
@@ -224,14 +276,6 @@ struct Image {
   LodePNGColorType colorType;
   unsigned bitDepth;
 };
-
-//Utility for debug messages
-template<typename T>
-std::string valtostr(const T& val) {
-  std::ostringstream sstream;
-  sstream << val;
-  return sstream.str();
-}
 
 //Get number of color channels for a given PNG color type
 unsigned getNumColorChannels(unsigned colorType) {
@@ -1203,7 +1247,7 @@ void testInspectChunk() {
   state.decoder.read_text_chunks = 0;
   lodepng_inspect(0, 0, &state, png.data(), png.size());
   chunk = lodepng_chunk_find(png.data(), png.data() + png.size(), "tIME");
-  ASSERT_NOT_EQUALS((const unsigned char*)0, chunk);
+  ASSERT_NOT_EQUALS((const unsigned char*)0, chunk); // should be non-null, since it should find it
   ASSERT_EQUALS(0, info.time_defined);
   lodepng_inspect_chunk(&state, (size_t)(chunk - png.data()), png.data(), png.size());
   ASSERT_EQUALS(1, info.time_defined);
@@ -2448,6 +2492,111 @@ void testBkgdChunk2() {
   ASSERT_EQUALS(LCT_GREY, state2.info_png.color.colortype);
 }
 
+void testXYZ() {
+  std::cout << "testXYZ" << std::endl;
+  unsigned w = 512, h = 512;
+  std::vector<unsigned char> v(w * h * 4 * 2);
+  for(size_t i = 0; i < v.size(); i++) {
+    v[i] = getRandom() & 255;
+  }
+
+  // Test sRGB -> XYZ -> sRGB roundtrip
+
+  // 8-bit
+  {
+    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 8);
+    std::vector<float> f(w * h * 4);
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, 0));
+
+    std::vector<unsigned char> v2(w * h * 4);
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, 0));
+
+    for(size_t i = 0; i < v2.size(); i++) {
+      ASSERT_EQUALS(v[i], v2[i]);
+    }
+  }
+
+  // 16-bit
+  {
+    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 16);
+    std::vector<float> f(w * h * 4);
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, 0));
+
+    std::vector<unsigned char> v2(w * h * 8);
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, 0));
+
+    for(size_t i = 0; i < v2.size(); i++) {
+      ASSERT_EQUALS(v[i], v2[i]);
+    }
+  }
+
+  // Test custom RGB+gamma -> XYZ -> custom RGB+gamma roundtrip
+
+  LodePNGInfo info_custom;
+  lodepng_info_init(&info_custom);
+  info_custom.gama_defined = 1;
+  info_custom.gama_gamma =   30000; // default 45455
+  info_custom.chrm_defined = 1;
+  info_custom.chrm_white_x = 10000; // default 31270
+  info_custom.chrm_white_y = 20000; // default 32900
+  info_custom.chrm_red_x =   30000; // default 64000
+  info_custom.chrm_red_y =   50000; // default 33000
+  info_custom.chrm_green_x = 70000; // default 30000
+  info_custom.chrm_green_y = 11000; // default 60000
+  info_custom.chrm_blue_x =  13000; // default 15000
+  info_custom.chrm_blue_y =  17000; // default 6000
+
+  // 8-bit
+  {
+    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 8);
+    std::vector<float> f(w * h * 4);
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, &info_custom));
+
+    std::vector<unsigned char> v2(w * h * 4);
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, &info_custom));
+
+    for(size_t i = 0; i < v2.size(); i++) {
+      // Allow near instead of exact due to numerical issues with low values,
+      // see description at the 16-bit test below.
+      unsigned maxdist = 0;
+      if(v[i] <= 2) maxdist = 3;
+      else if(v[i] <= 4) maxdist = 2;
+      else maxdist = 0;
+      ASSERT_NEAR(v[i], v2[i], maxdist);
+    }
+  }
+
+  // 16-bit
+  {
+    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 16);
+    std::vector<float> f(w * h * 4);
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, &info_custom));
+
+    std::vector<unsigned char> v2(w * h * 8);
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, &info_custom));
+
+    for(size_t i = 0; i < v2.size(); i += 2) {
+      unsigned a = v[i + 0] * 256u + v[i + 1];
+      unsigned a2 = v2[i + 0] * 256u + v2[i + 1];
+      // There are numerical issues with low values due to the precision of float,
+      // so allow some distance for low values (low compared to 65535).
+      // The issue seems to be: the combination of how the gamma correction affects
+      // low values and the color conversion matrix operating on single precision
+      // floating point. With the sRGB's gamma the problem seems not to happen, maybe
+      // because that linear part near 0 behaves better than power.
+      // TODO: check if it can be fixed without using double for the image and without slow double precision pow.
+      unsigned maxdist = 0;
+      if(a < 2048) maxdist = 768;
+      else if(a < 4096) maxdist = 24;
+      else if(a < 16384) maxdist = 4;
+      else maxdist = 2;
+      ASSERT_NEAR(a, a2, maxdist);
+    }
+  }
+
+  lodepng_info_cleanup(&info_custom);
+}
+
 void doMain() {
   //PNG
   testPNGCodec();
@@ -2476,6 +2625,7 @@ void doMain() {
   test16bitColorEndianness();
   testAutoColorModels();
   testNoAutoConvert();
+  testXYZ();
 
   //Zlib
   testCompressZlib();

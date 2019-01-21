@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2018 Lode Vandevenne
+Copyright (c) 2005-2019 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -24,7 +24,7 @@ freely, subject to the following restrictions:
 */
 
 #include "lodepng_util.h"
-#include <iostream>
+#include <iostream>  // TODO: remove, don't print stuff from here, return errors instead
 #include <cmath>
 
 namespace lodepng {
@@ -255,90 +255,122 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits) {
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 // Multiplies values with 3x3 matrix
-void mulMatrix(float* x2, float* y2, float* z2, const float* m, float x, float y, float z) {
+void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x, double y, double z) {
+  // double used as inputs even though in general the images are float, so the sums happen in
+  // double precision, because float can give numerical problems for nearby values
   *x2 = x * m[0] + y * m[1] + z * m[2];
   *y2 = x * m[3] + y * m[4] + z * m[5];
   *z2 = x * m[6] + y * m[7] + z * m[8];
 }
 
 // Inverts 3x3 matrix in place
-void invMatrix(float* matrix) {
-  float e0 = matrix[4] * matrix[8] - matrix[5] * matrix[7];
-  float e3 = matrix[5] * matrix[6] - matrix[3] * matrix[8];
-  float e6 = matrix[3] * matrix[7] - matrix[4] * matrix[6];
+unsigned invMatrix(float* m) {
+  // double used instead of float for intermediate computations to avoid
+  // intermediate numerical precision issues
+  double e0 = (double)m[4] * m[8] - (double)m[5] * m[7];
+  double e3 = (double)m[5] * m[6] - (double)m[3] * m[8];
+  double e6 = (double)m[3] * m[7] - (double)m[4] * m[6];
   // inverse determinant
-  float f = 1.0f / (matrix[0] * e0 + matrix[1] * e3 + matrix[2] * e6);
+  double d = 1.0 / (m[0] * e0 + m[1] * e3 + m[2] * e6);
+  if(std::abs(d) > 1e15) return 1; // error, likely not invertible
   float result[9];
-  result[0] = e0 * f;
-  result[1] = (matrix[2] * matrix[7] - matrix[1] * matrix[8]) * f;
-  result[2] = (matrix[1] * matrix[5] - matrix[2] * matrix[4]) * f;
-  result[3] = e3 * f;
-  result[4] = (matrix[0] * matrix[8] - matrix[2] * matrix[6]) * f;
-  result[5] = (matrix[3] * matrix[2] - matrix[0] * matrix[5]) * f;
-  result[6] = e6 * f;
-  result[7] = (matrix[6] * matrix[1] - matrix[0] * matrix[7]) * f;
-  result[8] = (matrix[0] * matrix[4] - matrix[3] * matrix[1]) * f;
-  for(int i = 0; i < 9; i++) matrix[i] = result[i];
+  result[0] = e0 * d;
+  result[1] = ((double)m[2] * m[7] - (double)m[1] * m[8]) * d;
+  result[2] = ((double)m[1] * m[5] - (double)m[2] * m[4]) * d;
+  result[3] = e3 * d;
+  result[4] = ((double)m[0] * m[8] - (double)m[2] * m[6]) * d;
+  result[5] = ((double)m[3] * m[2] - (double)m[0] * m[5]) * d;
+  result[6] = e6 * d;
+  result[7] = ((double)m[6] * m[1] - (double)m[0] * m[7]) * d;
+  result[8] = ((double)m[0] * m[4] - (double)m[3] * m[1]) * d;
+  for(int i = 0; i < 9; i++) m[i] = result[i];
+  return 0; // ok
 }
 
 // Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace
-void getChrmMatrix(float* m, float wx, float wy, float rx, float ry, float gx, float gy, float bx, float by) {
+unsigned getChrmMatrix(float* m, float wx, float wy, float rx, float ry, float gx, float gy, float bx, float by) {
+  if(wy == 0 || ry == 0 || gy == 0 || by == 0) return 1; // error, division through zero
   float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
   float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
   float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
   float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
   float t[9] = {rX, gX, bX, rY, gY, bY, rZ, gZ, bZ};
-  invMatrix(t);
+  if(invMatrix(t)) return 1; // error, not invertible
   float rs, gs, bs;
   mulMatrix(&rs, &gs, &bs, t, wX, wY, wZ);
-  float r[9] = {rs * rX, gs * gX, bs * bX, rs * rY, gs * gY, bs * bY, rs * rZ, gs * gZ, bs * bZ};
+  double r[9] = {rs * rX, gs * gX, bs * bX, rs * rY, gs * gY, bs * bY, rs * rZ, gs * gZ, bs * bZ};
   for(int i = 0; i < 9; i++) m[i] = r[i];
+  return 0;
+}
+
+// Make lookup table for gamma correction.
+// bits is the amount of input bits of the integer image values, it must be 8 or 16
+// type is 0 for power, 1 for srgb (then gamma parameter is ignored since the srgb formula is used)
+static std::vector<float> makeGammaTable(int bits, int type, float gamma) {
+  size_t num = 1u << bits;
+  std::vector<float> result(num);
+  float mul = 1.0f / (num - 1);
+  if(type == 1) { // srgb
+    for(size_t i = 0; i < num; i++) {
+      float v = i * mul;
+      if(v < 0.04045f) v /= 12.92f;
+      else v = std::pow((v + 0.055f) / 1.055f, 2.4f);
+      result[i] = v;
+    }
+  } else {
+    for(size_t i = 0; i < num; i++) {
+      result[i] = std::pow(i * mul, gamma);
+    }
+  }
+  return result;
 }
 
 unsigned convertToXYZ(float* out, const unsigned char* in,
                       unsigned w, unsigned h, const LodePNGColorMode* mode_in,
                       const LodePNGInfo* info) {
-  std::vector<unsigned char> data(w * h * 8);
-  LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
-  lodepng_convert(data.data(), in, &mode16, mode_in, w, h);
-
-  if(info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
+  if(info && info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
     return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
   }
 
   size_t n = w * h;
-  for(unsigned i = 0; i < n; i++) {
-    for(unsigned c = 0; c < 4; c++) {
-      size_t j = i * 8 + c * 2;
-      out[i * 4 + c] = (data[j + 0] * 256 + data[j + 1]) / 65535.0;
-    }
+
+  int bit16 = mode_in->bitdepth > 8;
+  std::vector<unsigned char> data(w * h * (bit16 ? 8 : 4));
+  LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
+  lodepng_convert(data.data(), in, &tempmode, mode_in, w, h);
+  std::vector<float> gammatable;
+
+  if(info && info->gama_defined && !info->srgb_defined) {
+    float gamma = 100000.0f / info->gama_gamma;
+    gammatable = makeGammaTable(bit16 ? 16 : 8, 0, gamma);
+  } else {
+    // sRGB gamma expand
+    gammatable = makeGammaTable(bit16 ? 16 : 8, 1, 0);
   }
 
-  if(info->gama_defined && !info->srgb_defined) {
-    float gamma = 100000.0f / info->gama_gamma;
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 3; c++) {
-        out[i * 4 + c] = std::pow(out[i * 4 + c], gamma);
-      }
+  if(bit16) {
+    for(size_t i = 0; i < n; i++) {
+      out[i * 4 + 0] = gammatable[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
+      out[i * 4 + 1] = gammatable[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
+      out[i * 4 + 2] = gammatable[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
+      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
     }
   } else {
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 3; c++) {
-        // sRGB gamma expand
-        float& v = out[i * 4 + c];
-        if(v < 0.04045) v = c / 12.92;
-        else v = std::pow((v + 0.055) / 1.055, 2.4);
-      }
-    }
+    for(size_t i = 0; i < n; i++) {
+      out[i * 4 + 0] = gammatable[data[i * 4 + 0]];
+      out[i * 4 + 1] = gammatable[data[i * 4 + 1]];
+      out[i * 4 + 2] = gammatable[data[i * 4 + 2]];
+      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
+   }
   }
 
-  if(info->chrm_defined && !info->srgb_defined) {
+  if(info && info->chrm_defined && !info->srgb_defined) {
     float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
     float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
     float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
     float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
     float m[9];
-    getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by);
+    if(getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
       mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
@@ -361,35 +393,38 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
   std::vector<float> im(in, in + w * h * 4);
   std::vector<unsigned char> data(w * h * 8);
 
-  if(info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
+  if(info && info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
     return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
   }
 
   size_t n = w * h;
 
-  if(info->chrm_defined && !info->srgb_defined) {
+  int bit16 = mode_out->bitdepth > 8;
+
+  if(info && info->chrm_defined && !info->srgb_defined) {
     float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
     float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
     float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
     float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
     float m[9];
-    getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by);
-    invMatrix(m);
+    if(getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
+    if(invMatrix(m)) return 1; // error, not invertible
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
       mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
     }
   } else {
     // XYZ to linear sRGB matrix
-    float m[9] = {3.2404542, -1.5371385, -0.4985314, -0.9692660, 1.8760108, 0.0415560,
-                  0.0556434, -0.2040259, 1.0572252};
+    float m[9] = {0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041};
+    invMatrix(m); // It's more precise to compute it than to precompute it and use the inverted decimal values above.
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
       mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
     }
   }
 
-  if(info->gama_defined && !info->srgb_defined) {
+  // Input is floating point, so lookup table cannot be used, but it's ensured to use float pow, not double pow.
+  if(info && info->gama_defined && !info->srgb_defined) {
     float gamma = info->gama_gamma / 100000.0f;
     for(unsigned i = 0; i < n; i++) {
       for(unsigned c = 0; c < 3; c++) {
@@ -401,23 +436,35 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
       for(unsigned c = 0; c < 3; c++) {
         // sRGB gamma compress
         float& v = im[i * 4 + c];
-        if(v < 0.0031308) v *= 12.92;
-        else v = 1.055 * std::pow(v, 1/2.4) - 0.055;
+        v = (v < 0.0031308f) ? (v * 12.92f) : (1.055f * std::pow(v, 1/2.4f) - 0.055f);
       }
     }
   }
 
-  for(unsigned i = 0; i < n; i++) {
-    for(unsigned c = 0; c < 4; c++) {
-      size_t j = i * 8 + c * 2;
-      int i16 = (int)(0.5 + 65535.0 * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
-      data[j + 0] = i16 >> 8;
-      data[j + 1] = i16 & 255;
+  // TODO: check if also 1/2/4 bit case needed: rounding is at different fine-grainedness for 8 and 16 bits below.
+  if(bit16) {
+    for(unsigned i = 0; i < n; i++) {
+      for(unsigned c = 0; c < 4; c++) {
+        size_t j = i * 8 + c * 2;
+        int i16 = (int)(0.5f + 65535.0f * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
+        data[j + 0] = i16 >> 8;
+        data[j + 1] = i16 & 255;
+      }
     }
-  }
 
-  LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
-  lodepng_convert(out, data.data(), mode_out, &mode16, w, h);
+    LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
+    lodepng_convert(out, data.data(), mode_out, &mode16, w, h);
+  } else {
+    for(unsigned i = 0; i < n; i++) {
+      for(unsigned c = 0; c < 4; c++) {
+        int i8 = (int)(0.5f + 255.0f * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
+        data[i * 4 + c] = i8;
+      }
+   }
+
+    LodePNGColorMode mode8 = lodepng_color_mode_make(LCT_RGBA, 8);
+    lodepng_convert(out, data.data(), mode_out, &mode8, w, h);
+  }
 
   return 0; // ok
 }
