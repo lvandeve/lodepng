@@ -66,7 +66,9 @@ void showHelp() {
                "-s: show header summary on one line\n"
                "-h: show header info\n"
                "-p: show PNG file info\n"
-               "-i: show ICC profile in full (if any)\n"
+               "-e: check the PNG for errors or warnings\n"
+               "-i: show ICC profile details (if any)\n"
+               "-I: show ICC profile in binary (hex)\n"
                "--format=<format>: hex display mode for -i:\n"
                "    mix: Use printable ASCII characters, hex for others\n"
                "    hex: Use only hex\n"
@@ -87,6 +89,7 @@ void showHelp() {
                "-B: show Zlib block symbol counts\n"
                "-7: show all lz77 values (huge output)\n"
                "-v: be more verbose\n"
+               "-t: expand long texts\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
                "-?, --help: show this help" << std::endl;
 }
@@ -106,9 +109,12 @@ enum HexFormat {
 
 struct Options {
   bool verbose;
+  bool expand_long_texts;
   bool show_one_line_summary; //show filesize, pixels and color type on single line
-  bool show_header;
-  bool show_icc; // show ICC color profile in full
+  bool show_header; // show only info from the IHDR chunk
+  bool show_errors;
+  bool show_icc_details; // show ICC color profile details
+  bool show_icc_hex; // show ICC color profile in full
   bool show_color_stats;
   bool show_png_info; //show things like filesize, width, height, palette size, ...
   bool show_palette; //show all palette values
@@ -129,7 +135,9 @@ struct Options {
   bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
   bool use_hex; //show some sizes or positions in hexadecimal
 
-  Options() : verbose(false), show_one_line_summary(false), show_header(false), show_icc(false),
+  Options() : verbose(false), expand_long_texts(false),
+              show_one_line_summary(false), show_header(false), show_errors(false),
+              show_icc_details(false), show_icc_hex(false),
               show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
               hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
@@ -829,12 +837,17 @@ void showError(Data& data, const Options& options) {
   std::cout << "Decoding error " << prefix << data.error << ": " << lodepng_error_text(data.error) << std::endl;
 }
 
-void loadWithErrorRecovery(Data& data, const Options& options) {
+void loadWithErrorRecovery(Data& data, const Options& options, bool show_errors_mode) {
   (void)options;
   unsigned& error = data.error;
   lodepng::State& state = data.state;
 
   data.loadPixels();
+
+  if(show_errors_mode) {
+    if(!error) std::cout << "No errors or warnings" << std::endl;
+    return;
+  }
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
   while(error) {
@@ -842,38 +855,41 @@ void loadWithErrorRecovery(Data& data, const Options& options) {
     unsigned error2 = error;
     if(error == 57) {
       showError(data, options);
-      std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
+      if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       data.reloadPixels();
     } else if(error == 58) {
       showError(data, options);
-      std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
+      if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       data.reloadPixels();
     } else if(error == 69) {
       showError(data, options);
-      std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
+      if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
       state.decoder.ignore_critical = 1;
       data.reloadPixels();
     } else if(error == 30 || error == 63) {
       showError(data, options);
-      std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
+      if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
       state.decoder.ignore_end = 1;
       data.reloadPixels();
     } else {
-      if(error == 0) std::cerr << "This error is unrecoverable" << std::endl;
+      showError(data, options);
+      if(!show_errors_mode) std::cerr << "This error is unrecoverable" << std::endl;
       break;  // other error that we cannot ignore
     }
-    if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
+    if(!show_errors_mode) if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
     if(error == error2) {
-      std::cerr << "Failed to ignore the error" << std::endl;
+      if(!show_errors_mode) std::cerr << "Failed to ignore the error" << std::endl;
       break; // avoid infinite loop if ignoring did not fix the error code
     }
   }
+
+  if(show_errors_mode) {
+    if(!error) std::cout << "The error is recoverable" << std::endl;
+    else std::cout << "The error is not recoverable" << std::endl;
+  }
 }
-
-
-
 
 void showSingleLineSummary(Data& data, const Options& options) {
   data.loadInspect();
@@ -883,6 +899,145 @@ void showSingleLineSummary(Data& data, const Options& options) {
   std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << ", ";
   std::cout << data.w << "x" << data.h << ", ";
   std::cout << "Color: " << colorTypeString(data.state.info_png.color.colortype) << ", " << data.state.info_png.color.bitdepth << " bit" << std::endl;
+}
+
+static unsigned getICCUint16(const unsigned char* icc, size_t size, size_t pos) {
+  if (pos + 2 > size) return 0;
+  return (unsigned)((icc[pos] << 8) | (icc[pos + 1]));
+}
+
+static unsigned getICCUint32(const unsigned char* icc, size_t size, size_t pos) {
+  if (pos + 4 > size) return 0;
+  return (unsigned)((icc[pos] << 24) | (icc[pos + 1] << 16) | (icc[pos + 2] << 8) | (icc[pos + 3] << 0));
+}
+
+static int getICCInt32(const unsigned char* icc, size_t size, size_t pos) {
+  if (pos + 4 > size) return 0;
+  return (int)((icc[pos] << 24) | (icc[pos + 1] << 16) | (icc[pos + 2] << 8) | (icc[pos + 3] << 0));
+}
+
+static float getICC15Fixed16(const unsigned char* icc, size_t size, size_t pos) {
+  return getICCInt32(icc, size, pos) / 65536.0;
+}
+
+static std::string printableICCWord(const unsigned char* icc, size_t size, size_t pos) {
+  if (pos + 4 > size) {
+    return "out of range";
+  }
+  std::string result;
+  for (int i = 0; i < 4; i++) {
+    char c = icc[pos + i];
+    result += ((c >= 32 && c < 127) ? c : '?');
+  }
+  return result;
+}
+
+void printICCDetails(const unsigned char* icc, size_t size, const std::string& indent) {
+  // 128 for header, 4 for num tags
+  if(size < 132) {
+    std::cout << indent << "Invalid ICC: too small to contain header" << std::endl;
+    return;
+  }
+  if(printableICCWord(icc, size, 36) != "acsp") {
+    std::cout << indent << "Invalid ICC: does not contain signature \"acsp\"" << std::endl;
+    return;
+  }
+
+  std::cout << indent << "profile size: " << getICCUint32(icc, size, 0) << std::endl;
+  std::cout << indent << "CMM type: " << printableICCWord(icc, size, 4) << std::endl;
+
+  uint32_t version = getICCUint32(icc, size, 8);
+  uint16_t version_major = (version >> 24) & 255;
+  uint16_t version_minor = (version >> 20) & 15;
+  uint16_t version_bugfix = (version >> 16) & 15;
+  std::cout << indent << "version: " << version_major << "." << version_minor
+            << "." << version_bugfix << std::endl;
+
+  std::cout << indent << "device class: " << printableICCWord(icc, size, 12) << std::endl;
+  std::cout << indent << "input space: \"" << printableICCWord(icc, size, 16) << "\", ";
+  std::cout << "output space: \"" << printableICCWord(icc, size, 20) << "\"" << std::endl;
+  std::cout << indent;
+  printf("date: %02d-%02d-%02dT%02d:%02d:%02d\n",
+         getICCUint16(icc, size, 24), getICCUint16(icc, size, 26), getICCUint16(icc, size, 28),
+         getICCUint16(icc, size, 30), getICCUint16(icc, size, 32), getICCUint16(icc, size, 34));
+  std::cout << indent << "signature: " << printableICCWord(icc, size, 36) << std::endl;
+  std::cout << indent << "target: " << printableICCWord(icc, size, 40) << std::endl;
+  std::cout << indent << "flags: " << getICCUint32(icc, size, 44) << std::endl;
+  std::cout << indent << "device manufacturer: " << printableICCWord(icc, size, 48) << ", ";
+  std::cout << "device model: " << printableICCWord(icc, size, 52) << ", ";
+  std::cout << "device attributes: " << getICCUint32(icc, size, 56) << " "
+            << getICCUint32(icc, size, 60) << std::endl;
+  std::cout << indent << "rendering intent: " << getICCUint32(icc, size, 64) << std::endl;
+
+  float pcsx = getICC15Fixed16(icc, size, 68);
+  float pcsy = getICC15Fixed16(icc, size, 72);
+  float pcsz = getICC15Fixed16(icc, size, 76);
+  float pcsxyz = pcsx + pcsy + pcsz;
+  std::cout << indent << "xyz illuminant: X:" << pcsx << ", Y:" << pcsy << ", Z:" << pcsz
+            << ", xy:" << (pcsx / pcsxyz) << "," << (pcsy / pcsxyz) << std::endl;
+
+  std::cout << indent << "creator: " << printableICCWord(icc, size, 80) << std::endl;
+
+  // The md5 is present in v2.4 and above profiles, but it's always shown anyway. Those
+  // bytes are normally all zero for older versions.
+  std::cout << indent;
+  printf("md5: %08x%08x%08x%08x\n", getICCUint32(icc, size, 84), getICCUint32(icc, size, 88),
+                                    getICCUint32(icc, size, 92), getICCUint32(icc, size, 96));
+
+  size_t numtags = getICCUint32(icc, size, 128);
+  std::cout << indent << "num icc tags: " << numtags << std::endl;
+  if(size < 128 + 4 + numtags * 12) {
+    std::cout << indent << "Invalid ICC: too small to contain tag descriptions" << std::endl;
+    return;
+  }
+  for(size_t i = 0; i < numtags; i++) {
+    size_t pos = 132 + i * 12;
+    std::cout << indent << "icc tag: \"" << printableICCWord(icc, size, pos) << "\"";
+    size_t offset = getICCUint32(icc, size, pos + 4);
+    size_t tagsize = getICCUint32(icc, size, pos + 8);
+    std::cout << ", offset: " << offset << ", size: " << tagsize;
+    if(offset + tagsize > size || tagsize < 4) {
+      std::cout << std::endl << indent << "Invalid ICC: tag out of range" << std::endl;
+      return;
+    }
+    std::string datatype = printableICCWord(icc, size, offset);
+    std::cout << ", datatype: \"" << datatype << "\"";
+    if(datatype == "XYZ ") {
+      float x = getICC15Fixed16(icc, size, offset + 8);
+      float y = getICC15Fixed16(icc, size, offset + 12);
+      float z = getICC15Fixed16(icc, size, offset + 16);
+      float xyz = x + y + z;
+      std::cout << ", X:" << x << ", Y:" << y << ", Z:" << z;
+      if(xyz) std::cout << ", xy:" << (x / xyz) << "," << (y / xyz);
+    }
+    if(datatype == "curv") {
+      size_t lutsize = getICCUint32(icc, size, offset + 8);
+      std::cout << ", lookup table size: " << lutsize;
+      if(lutsize == 1 && offset + 14 <= size) {
+        std::cout << " (gamma: " << (getICCUint16(icc, size, offset + 12) / 256.0) << ")";
+      }
+      if(lutsize == 0) std::cout << " (linear)";
+    }
+    if(datatype == "sf32") {
+      std::cout << ":";
+      for(size_t j = 8; j < tagsize; j += 4) {
+        float v = getICC15Fixed16(icc, size, offset + j);
+        std::cout << " " << v;
+      }
+    }
+    if(datatype == "text" || datatype == "mluc" || datatype == "desc") {
+      // TODO: this is a bit of a simplification of the parse for now, e.g.
+      // ignoring UTF-16, instead implicitely skipping non-ASCII bytes, and
+      // potentially printing things multiple times in a row if multiple
+      // variants are in desc or mluc.
+      std::cout << ": ";
+      for(size_t j = (datatype == "mluc" ? 28 : 8); j < tagsize; j++) {
+        char c = icc[offset + j];
+        if(c >= 32 && c < 127) std::cout << c;
+      }
+    }
+    std::cout << std::endl;
+  }
 }
 
 void showHeaderInfo(Data& data, const Options& options) {
@@ -910,6 +1065,8 @@ void showHeaderInfo(Data& data, const Options& options) {
       std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
       std::cout << "Has color key: " << color.key_defined << std::endl;
     }
+  }
+  if(options.show_png_info) {
     if (color.colortype == LCT_PALETTE) {
       std::cout << "Palette size: " << color.palettesize << std::endl;
     }
@@ -943,20 +1100,29 @@ void showHeaderInfo(Data& data, const Options& options) {
     }
     if(info.iccp_defined) {
       std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
-      if(options.verbose && !options.show_icc) std::cout << "Use -i to show full ICC profile" << std::endl;
+      if(options.verbose && !options.show_icc_details && !options.show_icc_hex) {
+        std::cout << "Use -i or -I to show ICC profile details or hex" << std::endl;
+      }
     }
   }
-  if(info.iccp_defined && options.show_icc) {
+  if(info.iccp_defined && options.show_icc_details) {
+    if(!options.show_header) {
+      std::cout << "ICC profile details (" << info.iccp_profile_size << " bytes), PNG name: " << info.iccp_name << std::endl;
+    }
+    printICCDetails(info.iccp_profile, info.iccp_profile_size, "  ");
+    std::cout << "end of ICC profile" << std::endl;
+  }
+  if(info.iccp_defined && options.show_icc_hex) {
     for(size_t i = 0; i < info.iccp_profile_size; i++) {
       unsigned char c = info.iccp_profile[i];
       if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
       else printf("%02x ", c);
-      if(i % 40 == 39 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+      if(i % 32 == 31 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
     }
     std::cout << std::endl;
   }
 
-  if(options.show_header) {
+  if(options.show_png_info) {
     if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
     if(info.phys_defined) {
       std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
@@ -964,9 +1130,28 @@ void showHeaderInfo(Data& data, const Options& options) {
   }
 }
 
+// shortens the text unless options.expand_long_texts is true
+std::string shortenText(const std::string& text, const Options& options) {
+  if(options.expand_long_texts) return text;
+  size_t maxlen = 512;
+  size_t maxnl = 5;
+  size_t numnl = 0; // amount of newlines
+  for(size_t i = 0; i < text.size(); i++) {
+    if(text[i] == 10) numnl++;
+    if(numnl >= maxnl) {
+      maxlen = i - 1;
+      break;
+    }
+  }
+
+  if(text.size() < maxlen) return text;
+
+  return text.substr(0, maxlen) + "\n... <SNIP> ... (use -t to expand long text)";
+}
+
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
 void showPNGInfo(Data& data, const Options& options) {
-  loadWithErrorRecovery(data, options);
+  loadWithErrorRecovery(data, options, false);
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
 
@@ -974,25 +1159,23 @@ void showPNGInfo(Data& data, const Options& options) {
 
   if(options.verbose) std::cout << "Texts: " << info.text_num << std::endl;
   for(size_t i = 0; i < info.text_num; i++) {
-    std::cout << "Text: " << info.text_keys[i] << ": " << info.text_strings[i] << std::endl;
+    std::cout << "Text (" << (strlen(info.text_strings[i])) << " bytes): "
+              << info.text_keys[i] << ": " << shortenText(info.text_strings[i], options) << std::endl;
   }
   if(options.verbose) std::cout << "International texts: " << info.itext_num << std::endl;
   for(size_t i = 0; i < info.itext_num; i++) {
-    std::cout << "Text: "
+    std::cout << "Text (" << (strlen(info.itext_strings[i])) << " bytes): "
               << info.itext_keys[i] << ", "
               << info.itext_langtags[i] << ", "
               << info.itext_transkeys[i] << ": "
-              << info.itext_strings[i] << std::endl;
+              << shortenText(info.itext_strings[i], options) << std::endl;
   }
   if(options.verbose) std::cout << "Time defined: " << info.time_defined << std::endl;
   if(info.time_defined) {
     const LodePNGTime& time = info.time;
-    std::cout << "year: " << time.year << std::endl;
-    std::cout << "month: " << time.month << std::endl;
-    std::cout << "day: " << time.day << std::endl;
-    std::cout << "hour: " << time.hour << std::endl;
-    std::cout << "minute: " << time.minute << std::endl;
-    std::cout << "second: " << time.second << std::endl;
+    printf("time: %02d-%02d-%02dT%02d:%02d:%02d\n",
+           time.year, time.month, time.day, time.hour, time.minute, time.second);
+
   }
 }
 
@@ -1035,6 +1218,12 @@ void showColorStats(Data& data, const Options& options) {
   }
 }
 
+void showErrors(Data& data, const Options& options) {
+  std::cout << "Error report: " << std::endl;
+  Data data2(data.filename);
+  loadWithErrorRecovery(data2, options, true);
+}
+
 void showRender(Data& data, const Options& options) {
   data.loadPixels();
   if(data.error) return;
@@ -1058,7 +1247,8 @@ void showRender(Data& data, const Options& options) {
 
 void showInfos(Data& data, const Options& options) {
   if(options.show_one_line_summary) showSingleLineSummary(data, options);
-  if(options.show_header || options.show_icc) showHeaderInfo(data, options);
+  if(options.show_errors) showErrors(data, options);
+  if(options.show_header || options.show_icc_details || options.show_icc_hex) showHeaderInfo(data, options);
   if(options.show_color_stats) showColorStats(data, options);
   if(options.show_png_info) showPNGInfo(data, options);
   if(options.show_palette) displayPalette(data, options);
@@ -1081,7 +1271,7 @@ int main(int argc, char *argv[]) {
     std::string s = argv[i];
     if(s.size() > 1 && s[0] == '-' && s[1] != '-') {
       // anything that chooses actual set disables the defaults
-      if(s != "-x" && s != "-v") options_chosen = true;
+      if(s != "-x" && s != "-v" && s != "-t") options_chosen = true;
       for(size_t j = 1; j < s.size(); j++) {
         char c = s[j];
         if(c == '?') {
@@ -1090,9 +1280,12 @@ int main(int argc, char *argv[]) {
         }
         else if(c == 'o') options.show_one_line_summary = true;
         else if(c == 'h') options.show_header = true;
-        else if(c == 'i') options.show_icc = true;
+        else if(c == 'i') options.show_icc_details = true;
+        else if(c == 'I') options.show_icc_hex = true;
         else if(c == 'v') options.verbose = true;
+        else if(c == 't') options.expand_long_texts = true;
         else if(c == 's') options.show_color_stats = true;
+        else if(c == 'e') options.show_errors = true;
         else if(c == 'p') options.show_header = options.show_png_info = true;
         else if(c == 'r') options.show_render = true;
         else if(c == 'l') options.show_palette = true;
@@ -1162,6 +1355,11 @@ int main(int argc, char *argv[]) {
   if(!options_chosen) {
     //fill in defaults
     options.show_header = true;
+    options.show_png_info = true;
+    // verbose lets individual sections show more, and in addition adds more default unlocked sections if no specific one chosen
+    if(options.verbose) {
+      options.show_chunks2 = true;
+    }
   }
 
   for(size_t i = 0; i < filenames.size(); i++) {

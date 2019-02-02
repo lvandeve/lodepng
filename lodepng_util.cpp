@@ -254,8 +254,237 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits) {
 }
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
-// Multiplies values with 3x3 matrix
-void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x, double y, double z) {
+
+// Values parsed from ICC profile, see parseICC for more information about this
+// subset.
+struct LodePNGICC {
+// 0 = other not supported by PNG (CMYK, ...), 1 = gray (for PNG color types 0,4), 2 = RGB (for PNG color types 2,3,6)
+  int inputspace;
+  int version_major;
+  int version_minor;
+  int version_bugfix;
+
+  // The whitepoint of the profile connection space (PCS). Should always be D50, but parsed and used anyway.
+  float illuminant[3];
+
+  // if true, has chromatic adaptation matrix that must be used. If false, you must compute a chromatic adaptation
+  // matrix yourself from "illuminant" and "white".
+  bool has_chad;
+  float chad[9]; // chromatic adaptation matrix, if given
+
+  bool has_chromaticity;
+  // The whitepoint of the RGB color space. If use_chad, must be converted, else used as-is.
+  float white[3];
+  // Chromaticities of the RGB space in XYZ color space
+  float red[3];
+  float green[3];
+  float blue[3];
+  // TODO: also need to handle blackpoint?
+
+  bool has_trc;
+
+  // Parameters of a tone reproduction curve, either with a power law formulaa or with a lookup table.
+  struct Curve {
+    int type; // 0=linear, 1=lut, 2 = simple gamma, 3-6 = parametric (matches ICC parametric types 1-4)
+    std::vector<float> lut; // for type 1
+    float gamma; // for type 2 and more
+    float a, b, c, d, e, f; // for type 3-7
+  };
+
+  // tone reproduction curves (gamma compression/expansion) for the three channels (only first one used if grayscale)
+  Curve trc[3];
+};
+
+// input and output in range 0-1. If color was integer 0-255, multiply with (1.0f/255)
+static float forwardTRC(const LodePNGICC::Curve& curve, float x) {
+  if(curve.type == 0) {
+    return x;
+  }
+  if(curve.type == 1) { // Lookup table
+    if(x < 0 || curve.lut.empty()) return 0;
+    size_t index = (size_t)(x * (curve.lut.size() - 1));
+    if(index >= curve.lut.size()) return 1;
+
+    // LERP
+    float v0 = curve.lut[index];
+    float v1 = (index + 1 < curve.lut.size()) ? curve.lut[index + 1] : 1.0f;
+    float fraction = (x * (curve.lut.size() - 1)) - index;
+    return v0 * (1 - fraction) + v1 * fraction;
+  }
+  if(curve.type == 2) {
+    return std::pow(x, curve.gamma);
+  }
+  // TODO: all the ones below are untested
+  if(curve.type == 3) {
+    return x >= (-curve.b / curve.a) ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : 0;
+  }
+  if(curve.type == 4) {
+    return x >= (-curve.b / curve.a) ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : curve.c;
+  }
+  if(curve.type == 5) {
+    return x >= curve.d ? (std::pow(curve.a * x + curve.b, curve.gamma)) : (curve.c * x);
+  }
+  if(curve.type == 6) {
+    return x >= curve.d ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : (curve.c * x + curve.f);
+  }
+  return 0;
+}
+
+// TODO: Implement bakcwardTRC for the opposite direction
+
+static unsigned decodeICCUint16(const unsigned char* data, size_t size, size_t* pos) {
+  *pos += 2;
+  if (*pos > size) return 0;
+  return (unsigned)((data[*pos - 2] << 8) | (data[*pos - 1]));
+}
+
+static unsigned decodeICCUint32(const unsigned char* data, size_t size, size_t* pos) {
+  *pos += 4;
+  if (*pos > size) return 0;
+  return (unsigned)((data[*pos - 4] << 24) | (data[*pos - 3] << 16) | (data[*pos - 2] << 8) | (data[*pos - 1] << 0));
+}
+
+static int decodeICCInt32(const unsigned char* data, size_t size, size_t* pos) {
+  *pos += 4;
+  if (*pos > size) return 0;
+  return (data[*pos - 4] << 24) | (data[*pos - 3] << 16) | (data[*pos - 2] << 8) | (data[*pos - 1] << 0);
+}
+
+static float decodeICC15Fixed16(const unsigned char* data, size_t size, size_t* pos) {
+  return decodeICCInt32(data, size, pos) / 65536.0;
+}
+
+static bool isICCword(const unsigned char* data, size_t size, size_t pos, const char* word) {
+  if(pos + 4 > size) return false;
+  return data[pos + 0] == (unsigned char)word[0] &&
+         data[pos + 1] == (unsigned char)word[1] &&
+         data[pos + 2] == (unsigned char)word[2] &&
+         data[pos + 3] == (unsigned char)word[3];
+}
+
+// Parses a subset of the ICC profile, supporting the necessary mix of ICC v2
+// and ICC v4 required to correctly convert the RGB color space to XYZ.
+// Does not parse values not related to this specific PNG-related purpose, and
+// does not support non-RGB profiles or lookup-table based chroma (but it
+// supports lookup tables for TRC aka "gamma").
+static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size) {
+  size_t pos = 0;
+
+  if(size < 132) return 1; // Too small to be a valid icc profile.
+
+  icc->has_chromaticity = false;
+  icc->has_trc = false;
+  icc->has_chad = false;
+
+  icc->trc[0].type = 0;
+  icc->trc[1].type = 0;
+  icc->trc[2].type = 0;
+  icc->white[0] = icc->white[1] = icc->white[2] = 0;
+  icc->red[0] = icc->red[1] = icc->red[2] = 0;
+  icc->green[0] = icc->green[1] = icc->green[2] = 0;
+  icc->blue[0] = icc->blue[1] = icc->blue[2] = 0;
+
+  pos = 8;
+  unsigned version = decodeICCUint32(data, size, &pos);
+  if(pos >= size) return 1;
+  icc->version_major = (version >> 24) & 255;
+  icc->version_minor = (version >> 20) & 15;
+  icc->version_bugfix = (version >> 16) & 15;
+
+  pos = 16;
+  unsigned inputspace = decodeICCUint32(data, size, &pos);
+  if(pos >= size) return 1;
+  if(inputspace == 0x47524159) {
+    // The string  "RGB " as unsigned 32-bit int.
+    icc->inputspace = 1;
+  } else if(inputspace == 0x52474220) {
+    // The string  "GRAY" as unsigned 32-bit int.
+    icc->inputspace = 2;
+  } else {
+    icc->inputspace = 0;  // unsupported by PNG (CMYK, YCbCr, Lab, HSV, ...)
+  }
+
+  // Should always be 0.9642, 1.0, 0.8249
+  pos = 68;
+  icc->illuminant[0] = decodeICC15Fixed16(data, size, &pos);
+  icc->illuminant[1] = decodeICC15Fixed16(data, size, &pos);
+  icc->illuminant[2] = decodeICC15Fixed16(data, size, &pos);
+
+  pos = 128;
+  size_t numtags = decodeICCUint32(data, size, &pos);
+  if(pos >= size) return 1;
+  // scan for tags we want to handle
+  for(size_t i = 0; i < numtags; i++) {
+    size_t namepos = pos;
+    pos += 4;
+    size_t offset = decodeICCUint32(data, size, &pos);
+    unsigned tagsize = decodeICCUint32(data, size, &pos);
+    if(pos >= size || offset + tagsize > size) return 1;
+
+    if(isICCword(data, size, namepos, "wtpt")) {
+      offset += 8; // skip tag and reserved
+      icc->white[0] = decodeICC15Fixed16(data, size, &offset);
+      icc->white[1] = decodeICC15Fixed16(data, size, &offset);
+      icc->white[2] = decodeICC15Fixed16(data, size, &offset);
+      icc->has_chromaticity = true;
+    } else if(isICCword(data, size, namepos, "rXYZ")) {
+      offset += 8; // skip tag and reserved
+      icc->red[0] = decodeICC15Fixed16(data, size, &offset);
+      icc->red[1] = decodeICC15Fixed16(data, size, &offset);
+      icc->red[2] = decodeICC15Fixed16(data, size, &offset);
+      icc->has_chromaticity = true;
+    } else if(isICCword(data, size, namepos, "gXYZ")) {
+      offset += 8; // skip tag and reserved
+      icc->green[0] = decodeICC15Fixed16(data, size, &offset);
+      icc->green[1] = decodeICC15Fixed16(data, size, &offset);
+      icc->green[2] = decodeICC15Fixed16(data, size, &offset);
+      icc->has_chromaticity = true;
+    } else if(isICCword(data, size, namepos, "bXYZ")) {
+      offset += 8; // skip tag and reserved
+      icc->blue[0] = decodeICC15Fixed16(data, size, &offset);
+      icc->blue[1] = decodeICC15Fixed16(data, size, &offset);
+      icc->blue[2] = decodeICC15Fixed16(data, size, &offset);
+      icc->has_chromaticity = true;
+    } else if(isICCword(data, size, namepos, "chad")) {
+      offset += 8; // skip datatype keyword "sf32" and reserved
+      for(size_t j = 0; j < 9; j++) {
+        icc->chad[j] = decodeICC15Fixed16(data, size, &offset);
+      }
+      icc->has_chad = true;
+    } else if(isICCword(data, size, namepos, "rTRC") ||
+              isICCword(data, size, namepos, "gTRC") ||
+              isICCword(data, size, namepos, "bTRC") ||
+              isICCword(data, size, namepos, "kTRC")) {
+      if(isICCword(data, size, offset, "curv")) {
+        icc->has_trc = true;
+        char c = (char)data[namepos];
+        int channel = (c == 'b') ? 2 : (c == 'g' ? 1 : 0);
+        LodePNGICC::Curve* trc = &icc->trc[channel];
+        // TODO: set type to other things if it's not LUT
+        offset += 8; // skip tag "curv" and reserved
+        size_t count = decodeICCUint32(data, size, &offset);
+        if(count == 0) {
+          trc->type = 0; // linear
+        } else if(count == 1) {
+          trc->type = 2; // gamma
+          trc->gamma = decodeICCUint16(data, size, &offset) / 256.0f;
+        } else {
+          trc->type = 1; // LUT
+          if(offset + count * 2 > size || count > 16777216) return 1; // also avoid crazy count
+          trc->lut.resize(count);
+          for(size_t j = 0; j < count; j++) {
+            trc->lut[j] = decodeICCUint16(data, size, &offset) * (1.0f / 65535.0f);
+          }
+        }
+      }
+    }
+  }
+
+  return 0;
+}
+
+// Multiplies 3 vector values with 3x3 matrix
+static void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x, double y, double z) {
   // double used as inputs even though in general the images are float, so the sums happen in
   // double precision, because float can give numerical problems for nearby values
   *x2 = x * m[0] + y * m[1] + z * m[2];
@@ -263,8 +492,16 @@ void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x, double
   *z2 = x * m[6] + y * m[7] + z * m[8];
 }
 
+static void mulMatrixMatrix(float* result, const float* a, const float* b) {
+  float temp[9];
+  mulMatrix(&temp[0], &temp[3], &temp[6], a, b[0], b[3], b[6]);
+  mulMatrix(&temp[1], &temp[4], &temp[7], a, b[1], b[4], b[7]);
+  mulMatrix(&temp[2], &temp[5], &temp[8], a, b[2], b[5], b[8]);
+  for(int i = 0; i < 9; i++) result[i] = temp[i];
+}
+
 // Inverts 3x3 matrix in place
-unsigned invMatrix(float* m) {
+static unsigned invMatrix(float* m) {
   // double used instead of float for intermediate computations to avoid
   // intermediate numerical precision issues
   double e0 = (double)m[4] * m[8] - (double)m[5] * m[7];
@@ -287,13 +524,12 @@ unsigned invMatrix(float* m) {
   return 0; // ok
 }
 
-// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace
-unsigned getChrmMatrix(float* m, float wx, float wy, float rx, float ry, float gx, float gy, float bx, float by) {
-  if(wy == 0 || ry == 0 || gy == 0 || by == 0) return 1; // error, division through zero
-  float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
-  float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
-  float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
-  float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
+// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in XYZ colorspace
+static unsigned getChrmMatrixXYZ(float* m,
+                                 float wX, float wY, float wZ,
+                                 float rX, float rY, float rZ,
+                                 float gX, float gY, float gZ,
+                                 float bX, float bY, float bZ) {
   float t[9] = {rX, gX, bX, rY, gY, bY, rZ, gZ, bZ};
   if(invMatrix(t)) return 1; // error, not invertible
   float rs, gs, bs;
@@ -301,6 +537,69 @@ unsigned getChrmMatrix(float* m, float wx, float wy, float rx, float ry, float g
   double r[9] = {rs * rX, gs * gX, bs * bX, rs * rY, gs * gY, bs * bY, rs * rZ, gs * gZ, bs * bZ};
   for(int i = 0; i < 9; i++) m[i] = r[i];
   return 0;
+}
+
+// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace
+static unsigned getChrmMatrixXY(float* m,
+                                float wx, float wy,
+                                float rx, float ry,
+                                float gx, float gy,
+                                float bx, float by) {
+  if(wy == 0 || ry == 0 || gy == 0 || by == 0) return 1; // error, division through zero
+  float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
+  float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
+  float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
+  float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
+  return getChrmMatrixXYZ(m, wX, wY, wZ, rX, gX, bX, rY, gY, bY, rZ, gZ, bZ);
+}
+
+
+// Returns matrix that adapts from source whitepoint 0 to destination whitepoint 1.
+// Types: 0=XYZ scaling, 1=Bradford, 2=Vonkries
+static unsigned getAdaptationMatrix(float* m, int type,
+                                    float wx0, float wy0, float wz0,
+                                    float wx1, float wy1, float wz1) {
+  static const float bradford[9] = {
+    0.8951, 0.2664, -0.1614,
+    -0.7502, 1.7135, 0.0367,
+    0.0389, -0.0685, 1.0296
+  };
+  static const float bradfordinv[9] = {
+    0.9869929, -0.1470543, 0.1599627,
+    0.4323053, 0.5183603, 0.0492912,
+   -0.0085287, 0.0400428, 0.9684867
+  };
+  static const float vonkries[9] = {
+    0.4002400, 0.7076000, -0.0808100,
+    -0.2263000, 1.1653200, 0.0457000,
+    0.0000000, 0.0000000, 0.9182200,
+  };
+  static const float vonkriesinv[9] = {
+    1.8599364, -1.1293816, 0.2198974,
+    0.3611914, 0.6388125, -0.0000064,
+   0.0000000, 0.0000000, 1.0890636
+  };
+  if(type == 0) {
+    for(int i = 0; i < 9; i++) m[i] = 0;
+    m[0] = wx1 / wx0;
+    m[4] = wy1 / wy0;
+    m[8] = wz1 / wz0;
+    return 0; // Ok
+  }
+  const float* cat = (type == 1) ? bradford : vonkries;
+  const float* inv = (type == 1) ? bradfordinv : vonkriesinv;
+  float rho0, gam0, bet0, rho1, gam1, bet1;
+  mulMatrix(&rho0, &gam0, &bet0, cat, wx0, wy0, wz0);
+  mulMatrix(&rho1, &gam1, &bet1, cat, wx1, wy1, wz1);
+  float rho2 = rho1 / rho0, gam2 = gam1 / gam0, bet2 = bet1 / bet0;
+  // Multiply diagonal matrix with cat
+  for(int i = 0; i < 3; i++) {
+    m[i + 0] = rho2 * cat[i + 0];
+    m[i + 3] = gam2 * cat[i + 3];
+    m[i + 6] = bet2 * cat[i + 6];
+  }
+  mulMatrixMatrix(m, inv, m);
+  return 0; // ok
 }
 
 // Make lookup table for gamma correction.
@@ -326,51 +625,124 @@ static std::vector<float> makeGammaTable(int bits, int type, float gamma) {
 }
 
 unsigned convertToXYZ(float* out, const unsigned char* in,
-                      unsigned w, unsigned h, const LodePNGColorMode* mode_in,
-                      const LodePNGInfo* info) {
-  if(info && info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
-    return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
-  }
+                      unsigned w, unsigned h, const LodePNGState* state) {
+  const LodePNGColorMode* mode_in = &state->info_raw;
+  const LodePNGInfo* info = &state->info_png;
 
   size_t n = w * h;
+
+  // TODO: handle grayscale (gamma conversion is then done but not chromaticity)
+
+  bool use_icc = false;
+  LodePNGICC icc;
+  if(info->iccp_defined) {
+    if(parseICC(&icc, info->iccp_profile, info->iccp_profile_size)) {
+      return 1;  // corrupted ICC profile
+    }
+    use_icc = true;
+    // disable again for unsupported things in the icc profile
+    if(icc.inputspace == 0) {
+      use_icc = false;
+    }
+    // if we didn't recognize both chrm and trc, then maybe the ICC uses data
+    // types not supported here yet, so fall back to not using it.
+    // TODO: if grayscale, we can ignore has_chromaticity.
+    if(!icc.has_chromaticity) {
+      use_icc = false;
+    }
+    if(!icc.has_trc) {
+      use_icc = false;
+    }
+  }
 
   int bit16 = mode_in->bitdepth > 8;
   std::vector<unsigned char> data(w * h * (bit16 ? 8 : 4));
   LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
   lodepng_convert(data.data(), in, &tempmode, mode_in, w, h);
   std::vector<float> gammatable;
+  float* gammatable_r;
+  float* gammatable_g;
+  float* gammatable_b;
 
-  if(info && info->gama_defined && !info->srgb_defined) {
+  if(use_icc) {
+    size_t num = bit16 ? 65535 : 256;
+    gammatable.resize(num * 3);
+    float mul = 1.0f / (num - 1);
+    gammatable_r = &gammatable[0];
+    gammatable_g = &gammatable[num];
+    gammatable_b = &gammatable[num * 2];
+    for(size_t i = 0; i < num; i++) {
+      gammatable_r[i] = forwardTRC(icc.trc[0], i * mul);
+      gammatable_g[i] = forwardTRC(icc.trc[1], i * mul);
+      gammatable_b[i] = forwardTRC(icc.trc[2], i * mul);
+    }
+  } else if(info->gama_defined && !info->srgb_defined) {
     float gamma = 100000.0f / info->gama_gamma;
     gammatable = makeGammaTable(bit16 ? 16 : 8, 0, gamma);
+    gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
   } else {
     // sRGB gamma expand
     gammatable = makeGammaTable(bit16 ? 16 : 8, 1, 0);
+    gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
   }
 
   if(bit16) {
     for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = gammatable[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
-      out[i * 4 + 1] = gammatable[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
-      out[i * 4 + 2] = gammatable[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
+      out[i * 4 + 0] = gammatable_r[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
+      out[i * 4 + 1] = gammatable_g[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
+      out[i * 4 + 2] = gammatable_b[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
       out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
     }
   } else {
     for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = gammatable[data[i * 4 + 0]];
-      out[i * 4 + 1] = gammatable[data[i * 4 + 1]];
-      out[i * 4 + 2] = gammatable[data[i * 4 + 2]];
+      out[i * 4 + 0] = gammatable_r[data[i * 4 + 0]];
+      out[i * 4 + 1] = gammatable_g[data[i * 4 + 1]];
+      out[i * 4 + 2] = gammatable_b[data[i * 4 + 2]];
       out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
-   }
+    }
   }
 
-  if(info && info->chrm_defined && !info->srgb_defined) {
+  if(use_icc) {
+    float m[9], a[9] = {1,0,0, 0,1,0, 0,0,1};
+    // If the profile has chromatic adaptation matrix "chad", use that one,
+    // else compute it from the illuminant and whitepoint.
+    if(icc.has_chad) {
+      for(int i = 0; i < 9; i++) a[i] = icc.chad[i];
+      invMatrix(a);
+    } else {
+      if(getAdaptationMatrix(a, 1, icc.illuminant[0], icc.illuminant[1], icc.illuminant[2],
+                             icc.white[0], icc.white[1], icc.white[2])) {
+        return 1; // error
+      }
+    }
+    float red[3], green[3], blue[3], white[3];
+    mulMatrix(&red[0], &red[1], &red[2], a, icc.red[0], icc.red[1], icc.red[2]);
+    mulMatrix(&green[0], &green[1], &green[2], a, icc.green[0], icc.green[1], icc.green[2]);
+    mulMatrix(&blue[0], &blue[1], &blue[2], a, icc.blue[0], icc.blue[1], icc.blue[2]);
+    // If the profile has a chad, then also the RGB's whitepoint must also be adapted from it (and the one
+    // given is normally D50). If it did not have a chad, then the whitepoint given is already the adapted one.
+    if(icc.has_chad) {
+      mulMatrix(&white[0], &white[1], &white[2], a, icc.white[0], icc.white[1], icc.white[2]);
+    } else {
+      for(int i = 0; i < 3; i++) white[i] = icc.white[i];
+    }
+    if(getChrmMatrixXYZ(m, white[0], white[1], white[2],
+                        red[0], red[1], red[2],
+                        green[0], green[1], green[2],
+                        blue[0], blue[1], blue[2])) {
+      return 1; // error
+    }
+    for(unsigned i = 0; i < n; i++) {
+      size_t j = i * 4;
+      mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
+    }
+  } else if(info->chrm_defined && !info->srgb_defined) {
     float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
     float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
     float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
     float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
     float m[9];
-    if(getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
+    if(getChrmMatrixXY(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
       mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
@@ -388,12 +760,14 @@ unsigned convertToXYZ(float* out, const unsigned char* in,
 }
 
 unsigned convertFromXYZ(unsigned char* out, const float* in,
-                        unsigned w, unsigned h, const LodePNGColorMode* mode_out,
-                        const LodePNGInfo* info) {
+                        unsigned w, unsigned h, const LodePNGState* state) {
+  const LodePNGColorMode* mode_out = &state->info_raw;
+  const LodePNGInfo* info = &state->info_png;
   std::vector<float> im(in, in + w * h * 4);
   std::vector<unsigned char> data(w * h * 8);
 
-  if(info && info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
+  // TODO: support iccp in this direction too
+  if(info->iccp_defined && !info->gama_defined && !info->chrm_defined) {
     return 1;  // fail: iCCP chunk not supported and no fallback gamma/chrm available
   }
 
@@ -401,13 +775,13 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
 
   int bit16 = mode_out->bitdepth > 8;
 
-  if(info && info->chrm_defined && !info->srgb_defined) {
+  if(info->chrm_defined && !info->srgb_defined) {
     float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
     float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
     float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
     float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
     float m[9];
-    if(getChrmMatrix(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
+    if(getChrmMatrixXY(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
     if(invMatrix(m)) return 1; // error, not invertible
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
@@ -424,7 +798,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in,
   }
 
   // Input is floating point, so lookup table cannot be used, but it's ensured to use float pow, not double pow.
-  if(info && info->gama_defined && !info->srgb_defined) {
+  if(info->gama_defined && !info->srgb_defined) {
     float gamma = info->gama_gamma / 100000.0f;
     for(unsigned i = 0; i < n; i++) {
       for(unsigned c = 0; c < 3; c++) {

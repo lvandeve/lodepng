@@ -1028,17 +1028,21 @@ TODO:
 [.] check compatibility with various compilers  - done but needs to be redone for every newer version
 [X] converting color to 16-bit per channel types
 [X] support color profile chunk types (but never let them touch RGB values by default)
-[ ] support all public PNG chunk types
+[ ] support all public PNG chunk types (almost done except sBIT, sPLT and hIST)
 [ ] make sure encoder generates no chunks with size > (2^31)-1
 [ ] partial decoding (stream processing)
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
 [X] better name for the variables "codes", "codesD", "codelengthcodes", "clcl" and "lldl"
-[ ] don't stop decoding on errors like 69, 57, 58 (make warnings)
+[ ] allow treating some errors like warnings, when image is recoverable (e.g. 69, 57, 58)
 [ ] make warnings like: oob palette, checksum fail, data after iend, wrong/unknown crit chunk, no null terminator in text, ...
-[ ] errors with line numbers (and version)
+[ ] error messages with line numbers (and version)
+[ ] errors in state instead of as return code?
+[ ] new errors/warnings like suspiciously big decompressed ztxt or iccp chunk 
 [ ] let the C++ wrapper catch exceptions coming from the standard library and return LodePNG error codes
 [ ] allow user to provide custom color conversion functions, e.g. for premultiplied alpha, padding bits or not, ...
 [ ] allow user to give data (void*) to custom allocator
+[ ] provide alternatives for C library functions not present on some platforms (memcpy, ...)
+[ ] rename "grey" to "gray" everywhere since "color" also uses US spelling (keep "grey" copies for backwards compatibility)
 */
 
 #endif /*LODEPNG_H inclusion guard*/
@@ -1133,8 +1137,10 @@ The following features are supported by the decoder:
 *) zlib decompression (inflate)
 *) zlib compression (deflate)
 *) CRC32 and ADLER32 checksums
+*) colorimetric color profile conversions: currently experimentally available in lodepng_util.cpp only,
+   plus alternatively ability to pass on chroma/gamma/ICC profile information to other color management system.
 *) handling of unknown chunks, allowing making a PNG editor that stores custom and unknown chunks.
-*) the following chunks are supported (generated/interpreted) by both encoder and decoder:
+*) the following chunks are supported by both encoder and decoder:
     IHDR: header information
     PLTE: color palette
     IDAT: pixel data
@@ -1146,6 +1152,10 @@ The following features are supported by the decoder:
     bKGD: suggested background color
     pHYs: physical dimensions
     tIME: modification time
+    cHRM: RGB chromaticities
+    gAMA: RGB gamma correction
+    iCCP: ICC color profile
+    sRGB: rendering intent
 
 1.2. features not supported
 ---------------------------
@@ -1154,10 +1164,10 @@ The following features are _not_ supported:
 
 *) some features needed to make a conformant PNG-Editor might be still missing.
 *) partial loading/stream processing. All data must be available and is processed in one call.
-*) The following public chunks are not supported but treated as unknown chunks by LodePNG
-    cHRM, gAMA, iCCP, sRGB, sBIT, hIST, sPLT
-   Some of these are not supported on purpose: LodePNG wants to provide the RGB values
-   stored in the pixels, not values modified by system dependent gamma or color models.
+*) The following public chunks are not (yet) supported but treated as unknown chunks by LodePNG:
+    sBIT
+    hIST
+    sPLT
 
 
 2. C and C++ version

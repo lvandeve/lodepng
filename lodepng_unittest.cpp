@@ -2504,12 +2504,13 @@ void testXYZ() {
 
   // 8-bit
   {
-    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 8);
+    // Default state, the conversions use 8-bit sRGB
+    lodepng::State state;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, 0));
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, 0));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2518,12 +2519,14 @@ void testXYZ() {
 
   // 16-bit
   {
-    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 16);
+    // Default state but with 16-bit, the conversions use 16-bit sRGB
+    lodepng::State state;
+    state.info_raw.bitdepth = 16;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, 0));
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, 0));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2548,12 +2551,13 @@ void testXYZ() {
 
   // 8-bit
   {
-    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 8);
+    lodepng::State state;
+    lodepng_info_copy(&state.info_png, &info_custom);
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, &info_custom));
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, &info_custom));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       // Allow near instead of exact due to numerical issues with low values,
@@ -2568,12 +2572,14 @@ void testXYZ() {
 
   // 16-bit
   {
-    LodePNGColorMode mode = lodepng_color_mode_make(LCT_RGBA, 16);
+    lodepng::State state;
+    lodepng_info_copy(&state.info_png, &info_custom);
+    state.info_raw.bitdepth = 16;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &mode, &info_custom));
+    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &mode, &info_custom));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
 
     for(size_t i = 0; i < v2.size(); i += 2) {
       unsigned a = v[i + 0] * 256u + v[i + 1];
