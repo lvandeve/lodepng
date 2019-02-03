@@ -285,7 +285,7 @@ struct LodePNGICC {
 
   // Parameters of a tone reproduction curve, either with a power law formulaa or with a lookup table.
   struct Curve {
-    int type; // 0=linear, 1=lut, 2 = simple gamma, 3-6 = parametric (matches ICC parametric types 1-4)
+    unsigned type; // 0=linear, 1=lut, 2 = simple gamma, 3-6 = parametric (matches ICC parametric types 1-4)
     std::vector<float> lut; // for type 1
     float gamma; // for type 2 and more
     float a, b, c, d, e, f; // for type 3-7
@@ -419,7 +419,9 @@ static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size
     pos += 4;
     size_t offset = decodeICCUint32(data, size, &pos);
     unsigned tagsize = decodeICCUint32(data, size, &pos);
-    if(pos >= size || offset + tagsize > size) return 1;
+    if(pos >= size || offset >= size) return 1;
+    if(offset + tagsize > size) return 1;
+    if(tagsize < 8) return 1;
 
     if(isICCword(data, size, namepos, "wtpt")) {
       offset += 8; // skip tag and reserved
@@ -455,12 +457,12 @@ static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size
               isICCword(data, size, namepos, "gTRC") ||
               isICCword(data, size, namepos, "bTRC") ||
               isICCword(data, size, namepos, "kTRC")) {
+      char c = (char)data[namepos];
+      int channel = (c == 'b') ? 2 : (c == 'g' ? 1 : 0);
+      // "curv": linear, gamma power or LUT
       if(isICCword(data, size, offset, "curv")) {
         icc->has_trc = true;
-        char c = (char)data[namepos];
-        int channel = (c == 'b') ? 2 : (c == 'g' ? 1 : 0);
         LodePNGICC::Curve* trc = &icc->trc[channel];
-        // TODO: set type to other things if it's not LUT
         offset += 8; // skip tag "curv" and reserved
         size_t count = decodeICCUint32(data, size, &offset);
         if(count == 0) {
@@ -477,7 +479,37 @@ static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size
           }
         }
       }
+      // "para": parametric formula with gamma power, multipliers, biases and comparison point
+      // TODO: test this on a realistic sample
+      if(isICCword(data, size, offset, "para")) {
+        icc->has_trc = true;
+        LodePNGICC::Curve* trc = &icc->trc[channel];
+        offset += 8; // skip tag "para" and reserved
+        unsigned type = decodeICCUint16(data, size, &offset);
+        offset += 2;
+        if(type > 4) return 1; // unknown parametric curve type
+        trc->type = type + 2;
+        trc->gamma = decodeICC15Fixed16(data, size, &offset);
+        if(type >= 1) {
+          trc->a = decodeICC15Fixed16(data, size, &offset);
+          trc->b = decodeICC15Fixed16(data, size, &offset);
+        }
+        if(type >= 2) {
+          trc->c = decodeICC15Fixed16(data, size, &offset);
+        }
+        if(type >= 3) {
+          trc->d = decodeICC15Fixed16(data, size, &offset);
+        }
+        if(type == 4) {
+          trc->e = decodeICC15Fixed16(data, size, &offset);
+          trc->f = decodeICC15Fixed16(data, size, &offset);
+        }
+      }
+      // TODO: verify: does the "chrm" tag participate in computation so should be parsed?
     }
+    // Return error if any parse went beyond the filesize. Note that the
+    // parsing itself was always safe since it bound-checks inside.
+    if(offset > size) return 1;
   }
 
   return 0;

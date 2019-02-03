@@ -916,8 +916,14 @@ static int getICCInt32(const unsigned char* icc, size_t size, size_t pos) {
   return (int)((icc[pos] << 24) | (icc[pos + 1] << 16) | (icc[pos + 2] << 8) | (icc[pos + 3] << 0));
 }
 
+// Signed
 static float getICC15Fixed16(const unsigned char* icc, size_t size, size_t pos) {
   return getICCInt32(icc, size, pos) / 65536.0;
+}
+
+// Unsigned
+static float getICC16Fixed16(const unsigned char* icc, size_t size, size_t pos) {
+  return getICCUint32(icc, size, pos) / 65536.0;
 }
 
 static std::string printableICCWord(const unsigned char* icc, size_t size, size_t pos) {
@@ -961,7 +967,7 @@ void printICCDetails(const unsigned char* icc, size_t size, const std::string& i
          getICCUint16(icc, size, 24), getICCUint16(icc, size, 26), getICCUint16(icc, size, 28),
          getICCUint16(icc, size, 30), getICCUint16(icc, size, 32), getICCUint16(icc, size, 34));
   std::cout << indent << "signature: " << printableICCWord(icc, size, 36) << std::endl;
-  std::cout << indent << "target: " << printableICCWord(icc, size, 40) << std::endl;
+  std::cout << indent << "platform: " << printableICCWord(icc, size, 40) << std::endl;
   std::cout << indent << "flags: " << getICCUint32(icc, size, 44) << std::endl;
   std::cout << indent << "device manufacturer: " << printableICCWord(icc, size, 48) << ", ";
   std::cout << "device model: " << printableICCWord(icc, size, 52) << ", ";
@@ -1018,11 +1024,33 @@ void printICCDetails(const unsigned char* icc, size_t size, const std::string& i
       }
       if(lutsize == 0) std::cout << " (linear)";
     }
+    if(datatype == "para") {
+      unsigned type = getICCUint16(icc, size, offset + 8);
+      float gamma = getICC15Fixed16(icc, size, offset + 12);
+      int numparams = (type == 4) ? 7 : ((type >= 1 && type <= 3) ? (type + 1) : 0);
+      std::cout << " type: " << type << ", gamma: " <<  gamma;
+      if(numparams > 0) {
+        std::cout << "params: ";
+        for(int j = 0; j < numparams; j++) {
+          if(j > 0) std::cout << ", ";
+          std::cout << getICC15Fixed16(icc, size, offset + 16 + j * 4);
+        }
+      }
+    }
     if(datatype == "sf32") {
       std::cout << ":";
       for(size_t j = 8; j < tagsize; j += 4) {
         float v = getICC15Fixed16(icc, size, offset + j);
         std::cout << " " << v;
+      }
+    }
+    if(datatype == "chrm") {
+      size_t numchannels = getICCUint16(icc, size, offset + 8);
+      std::cout << ": n:" << numchannels
+                << " phosphor:" << getICCUint16(icc, size, offset + 10);
+      for(size_t j = 0; j < numchannels; j++) {
+        std::cout << " xy:" << getICC16Fixed16(icc, size, offset + 12 + j * 8)
+                  << "," << getICC16Fixed16(icc, size, offset + 12 + j * 8 + 4);
       }
     }
     if(datatype == "text" || datatype == "mluc" || datatype == "desc") {
