@@ -1,7 +1,7 @@
 /*
-LodePNG version 20181230
+LodePNG version 20190210
 
-Copyright (c) 2005-2018 Lode Vandevenne
+Copyright (c) 2005-2019 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -30,16 +30,16 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 
 #include "lodepng.h"
 
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <limits.h> /* LONG_MAX */
+#include <stdio.h> /* file handling */
+#include <stdlib.h> /* allocations */
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20181230";
+const char* LODEPNG_VERSION_STRING = "20190210";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2685,6 +2685,7 @@ static unsigned lodepng_assign_icc(LodePNGInfo* info, const char* name, const un
 
 unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
   if(info->iccp_name) lodepng_clear_icc(info);
+  info->iccp_defined = 1;
 
   return lodepng_assign_icc(info, name, profile, profile_size);
 }
@@ -2694,6 +2695,7 @@ void lodepng_clear_icc(LodePNGInfo* info) {
   lodepng_free(info->iccp_profile);
   info->iccp_profile = NULL;
   info->iccp_profile_size = 0;
+  info->iccp_defined = 0;
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
@@ -4329,8 +4331,10 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   unsigned critical_pos = 1; /*1 = after IHDR, 2 = after PLTE, 3 = after IDAT*/
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
-  /*provide some proper output values if error will happen*/
+
+  /* safe output values in case error happens */
   *out = 0;
+  *w = *h = 0;
 
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
   if(state->error) return;
@@ -4562,6 +4566,9 @@ unsigned lodepng_decode_file(unsigned char** out, unsigned* w, unsigned* h, cons
   unsigned char* buffer = 0;
   size_t buffersize;
   unsigned error;
+  /* safe output values in case error happens */
+  *out = 0;
+  *w = *h = 0;
   error = lodepng_load_file(&buffer, &buffersize, filename);
   if(!error) error = lodepng_decode_memory(out, w, h, buffer, buffersize, colortype, bitdepth);
   lodepng_free(buffer);
@@ -5913,6 +5920,8 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h,
 unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const std::string& filename,
                 LodePNGColorType colortype, unsigned bitdepth) {
   std::vector<unsigned char> buffer;
+  /* safe output values in case error happens */
+  w = h = 0;
   unsigned error = load_file(buffer, filename);
   if(error) return error;
   return decode(out, w, h, buffer, colortype, bitdepth);

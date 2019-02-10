@@ -42,7 +42,7 @@ mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedant
 
 *) try lodepng_benchmark.cpp
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
-g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out corpus/''*
+g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
 *) Check if all examples compile without warnings:
 g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
@@ -82,7 +82,7 @@ g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wext
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -g3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
-*) remove "#include <iostream>" from lodepng.cpp if it's still in there
+*) remove "#include <iostream>" from lodepng.cpp if it's still in there (some are legit)
 cat lodepng.cpp lodepng_util.cpp | grep iostream
 cat lodepng.cpp lodepng_util.cpp | grep stdio
 cat lodepng.cpp lodepng_util.cpp | grep "#include"
@@ -2502,15 +2502,18 @@ void testXYZ() {
 
   // Test sRGB -> XYZ -> sRGB roundtrip
 
+  unsigned rendering_intent = 3; // test with absolute for now
+
   // 8-bit
   {
     // Default state, the conversions use 8-bit sRGB
     lodepng::State state;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
+    float whitepoint[3];
+    assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2523,10 +2526,11 @@ void testXYZ() {
     lodepng::State state;
     state.info_raw.bitdepth = 16;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
+    float whitepoint[3];
+    assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2554,10 +2558,11 @@ void testXYZ() {
     lodepng::State state;
     lodepng_info_copy(&state.info_png, &info_custom);
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
+    float whitepoint[3];
+    assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
 
     for(size_t i = 0; i < v2.size(); i++) {
       // Allow near instead of exact due to numerical issues with low values,
@@ -2576,10 +2581,11 @@ void testXYZ() {
     lodepng_info_copy(&state.info_png, &info_custom);
     state.info_raw.bitdepth = 16;
     std::vector<float> f(w * h * 4);
-    assertNoError(lodepng::convertToXYZ(f.data(), v.data(), w, h, &state));
+    float whitepoint[3];
+    assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
 
     for(size_t i = 0; i < v2.size(); i += 2) {
       unsigned a = v[i + 0] * 256u + v[i + 1];

@@ -1030,7 +1030,7 @@ void printICCDetails(const unsigned char* icc, size_t size, const std::string& i
       int numparams = (type == 4) ? 7 : ((type >= 1 && type <= 3) ? (type + 1) : 0);
       std::cout << " type: " << type << ", gamma: " <<  gamma;
       if(numparams > 0) {
-        std::cout << "params: ";
+        std::cout << ", params: ";
         for(int j = 0; j < numparams; j++) {
           if(j > 0) std::cout << ", ";
           std::cout << getICC15Fixed16(icc, size, offset + 16 + j * 4);
@@ -1162,7 +1162,7 @@ void showHeaderInfo(Data& data, const Options& options) {
 std::string shortenText(const std::string& text, const Options& options) {
   if(options.expand_long_texts) return text;
   size_t maxlen = 512;
-  size_t maxnl = 5;
+  size_t maxnl = options.verbose ? 5 : 1;
   size_t numnl = 0; // amount of newlines
   for(size_t i = 0; i < text.size(); i++) {
     if(text[i] == 10) numnl++;
@@ -1174,7 +1174,7 @@ std::string shortenText(const std::string& text, const Options& options) {
 
   if(text.size() < maxlen) return text;
 
-  return text.substr(0, maxlen) + "\n... <SNIP> ... (use -t to expand long text)";
+  return text.substr(0, maxlen) + (numnl > 1 ? "\n" : "") + "... [TEXT SNIPPED! use -t to expand long text]";
 }
 
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
@@ -1384,9 +1384,11 @@ int main(int argc, char *argv[]) {
     //fill in defaults
     options.show_header = true;
     options.show_png_info = true;
+    options.show_chunks2 = true;
     // verbose lets individual sections show more, and in addition adds more default unlocked sections if no specific one chosen
     if(options.verbose) {
-      options.show_chunks2 = true;
+      options.show_chunks2 = false;
+      options.show_chunks = true;
     }
   }
 
