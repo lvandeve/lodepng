@@ -674,7 +674,7 @@ void lodepng_color_profile_init(LodePNGColorProfile* profile);
 NOTE: This is not related to the ICC color profile, search "iccp_profile" instead to find the ICC/chromacity/...
 fields in this header file.*/
 unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
-                                   const unsigned char* image, unsigned w, unsigned h,
+                                   const unsigned char* in, unsigned w, unsigned h,
                                    const LodePNGColorMode* mode_in);
 /*The function LodePNG uses internally to decide the PNG color with auto_convert.
 Chooses an optimal color model, e.g. grey if only grey pixels, palette if < 256 colors, ...*/
@@ -874,7 +874,7 @@ unsigned lodepng_chunk_create(unsigned char** out, size_t* outlength, unsigned l
 
 
 /*Calculate CRC32 of buffer*/
-unsigned lodepng_crc32(const unsigned char* buf, size_t len);
+unsigned lodepng_crc32(const unsigned char* data, size_t len);
 #endif /*LODEPNG_COMPILE_PNG*/
 
 
