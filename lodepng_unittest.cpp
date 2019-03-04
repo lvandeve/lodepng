@@ -30,8 +30,10 @@ Testing instructions:
 
 *) Ensure no tests commented out below or early return in doMain
 
-*) Compile with g++ or clang++ with all warnings and run the unit test
+*) Compile with g++ with all warnings and run the unit test
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
+
+*) Idem but with clang, which may sometimes give different warnings
 clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with pure ISO C90 and all warnings:
@@ -204,11 +206,16 @@ bool isNear(T e, U v, V maxdist) {
   return dist <= (T)maxdist;
 }
 
+template<typename T, typename U>
+T diff(T e, U v) {
+  return v > e ? v - e : e - v;
+}
+
 #define ASSERT_NEAR(e, v, maxdist) {\
   if(!isNear(e, v, maxdist)) {\
     std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_NEAR failed: ";\
     std::cout << "dist too great! Expected " << valtostr(e) << " near " << valtostr(v) << " with max dist: " << valtostr(maxdist)\
-              << " but got dist " << valtostr(v > e ? v - e : e - v) << ". " << std::endl;\
+              << " but got dist " << valtostr(diff(e, v)) << ". " << std::endl;\
     fail();\
   }\
 }
@@ -2513,7 +2520,7 @@ void testXYZ() {
     assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state, whitepoint, rendering_intent));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2530,7 +2537,7 @@ void testXYZ() {
     assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state, whitepoint, rendering_intent));
 
     for(size_t i = 0; i < v2.size(); i++) {
       ASSERT_EQUALS(v[i], v2[i]);
@@ -2562,7 +2569,7 @@ void testXYZ() {
     assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 4);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state, whitepoint, rendering_intent));
 
     for(size_t i = 0; i < v2.size(); i++) {
       // Allow near instead of exact due to numerical issues with low values,
@@ -2585,7 +2592,7 @@ void testXYZ() {
     assertNoError(lodepng::convertToXYZ(f.data(), whitepoint, v.data(), w, h, &state));
 
     std::vector<unsigned char> v2(w * h * 8);
-    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, whitepoint, rendering_intent, &state));
+    assertNoError(lodepng::convertFromXYZ(v2.data(), f.data(), w, h, &state, whitepoint, rendering_intent));
 
     for(size_t i = 0; i < v2.size(); i += 2) {
       unsigned a = v[i + 0] * 256u + v[i + 1];
@@ -2607,6 +2614,134 @@ void testXYZ() {
   }
 
   lodepng_info_cleanup(&info_custom);
+}
+
+
+void testICC() {
+  std::cout << "testICC" << std::endl;
+  // approximate srgb (gamma function not exact)
+  std::string icc_near_srgb_base64 =
+      "AAABwHRlc3QCQAAAbW50clJHQiBYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAEAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAJY3BydAAAAPAAAAANZGVzYwAAAQAAAABfd3RwdAAAAWAAAAAUclhZ"
+      "WgAAAXQAAAAUZ1hZWgAAAYgAAAAUYlhZWgAAAZwAAAAUclRSQwAAAbAAAAAOZ1RSQwAAAbAAAAAO"
+      "YlRSQwAAAbAAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAFhZWiAAAAAAAADzUQABAAAAARbMWFlaIAAAAAAAAG+gAAA49AAAA5BYWVogAAAA"
+      "AAAAYpYAALeHAAAY2VhZWiAAAAAAAAAkngAAD4QAALbCY3VydgAAAAAAAAABAjMAAA==";
+  std::vector<unsigned char> icc_near_srgb;
+  fromBase64(icc_near_srgb, icc_near_srgb_base64);
+  lodepng::State state_near_srgb;
+  lodepng_set_icc(&state_near_srgb.info_png, "near_srgb", icc_near_srgb.data(), icc_near_srgb.size());
+
+  // a made up RGB model.
+  // it causes (when converting from this to srgb) green to become softer green, blue to become softer blue, red to become orange.
+  // this model intersects sRGB, but some parts are outside of sRGB, some parts of sRGB are outside of this one.
+  // so when converting between this and sRGB and clipping the values to 8-bit, and then converting back, the values will not be the same due to this clipping
+  std::string icc_orange_base64 =
+      "AAABwHRlc3QCQAAAbW50clJHQiBYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAMAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAJY3BydAAAAPAAAAANZGVzYwAAAQAAAABfd3RwdAAAAWAAAAAUclhZ"
+      "WgAAAXQAAAAUZ1hZWgAAAYgAAAAUYlhZWgAAAZwAAAAUclRSQwAAAbAAAAAOZ1RSQwAAAbAAAAAO"
+      "YlRSQwAAAbAAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAFhZWiAAAAAAAAE7uwABAAAAARmZWFlaIAAAAAAAANAHAACTTAAACrRYWVogAAAA"
+      "AAAABOMAAFd4AAAFzVhZWiAAAAAAAAAh6gAAFTsAAMKqY3VydgAAAAAAAAABAoAAAA==";
+  std::vector<unsigned char> icc_orange;
+  fromBase64(icc_orange, icc_orange_base64);
+  lodepng::State state_orange;
+  lodepng_set_icc(&state_orange.info_png, "orange", icc_orange.data(), icc_orange.size());
+
+  // A made up RGB model which is a superset of sRGB, and has R/G/B shifted around (so it greatly alters colors)
+  // Since this is a superset of sRGB, converting from sRGB to this model, and then back, should be lossless, but the opposite not necessarily.
+  std::string icc_super_base64 =
+      "AAABwHRlc3QCQAAAbW50clJHQiBYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAEAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAJY3BydAAAAPAAAAANZGVzYwAAAQAAAABfd3RwdAAAAWAAAAAUclhZ"
+      "WgAAAXQAAAAUZ1hZWgAAAYgAAAAUYlhZWgAAAZwAAAAUclRSQwAAAbAAAAAOZ1RSQwAAAbAAAAAO"
+      "YlRSQwAAAbAAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAFhZWiAAAAAAAADzUQABAAAAARbMWFlaIAAAAAAAAFW+AADL3f//70ZYWVogAAAA"
+      "AAAAJqD////UAADsUFhZWiAAAAAAAAB6dgAANE////eXY3VydgAAAAAAAAABAjMAAA==";
+  std::vector<unsigned char> icc_super;
+  fromBase64(icc_super, icc_super_base64);
+  lodepng::State state_super;
+  lodepng_set_icc(&state_super.info_png, "super", icc_super.data(), icc_super.size());
+
+  // A made up RGB model which is a subset of sRGB, and has R/G/B shifted around (so it greatly alters colors)
+  // Since this is a subset of sRGB, converting to sRGB from this model, and then back, should be lossless, but the opposite not necessarily.
+  std::string icc_sub_base64 =
+      "AAABwHRlc3QCQAAAbW50clJHQiBYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAEAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAJY3BydAAAAPAAAAANZGVzYwAAAQAAAABfd3RwdAAAAWAAAAAUclhZ"
+      "WgAAAXQAAAAUZ1hZWgAAAYgAAAAUYlhZWgAAAZwAAAAUclRSQwAAAbAAAAAOZ1RSQwAAAbAAAAAO"
+      "YlRSQwAAAbAAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAFhZWiAAAAAAAADzUQABAAAAARbMWFlaIAAAAAAAAHEEAABy1AAAr8ZYWVogAAAA"
+      "AAAAV5kAAEPkAAAMs1hZWiAAAAAAAAAuNwAASUcAABazY3VydgAAAAAAAAABAjMAAA==";
+
+  std::vector<unsigned char> icc_sub;
+  fromBase64(icc_sub, icc_sub_base64);
+  lodepng::State state_sub;
+  lodepng_set_icc(&state_sub.info_png, "sub", icc_sub.data(), icc_sub.size());
+
+  // make 8x1 image with following colors: white, gray, red, darkred, green, darkgreen, blue, darkblue
+  unsigned w = 4, h = 2;
+  std::vector<unsigned char> im(w * h * 4, 255);
+  im[0 * 4 + 0] = 255; im[0 * 4 + 1] = 255; im[0 * 4 + 2] = 255;
+  im[1 * 4 + 0] = 128; im[1 * 4 + 1] = 128; im[1 * 4 + 2] = 128;
+  im[2 * 4 + 0] = 255; im[2 * 4 + 1] =   0; im[2 * 4 + 2] =   0;
+  im[3 * 4 + 0] = 128; im[3 * 4 + 1] =   0; im[3 * 4 + 2] =   0;
+  im[4 * 4 + 0] =   0; im[4 * 4 + 1] = 255; im[4 * 4 + 2] =   0;
+  im[5 * 4 + 0] =   0; im[5 * 4 + 1] = 128; im[5 * 4 + 2] =   0;
+  im[6 * 4 + 0] =   0; im[6 * 4 + 1] =   0; im[6 * 4 + 2] = 255;
+  im[7 * 4 + 0] =   0; im[7 * 4 + 1] =   0; im[7 * 4 + 2] = 128;
+
+
+  {
+    std::vector<unsigned char> im2(w * h * 4, 255);
+    assertNoError(convertToSrgb(im2.data(), im.data(), w, h, &state_orange));
+
+    ASSERT_NEAR(255, im2[0 * 4 + 0], 1); ASSERT_NEAR(255, im2[0 * 4 + 1], 1); ASSERT_NEAR(255, im2[0 * 4 + 2], 1);
+    ASSERT_NEAR(117, im2[1 * 4 + 0], 1); ASSERT_NEAR(117, im2[1 * 4 + 1], 1); ASSERT_NEAR(117, im2[1 * 4 + 2], 1);
+    ASSERT_NEAR(255, im2[2 * 4 + 0], 1); ASSERT_NEAR(151, im2[2 * 4 + 1], 1); ASSERT_NEAR(  0, im2[2 * 4 + 2], 1);
+    ASSERT_NEAR(145, im2[3 * 4 + 0], 1); ASSERT_NEAR( 66, im2[3 * 4 + 1], 1); ASSERT_NEAR(  0, im2[3 * 4 + 2], 1);
+    ASSERT_NEAR(  0, im2[4 * 4 + 0], 1); ASSERT_NEAR(209, im2[4 * 4 + 1], 1); ASSERT_NEAR(  0, im2[4 * 4 + 2], 1);
+    ASSERT_NEAR(  0, im2[5 * 4 + 0], 1); ASSERT_NEAR( 95, im2[5 * 4 + 1], 1); ASSERT_NEAR(  0, im2[5 * 4 + 2], 1);
+    ASSERT_NEAR(  0, im2[6 * 4 + 0], 1); ASSERT_NEAR( 66, im2[6 * 4 + 1], 1); ASSERT_NEAR(255, im2[6 * 4 + 2], 1);
+    ASSERT_NEAR(  0, im2[7 * 4 + 0], 1); ASSERT_NEAR( 25, im2[7 * 4 + 1], 1); ASSERT_NEAR(120, im2[7 * 4 + 2], 1);
+
+    // Cannot test the inverse direction to see if same as original, because the color model here has values
+    // outside of sRGB so several values were clipped.
+  }
+
+  {
+    std::vector<unsigned char> im2(w * h * 4, 255);
+    // convert between the two in one and then the other direction
+    assertNoError(convertRGBModel(im2.data(), im.data(), w, h, &state_near_srgb, &state_sub, 3));
+    std::vector<unsigned char> im3(w * h * 4, 255);
+    assertNoError(convertRGBModel(im3.data(), im2.data(), w, h, &state_sub, &state_near_srgb, 3));
+    // im3 should be same as im (allow some numerical errors), because we converted from a subset of sRGB to sRGB
+    // and then back.
+    // If state_super was used here instead (with a superset RGB color model), the test below would faill due to
+    // the clipping of the values in the 8-bit chars (due to the superset being out of range for sRGB)
+    for(size_t i = 0; i < im.size(); i++) {
+      // due to the gamma (trc), small values are very imprecise (due to the 8-bit char step in between), so allow more distance there
+      int tolerance = im[i] < 32 ? 16 : 1;
+      ASSERT_NEAR(im[i], im3[i], tolerance);
+    }
+  }
+
+  {
+    std::vector<unsigned char> im2(w * h * 4, 255);
+    assertNoError(convertFromSrgb(im2.data(), im.data(), w, h, &state_super));
+    std::vector<unsigned char> im3(w * h * 4, 255);
+    assertNoError(convertToSrgb(im3.data(), im2.data(), w, h, &state_super));
+    for(size_t i = 0; i < im.size(); i++) {
+      int tolerance = im[i] < 32 ? 16 : 1;
+      ASSERT_NEAR(im[i], im3[i], tolerance);
+    }
+  }
 }
 
 void doMain() {
@@ -2638,6 +2773,7 @@ void doMain() {
   testAutoColorModels();
   testNoAutoConvert();
   testXYZ();
+  testICC();
 
   //Zlib
   testCompressZlib();
