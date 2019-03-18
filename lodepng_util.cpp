@@ -746,14 +746,17 @@ static unsigned validateICC(const LodePNGICC* icc) {
   return 1; // ok
 }
 
-// Returns chromaticity matrix for given ICC profile, adapted as necessary.
+// Returns chromaticity matrix for given ICC profile, adapted from ICC's
+// global illuminant as necessary.
 // Also returns the profile's whitepoint.
 // In case of a gray profile (icc->inputspace == 1), the identity matrix will be returned
 // so in that case you could skip the transform.
 static unsigned getICCChrm(float m[9], float whitepoint[3], const LodePNGICC* icc) {
-  if(icc->inputspace == 2) {
-    // RGB profile
-    float a[9] = {1,0,0, 0,1,0, 0,0,1}; // Adaptation matrix
+  if(icc->inputspace == 2) { // RGB profile
+    // Adaptation matrix a.
+    // This is an adaptation needed for ICC's file format (due to it using
+    // an internal global illuminant unrelated to the actual images)
+    float a[9] = {1,0,0, 0,1,0, 0,0,1};
     // If the profile has chromatic adaptation matrix "chad", use that one,
     // else compute it from the illuminant and whitepoint.
     if(icc->has_chad) {
@@ -791,7 +794,7 @@ static unsigned getICCChrm(float m[9], float whitepoint[3], const LodePNGICC* ic
     whitepoint[2] = white[2];
   } else {
     // output the unity matrix, for doing no transform
-    m[0] = m[4] = m[9] = 1;
+    m[0] = m[4] = m[8] = 1;
     m[1] = m[2] = m[3] = m[5] = m[6] = m[7] = 0;
     // grayscale, don't do anything. That means we are implicitely using equal energy whitepoint "E", indicate
     // this to the output.
@@ -801,7 +804,7 @@ static unsigned getICCChrm(float m[9], float whitepoint[3], const LodePNGICC* ic
 }
 
 // Outputs whitepoint and matrix to go from the icc or info profile (depending on what was in the PNG) to XYZ,
-// without applying any whitepoint adaptation
+// without applying any (rendering intent related) whitepoint adaptation
 static unsigned getChrm(float m[9], float whitepoint[3], bool use_icc, const LodePNGICC* icc, const LodePNGInfo* info) {
   if(use_icc) {
     if(getICCChrm(m, whitepoint, icc)) return 1;  // error in the matrix computations
@@ -910,6 +913,7 @@ unsigned convertToSrgb(unsigned char* out, const unsigned char* in,
                        const LodePNGState* state_in) {
   LodePNGState srgb;
   lodepng_state_init(&srgb);
+  lodepng_color_mode_copy(&srgb.info_raw, &state_in->info_raw);
   return convertRGBModel(out, in, w, h, &srgb, state_in, 1);
 }
 
@@ -918,6 +922,7 @@ unsigned convertFromSrgb(unsigned char* out, const unsigned char* in,
                          const LodePNGState* state_out) {
   LodePNGState srgb;
   lodepng_state_init(&srgb);
+  lodepng_color_mode_copy(&srgb.info_raw, &state_out->info_raw);
   return convertRGBModel(out, in, w, h, state_out, &srgb, 1);
 }
 
@@ -937,7 +942,8 @@ unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
   return 0;
 }
 
-#define DISABLE_GAMMA 0 // only enable for experimental testing
+#define DISABLE_GAMMA 0 // only set to 1 for experimental testing
+
 
 unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
                       unsigned w, unsigned h, const LodePNGState* state) {
@@ -956,7 +962,7 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
   int bit16 = mode_in->bitdepth > 8;
   std::vector<unsigned char> data(w * h * (bit16 ? 8 : 4));
   LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
-  lodepng_convert(data.data(), in, &tempmode, mode_in, w, h);
+  if(lodepng_convert(data.data(), in, &tempmode, mode_in, w, h)) return 1;
 
 #if !DISABLE_GAMMA
   std::vector<float> gammatable;
@@ -1037,8 +1043,8 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
 
   // Must be called even for grayscale, to get the correct whitepoint to output
   if (getChrm(m, whitepoint, use_icc, &icc, info)) return 1;
-
-  // Transform if RGB profile, but not if it's an ICC grayscale profile
+  // Apply the above computed linear-RGB-to-XYZ matrix to the pixels.
+  // The transform  if it's the unit matrix (which is the case if grayscale profile)
   if(!use_icc || icc.inputspace == 2) {
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
@@ -1084,16 +1090,19 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
     // we want to adapt our current data to to make sure values that had equal R==G==B in the old space have
     // the same property now (white stays white and gray stays gray).
     // Note: "absolute" whitepoint above means, can be used as-is, not needing further adaptation itself like icc.white does.
-    if(getAdaptationMatrix(a, 1, white[0], white[1], white[2], whitepoint[0], whitepoint[1], whitepoint[2])) {
+    if(getAdaptationMatrix(a, 1, whitepoint[0], whitepoint[1], whitepoint[2], white[0], white[1], white[2])) {
       return 1; // error
     }
-    invMatrix(a);
+    // multiply the from xyz matrix with the adaptation matrix: in total,
+    // the resulting matrix first adapts in XYZ space, then converts to RGB
     mulMatrixMatrix(m, m, a);
   }
 
   // Apply the above computed XYZ-to-linear-RGB matrix to the pixels.
-  // Transform if RGB profile, but not if it's an ICC grayscale profile
-  if(!use_icc || icc.inputspace == 2) {
+  // This transformation also includes the whitepoint adaptation. The transform
+  // can be skipped only if it's the unit matrix (only if grayscale profile and no
+  // whitepoint adaptation, such as with rendering intent 3)
+  if(!use_icc || icc.inputspace == 2 || rendering_intent != 3) {
     for(unsigned i = 0; i < n; i++) {
       size_t j = i * 4;
       mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
@@ -1147,7 +1156,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
     }
 
     LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
-    lodepng_convert(out, data.data(), mode_out, &mode16, w, h);
+    if(lodepng_convert(out, data.data(), mode_out, &mode16, w, h)) return 1;
   } else {
     for(unsigned i = 0; i < n; i++) {
       for(unsigned c = 0; c < 4; c++) {
@@ -1157,7 +1166,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
    }
 
     LodePNGColorMode mode8 = lodepng_color_mode_make(LCT_RGBA, 8);
-    lodepng_convert(out, data.data(), mode_out, &mode8, w, h);
+    if(lodepng_convert(out, data.data(), mode_out, &mode8, w, h)) return 1;
   }
 
   return 0; // ok

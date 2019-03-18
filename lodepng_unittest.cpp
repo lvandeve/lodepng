@@ -214,7 +214,7 @@ T diff(T e, U v) {
 #define ASSERT_NEAR(e, v, maxdist) {\
   if(!isNear(e, v, maxdist)) {\
     std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_NEAR failed: ";\
-    std::cout << "dist too great! Expected " << valtostr(e) << " near " << valtostr(v) << " with max dist: " << valtostr(maxdist)\
+    std::cout << "dist too great! Expected near " << valtostr(e) << " but got " << valtostr(v) << ", with max dist " << valtostr(maxdist)\
               << " but got dist " << valtostr(diff(e, v)) << ". " << std::endl;\
     fail();\
   }\
@@ -287,10 +287,10 @@ struct Image {
 //Get number of color channels for a given PNG color type
 unsigned getNumColorChannels(unsigned colorType) {
   switch(colorType) {
-    case 0: return 1; /*grey*/
+    case 0: return 1; /*gray*/
     case 2: return 3; /*RGB*/
     case 3: return 1; /*palette*/
-    case 4: return 2; /*grey + alpha*/
+    case 4: return 2; /*gray + alpha*/
     case 6: return 4; /*RGBA*/
   }
   return 0; /*unexisting color type*/
@@ -313,7 +313,7 @@ void generateTestImage(Image& image, unsigned width, unsigned height, LodePNGCol
   }
 }
 
-//Generate a 16-bit test image with minimal size that requires at minimum the given color type (bit depth, greyscaleness, ...)
+//Generate a 16-bit test image with minimal size that requires at minimum the given color type (bit depth, grayscaleness, ...)
 //If key is true, makes it such that exactly one color is transparent, so it can use a key. If false, adds a translucent color depending on
 //whether it's an alpha color type or not.
 void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorType, unsigned bitDepth, bool key) {
@@ -322,7 +322,7 @@ void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorT
   unsigned w = 1;
   unsigned h = 1;
 
-  bool grey = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
+  bool gray = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
   bool alpha = colorType == LCT_RGBA || colorType == LCT_GREY_ALPHA;
 
   if(colorType == LCT_PALETTE) {
@@ -344,14 +344,14 @@ void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorT
     image.data.resize(w * h * 8);
     image.data[0] = 10; image.data[1] = 20;
     image.data[2] = 10; image.data[3] = 20;
-    image.data[4] = grey ? 10 : 110; image.data[5] = grey ? 20 : 120;
+    image.data[4] = gray ? 10 : 110; image.data[5] = gray ? 20 : 120;
     image.data[6] = alpha ? 128 : 255; image.data[7] = alpha ? 20 : 255;
 
     image.data[8] = 40; image.data[9] = 50;
     image.data[10] = 40; image.data[11] = 50;
-    image.data[12] = grey ? 40 : 140; image.data[13] = grey ? 50 : 150;
+    image.data[12] = gray ? 40 : 140; image.data[13] = gray ? 50 : 150;
     image.data[14] = key ? 0 : 255; image.data[15] = key ? 0 : 255;
-  } else if(grey) {
+  } else if(gray) {
     w = 2;
     unsigned v = 255u / ((1u << bitDepth) - 1u); // value that forces at least this bitdepth
     image.data.resize(w * h * 8);
@@ -383,7 +383,7 @@ void generateTestImageRequiringColorType16(Image& image, LodePNGColorType colorT
   image.height = h;
 }
 
-//Generate a 8-bit test image with minimal size that requires at minimum the given color type (bit depth, greyscaleness, ...). bitDepth max 8 here.
+//Generate a 8-bit test image with minimal size that requires at minimum the given color type (bit depth, grayscaleness, ...). bitDepth max 8 here.
 //If key is true, makes it such that exactly one color is transparent, so it can use a key. If false, adds a translucent color depending on
 //whether it's an alpha color type or not.
 void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorType, unsigned bitDepth, bool key) {
@@ -392,7 +392,7 @@ void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorTy
   unsigned w = 1;
   unsigned h = 1;
 
-  bool grey = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
+  bool gray = colorType == LCT_GREY || colorType == LCT_GREY_ALPHA;
   bool alpha = colorType == LCT_RGBA || colorType == LCT_GREY_ALPHA;
 
   if(colorType == LCT_PALETTE) {
@@ -408,7 +408,7 @@ void generateTestImageRequiringColorType8(Image& image, LodePNGColorType colorTy
         image.data[i + 3] = (key && x == 0) ? 0 : 255;
       }
     }
-  } else if(grey) {
+  } else if(gray) {
     w = 2;
     unsigned v = 255u / ((1u << bitDepth) - 1u); // value that forces at least this bitdepth
     image.data.resize(w * h * 4);
@@ -775,7 +775,7 @@ void testFewColors() {
   std::vector<unsigned char> colors;
   colors.push_back(0); colors.push_back(0); colors.push_back(0); colors.push_back(255); // black
   colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(255); // white
-  colors.push_back(128); colors.push_back(128); colors.push_back(128); colors.push_back(255); // grey
+  colors.push_back(128); colors.push_back(128); colors.push_back(128); colors.push_back(255); // gray
   colors.push_back(0); colors.push_back(0); colors.push_back(255); colors.push_back(255); // blue
   colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(0); // transparent white
   colors.push_back(255); colors.push_back(255); colors.push_back(255); colors.push_back(1); // translucent white
@@ -890,7 +890,7 @@ void testColorConvert() {
   colorConvertTest("1", LCT_GREY, 1, "11111111 11111111 11111111 11111111 11111111 11111111 11111111 11111111", LCT_RGBA, 16);
   colorConvertTest("10", LCT_GREY, 2, "10101010 10101010 10101010 10101010 10101010 10101010 11111111 11111111", LCT_RGBA, 16);
 
-  //test greyscale color conversions
+  //test grayscale color conversions
   colorConvertTest("1", LCT_GREY, 1, "11111111", LCT_GREY, 8);
   colorConvertTest("1", LCT_GREY, 1, "1111111111111111", LCT_GREY, 16);
   colorConvertTest("0", LCT_GREY, 1, "00000000", LCT_GREY, 8);
@@ -1312,7 +1312,7 @@ void testPaletteToPaletteConvert() {
 }
 
 //for this test, you have to choose palette colors that cause LodePNG to actually use a palette,
-//so don't use all greyscale colors for example
+//so don't use all grayscale colors for example
 void doRGBAToPaletteTest(unsigned char* palette, size_t size, LodePNGColorType expectedType = LCT_PALETTE) {
   std::cout << "testRGBToPaletteConvert " << size << std::endl;
   unsigned error;
@@ -1770,13 +1770,13 @@ void test16bitColorEndianness() {
   std::vector<unsigned char> image;
   lodepng::State state;
 
-  // Decode from 16-bit grey image to 16-bit per channel RGBA
+  // Decode from 16-bit gray image to 16-bit per channel RGBA
   state.info_raw.bitdepth = 16;
   ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, state, png));
   ASSERT_EQUALS(0x09, image[8]);
   ASSERT_EQUALS(0x00, image[9]);
 
-  // Decode from 16-bit grey image to 16-bit grey raw image (no conversion)
+  // Decode from 16-bit gray image to 16-bit gray raw image (no conversion)
   image.clear();
   state = lodepng::State();
   state.decoder.color_convert = false;
@@ -1950,40 +1950,40 @@ void testAutoColorModel(const std::vector<unsigned char>& colors, unsigned inbit
 }
 
 void testAutoColorModels() {
-  // 1-bit grey
-  std::vector<unsigned char> grey1;
-  for(size_t i = 0; i < 2; i++) addColor(grey1, i * 255, i * 255, i * 255, 255);
-  testAutoColorModel(grey1, 8, LCT_GREY, 1, false);
+  // 1-bit gray
+  std::vector<unsigned char> gray1;
+  for(size_t i = 0; i < 2; i++) addColor(gray1, i * 255, i * 255, i * 255, 255);
+  testAutoColorModel(gray1, 8, LCT_GREY, 1, false);
 
-  // 2-bit grey
-  std::vector<unsigned char> grey2;
-  for(size_t i = 0; i < 4; i++) addColor(grey2, i * 85, i * 85, i * 85, 255);
-  testAutoColorModel(grey2, 8, LCT_GREY, 2, false);
+  // 2-bit gray
+  std::vector<unsigned char> gray2;
+  for(size_t i = 0; i < 4; i++) addColor(gray2, i * 85, i * 85, i * 85, 255);
+  testAutoColorModel(gray2, 8, LCT_GREY, 2, false);
 
-  // 4-bit grey
-  std::vector<unsigned char> grey4;
-  for(size_t i = 0; i < 16; i++) addColor(grey4, i * 17, i * 17, i * 17, 255);
-  testAutoColorModel(grey4, 8, LCT_GREY, 4, false);
+  // 4-bit gray
+  std::vector<unsigned char> gray4;
+  for(size_t i = 0; i < 16; i++) addColor(gray4, i * 17, i * 17, i * 17, 255);
+  testAutoColorModel(gray4, 8, LCT_GREY, 4, false);
 
-  // 8-bit grey
-  std::vector<unsigned char> grey8;
-  for(size_t i = 0; i < 256; i++) addColor(grey8, i, i, i, 255);
-  testAutoColorModel(grey8, 8, LCT_GREY, 8, false);
+  // 8-bit gray
+  std::vector<unsigned char> gray8;
+  for(size_t i = 0; i < 256; i++) addColor(gray8, i, i, i, 255);
+  testAutoColorModel(gray8, 8, LCT_GREY, 8, false);
 
-  // 16-bit grey
-  std::vector<unsigned char> grey16;
-  for(size_t i = 0; i < 257; i++) addColor16(grey16, i, i, i, 65535);
-  testAutoColorModel(grey16, 16, LCT_GREY, 16, false);
+  // 16-bit gray
+  std::vector<unsigned char> gray16;
+  for(size_t i = 0; i < 257; i++) addColor16(gray16, i, i, i, 65535);
+  testAutoColorModel(gray16, 16, LCT_GREY, 16, false);
 
-  // 8-bit grey+alpha
-  std::vector<unsigned char> grey8a;
-  for(size_t i = 0; i < 17; i++) addColor(grey8a, i, i, i, i);
-  testAutoColorModel(grey8a, 8, LCT_GREY_ALPHA, 8, false);
+  // 8-bit gray+alpha
+  std::vector<unsigned char> gray8a;
+  for(size_t i = 0; i < 17; i++) addColor(gray8a, i, i, i, i);
+  testAutoColorModel(gray8a, 8, LCT_GREY_ALPHA, 8, false);
 
-  // 16-bit grey+alpha
-  std::vector<unsigned char> grey16a;
-  for(size_t i = 0; i < 257; i++) addColor16(grey16a, i, i, i, i);
-  testAutoColorModel(grey16a, 16, LCT_GREY_ALPHA, 16, false);
+  // 16-bit gray+alpha
+  std::vector<unsigned char> gray16a;
+  for(size_t i = 0; i < 257; i++) addColor16(gray16a, i, i, i, i);
+  testAutoColorModel(gray16a, 16, LCT_GREY_ALPHA, 16, false);
 
 
   // various palette tests
@@ -2003,23 +2003,23 @@ void testAutoColorModels() {
   addColor(palette, 0, 0, 18, 1); // translucent
   testAutoColorModel(palette, 8, LCT_PALETTE, 8, false);
 
-  // 1-bit grey + alpha not possible, becomes palette
-  std::vector<unsigned char> grey1a;
-  for(size_t i = 0; i < 2; i++) addColor(grey1a, i, i, i, 128);
-  testAutoColorModel(grey1a, 8, LCT_PALETTE, 1, false);
+  // 1-bit gray + alpha not possible, becomes palette
+  std::vector<unsigned char> gray1a;
+  for(size_t i = 0; i < 2; i++) addColor(gray1a, i, i, i, 128);
+  testAutoColorModel(gray1a, 8, LCT_PALETTE, 1, false);
 
-  // 2-bit grey + alpha not possible, becomes palette
-  std::vector<unsigned char> grey2a;
-  for(size_t i = 0; i < 4; i++) addColor(grey2a, i, i, i, 128);
-  testAutoColorModel(grey2a, 8, LCT_PALETTE, 2, false);
+  // 2-bit gray + alpha not possible, becomes palette
+  std::vector<unsigned char> gray2a;
+  for(size_t i = 0; i < 4; i++) addColor(gray2a, i, i, i, 128);
+  testAutoColorModel(gray2a, 8, LCT_PALETTE, 2, false);
 
-  // 4-bit grey + alpha not possible, becomes palette
-  std::vector<unsigned char> grey4a;
-  for(size_t i = 0; i < 16; i++) addColor(grey4a, i, i, i, 128);
-  testAutoColorModel(grey4a, 8, LCT_PALETTE, 4, false);
+  // 4-bit gray + alpha not possible, becomes palette
+  std::vector<unsigned char> gray4a;
+  for(size_t i = 0; i < 16; i++) addColor(gray4a, i, i, i, 128);
+  testAutoColorModel(gray4a, 8, LCT_PALETTE, 4, false);
 
   // 8-bit rgb
-  std::vector<unsigned char> rgb = grey8;
+  std::vector<unsigned char> rgb = gray8;
   addColor(rgb, 255, 0, 0, 255);
   testAutoColorModel(rgb, 8, LCT_RGB, 8, false);
 
@@ -2044,30 +2044,30 @@ void testAutoColorModels() {
   addColor(rgb_key4, 129, 0, 0, 255); // two different transparent colors ==> no more key
   testAutoColorModel(rgb_key4, 8, LCT_RGBA, 8, false);
 
-  // 1-bit grey with key
-  std::vector<unsigned char> grey1_key = grey1;
-  grey1_key[7] = 0;
-  testAutoColorModel(grey1_key, 8, LCT_GREY, 1, true);
+  // 1-bit gray with key
+  std::vector<unsigned char> gray1_key = gray1;
+  gray1_key[7] = 0;
+  testAutoColorModel(gray1_key, 8, LCT_GREY, 1, true);
 
-  // 2-bit grey with key
-  std::vector<unsigned char> grey2_key = grey2;
-  grey2_key[7] = 0;
-  testAutoColorModel(grey2_key, 8, LCT_GREY, 2, true);
+  // 2-bit gray with key
+  std::vector<unsigned char> gray2_key = gray2;
+  gray2_key[7] = 0;
+  testAutoColorModel(gray2_key, 8, LCT_GREY, 2, true);
 
-  // 4-bit grey with key
-  std::vector<unsigned char> grey4_key = grey4;
-  grey4_key[7] = 0;
-  testAutoColorModel(grey4_key, 8, LCT_GREY, 4, true);
+  // 4-bit gray with key
+  std::vector<unsigned char> gray4_key = gray4;
+  gray4_key[7] = 0;
+  testAutoColorModel(gray4_key, 8, LCT_GREY, 4, true);
 
-  // 8-bit grey with key
-  std::vector<unsigned char> grey8_key = grey8;
-  grey8_key[7] = 0;
-  testAutoColorModel(grey8_key, 8, LCT_GREY, 8, true);
+  // 8-bit gray with key
+  std::vector<unsigned char> gray8_key = gray8;
+  gray8_key[7] = 0;
+  testAutoColorModel(gray8_key, 8, LCT_GREY, 8, true);
 
-  // 16-bit grey with key
-  std::vector<unsigned char> grey16_key = grey16;
-  grey16_key[14] = grey16_key[15] = 0;
-  testAutoColorModel(grey16_key, 16, LCT_GREY, 16, true);
+  // 16-bit gray with key
+  std::vector<unsigned char> gray16_key = gray16;
+  gray16_key[14] = gray16_key[15] = 0;
+  testAutoColorModel(gray16_key, 16, LCT_GREY, 16, true);
 
   // a single 16-bit color, can't become palette due to being 16-bit
   std::vector<unsigned char> small16;
@@ -2088,12 +2088,12 @@ void testAutoColorModels() {
   addColor16(alpha16, 257, 0, 0, 10000);
   testAutoColorModel(alpha16, 16, LCT_RGBA, 16, false);
 
-  // 1-bit grey, with attempt to get color key but can't do it due to opaque color with same value
-  std::vector<unsigned char> grey1k;
-  addColor(grey1k, 0, 0, 0, 255);
-  addColor(grey1k, 255, 255, 255, 255);
-  addColor(grey1k, 255, 255, 255, 0);
-  testAutoColorModel(grey1k, 8, LCT_PALETTE, 2, false);
+  // 1-bit gray, with attempt to get color key but can't do it due to opaque color with same value
+  std::vector<unsigned char> gray1k;
+  addColor(gray1k, 0, 0, 0, 255);
+  addColor(gray1k, 255, 255, 255, 255);
+  addColor(gray1k, 255, 255, 255, 0);
+  testAutoColorModel(gray1k, 8, LCT_PALETTE, 2, false);
 }
 
 void testPaletteToPaletteDecode() {
@@ -2281,7 +2281,7 @@ void testColorProfile() {
     for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
   }
 
-  // greyscale ICC profile
+  // grayscale ICC profile
   {
     unsigned error;
     unsigned w = 32, h = 32;
@@ -2457,7 +2457,7 @@ void testBkgdChunk2() {
   Image image;
   generateTestImageRequiringColorType8(image, LCT_GREY, 2, false);
 
-  // without background, it should choose 2-bit grey for this PNG
+  // without background, it should choose 2-bit gray for this PNG
   std::vector<unsigned char> png0;
   ASSERT_NO_PNG_ERROR(lodepng::encode(png0, image.data, image.width, image.height));
   lodepng::State state0;
@@ -2481,7 +2481,7 @@ void testBkgdChunk2() {
   ASSERT_EQUALS(8, state1.info_png.color.bitdepth);
   ASSERT_EQUALS(LCT_RGB, state1.info_png.color.colortype);
 
-  // grey output required, background color also interpreted as grey
+  // gray output required, background color also interpreted as gray
   state.info_raw.colortype = LCT_RGB;
   state.info_png.color.colortype = LCT_GREY;
   state.info_png.color.bitdepth = 1;
@@ -2685,7 +2685,7 @@ void testICC() {
   lodepng::State state_sub;
   lodepng_set_icc(&state_sub.info_png, "sub", icc_sub.data(), icc_sub.size());
 
-  // make 8x1 image with following colors: white, gray, red, darkred, green, darkgreen, blue, darkblue
+  // make 8-pixel image with following colors: white, gray, red, darkred, green, darkgreen, blue, darkblue
   unsigned w = 4, h = 2;
   std::vector<unsigned char> im(w * h * 4, 255);
   im[0 * 4 + 0] = 255; im[0 * 4 + 1] = 255; im[0 * 4 + 2] = 255;
@@ -2744,6 +2744,97 @@ void testICC() {
   }
 }
 
+
+void testICCGray() {
+  std::cout << "testICCGray" << std::endl;
+  // Grayscale, Gamma 2.2, sRGB whitepoint
+  std::string icc22_base64 =
+      "AAABSHRlc3QCQAAAbW50ckdSQVlYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAMAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAEY3BydAAAALQAAAANZGVzYwAAAMQAAABfd3RwdAAAASQAAAAUa1RS"
+      "QwAAATgAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAFhZWiAAAAAAAADzUQABAAAAARbMY3VydgAAAAAAAAABAjMAAA==";
+  std::vector<unsigned char> icc22;
+  fromBase64(icc22, icc22_base64);
+  lodepng::State state22;
+  state22.info_raw.colortype = LCT_GREY;
+  lodepng_set_icc(&state22.info_png, "gray22", icc22.data(), icc22.size());
+
+  // Grayscale, Gamma 2.9, custom whitepoint
+  std::string icc29_base64 =
+      "AAABSHRlc3QCQAAAbW50ckdSQVlYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAMAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAEY3BydAAAALQAAAANZGVzYwAAAMQAAABfd3RwdAAAASQAAAAUa1RS"
+      "QwAAATgAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAFhZWiAAAAAAAAE7uwABAAAAARmZY3VydgAAAAAAAAABAuYAAA==";
+  std::vector<unsigned char> icc29;
+  fromBase64(icc29, icc29_base64);
+  lodepng::State state29;
+  state29.info_raw.colortype = LCT_GREY;
+  lodepng_set_icc(&state29.info_png, "gray29", icc29.data(), icc29.size());
+
+  // Grayscale, Gamma 1.5, custom whitepoint
+  std::string icc15_base64 =
+      "AAABSHRlc3QCQAAAbW50ckdSQVlYWVogB+MAAQABAAAAAAAAYWNzcFNHSSAAAAABAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAMAAPbWAAEAAAAA0y10ZXN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAEY3BydAAAALQAAAANZGVzYwAAAMQAAABfd3RwdAAAASQAAAAUa1RS"
+      "QwAAATgAAAAOdGV4dAAAAABDQzAgAAAAAGRlc2MAAAAAAAAABXRlc3QAZW5VUwAAAAAAAAAAAAAA"
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      "AAAAAAAAAFhZWiAAAAAAAAE7uwABAAAAARmZY3VydgAAAAAAAAABAYAAAA==";
+  std::vector<unsigned char> icc15;
+  fromBase64(icc15, icc15_base64);
+  lodepng::State state15;
+  state15.info_raw.colortype = LCT_GREY;
+  lodepng_set_icc(&state15.info_png, "gray15", icc15.data(), icc15.size());
+
+
+  // make 8-pixel grayscale image with different shades of gray
+  unsigned w = 4, h = 2;
+  std::vector<unsigned char> im(w * h, 255);
+  im[0] = 0;
+  im[1] = 40;
+  im[2] = 80;
+  im[3] = 120;
+  im[4] = 160;
+  im[5] = 200;
+  im[6] = 240;
+  im[7] = 255;
+
+  {
+    std::vector<unsigned char> im2(w * h, 255);
+    assertNoError(convertToSrgb(im2.data(), im.data(), w, h, &state29));
+
+    ASSERT_NEAR(0, im2[0], 1);
+    ASSERT_NEAR(15, im2[1], 1);
+    ASSERT_NEAR(52, im2[2], 1);
+    ASSERT_NEAR(94, im2[3], 1);
+    ASSERT_NEAR(139, im2[4], 1);
+    ASSERT_NEAR(187, im2[5], 1);
+    ASSERT_NEAR(236, im2[6], 1);
+    ASSERT_NEAR(255, im2[7], 1);
+
+    std::vector<unsigned char> im3(w * h, 255);
+    assertNoError(convertFromSrgb(im3.data(), im2.data(), w, h, &state29));
+
+    for(size_t i = 0; i < 8; i++) {
+      ASSERT_NEAR(im[i], im3[i], 1);
+    }
+  }
+
+  {
+    std::vector<unsigned char> im2(w * h , 255);
+    assertNoError(convertRGBModel(im2.data(), im.data(), w, h, &state22, &state15, 3));
+    std::vector<unsigned char> im3(w * h, 255);
+    assertNoError(convertRGBModel(im3.data(), im2.data(), w, h, &state15, &state22, 3));
+    for(size_t i = 0; i < im.size(); i++) {
+      int tolerance = im[i] < 16 ? 8 : 1;
+      ASSERT_NEAR(im[i], im3[i], tolerance);
+    }
+  }
+}
+
 void doMain() {
   //PNG
   testPNGCodec();
@@ -2774,6 +2865,7 @@ void doMain() {
   testNoAutoConvert();
   testXYZ();
   testICC();
+  testICCGray();
 
   //Zlib
   testCompressZlib();

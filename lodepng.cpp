@@ -2312,10 +2312,10 @@ unsigned lodepng_chunk_create(unsigned char** out, size_t* outlength, unsigned l
 /*return type is a LodePNG error code*/
 static unsigned checkColorValidity(LodePNGColorType colortype, unsigned bd) /*bd = bitdepth*/ {
   switch(colortype) {
-    case 0: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8 || bd == 16)) return 37; break; /*grey*/
+    case 0: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8 || bd == 16)) return 37; break; /*gray*/
     case 2: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*RGB*/
     case 3: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8            )) return 37; break; /*palette*/
-    case 4: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*grey + alpha*/
+    case 4: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*gray + alpha*/
     case 6: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*RGBA*/
     default: return 31;
   }
@@ -2324,10 +2324,10 @@ static unsigned checkColorValidity(LodePNGColorType colortype, unsigned bd) /*bd
 
 static unsigned getNumColorChannels(LodePNGColorType colortype) {
   switch(colortype) {
-    case 0: return 1; /*grey*/
+    case 0: return 1; /*gray*/
     case 2: return 3; /*RGB*/
     case 3: return 1; /*palette*/
-    case 4: return 2; /*grey + alpha*/
+    case 4: return 2; /*gray + alpha*/
     case 6: return 4; /*RGBA*/
   }
   return 0; /*unexisting color type*/
@@ -2836,13 +2836,13 @@ static unsigned rgba8ToPixel(unsigned char* out, size_t i,
                              const LodePNGColorMode* mode, ColorTree* tree /*for palette*/,
                              unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
   if(mode->colortype == LCT_GREY) {
-    unsigned char grey = r; /*((unsigned short)r + g + b) / 3;*/
-    if(mode->bitdepth == 8) out[i] = grey;
-    else if(mode->bitdepth == 16) out[i * 2 + 0] = out[i * 2 + 1] = grey;
+    unsigned char gray = r; /*((unsigned short)r + g + b) / 3;*/
+    if(mode->bitdepth == 8) out[i] = gray;
+    else if(mode->bitdepth == 16) out[i * 2 + 0] = out[i * 2 + 1] = gray;
     else {
-      /*take the most significant bits of grey*/
-      grey = (grey >> (8 - mode->bitdepth)) & ((1 << mode->bitdepth) - 1);
-      addColorBits(out, i, mode->bitdepth, grey);
+      /*take the most significant bits of gray*/
+      gray = (gray >> (8 - mode->bitdepth)) & ((1 << mode->bitdepth) - 1);
+      addColorBits(out, i, mode->bitdepth, gray);
     }
   } else if(mode->colortype == LCT_RGB) {
     if(mode->bitdepth == 8) {
@@ -2860,12 +2860,12 @@ static unsigned rgba8ToPixel(unsigned char* out, size_t i,
     if(mode->bitdepth == 8) out[i] = index;
     else addColorBits(out, i, mode->bitdepth, (unsigned)index);
   } else if(mode->colortype == LCT_GREY_ALPHA) {
-    unsigned char grey = r; /*((unsigned short)r + g + b) / 3;*/
+    unsigned char gray = r; /*((unsigned short)r + g + b) / 3;*/
     if(mode->bitdepth == 8) {
-      out[i * 2 + 0] = grey;
+      out[i * 2 + 0] = gray;
       out[i * 2 + 1] = a;
     } else if(mode->bitdepth == 16) {
-      out[i * 4 + 0] = out[i * 4 + 1] = grey;
+      out[i * 4 + 0] = out[i * 4 + 1] = gray;
       out[i * 4 + 2] = out[i * 4 + 3] = a;
     }
   } else if(mode->colortype == LCT_RGBA) {
@@ -2890,9 +2890,9 @@ static void rgba16ToPixel(unsigned char* out, size_t i,
                          const LodePNGColorMode* mode,
                          unsigned short r, unsigned short g, unsigned short b, unsigned short a) {
   if(mode->colortype == LCT_GREY) {
-    unsigned short grey = r; /*((unsigned)r + g + b) / 3;*/
-    out[i * 2 + 0] = (grey >> 8) & 255;
-    out[i * 2 + 1] = grey & 255;
+    unsigned short gray = r; /*((unsigned)r + g + b) / 3;*/
+    out[i * 2 + 0] = (gray >> 8) & 255;
+    out[i * 2 + 1] = gray & 255;
   } else if(mode->colortype == LCT_RGB) {
     out[i * 6 + 0] = (r >> 8) & 255;
     out[i * 6 + 1] = r & 255;
@@ -2901,9 +2901,9 @@ static void rgba16ToPixel(unsigned char* out, size_t i,
     out[i * 6 + 4] = (b >> 8) & 255;
     out[i * 6 + 5] = b & 255;
   } else if(mode->colortype == LCT_GREY_ALPHA) {
-    unsigned short grey = r; /*((unsigned)r + g + b) / 3;*/
-    out[i * 4 + 0] = (grey >> 8) & 255;
-    out[i * 4 + 1] = grey & 255;
+    unsigned short gray = r; /*((unsigned)r + g + b) / 3;*/
+    out[i * 4 + 0] = (gray >> 8) & 255;
+    out[i * 4 + 1] = gray & 255;
     out[i * 4 + 2] = (a >> 8) & 255;
     out[i * 4 + 3] = a & 255;
   } else if(mode->colortype == LCT_RGBA) {
@@ -3193,7 +3193,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
 
 
 /* Converts a single rgb color without alpha from one type to another, color bits truncated to
-their bitdepth. In case of single channel (grey or palette), only the r channel is used. Slow
+their bitdepth. In case of single channel (gray or palette), only the r channel is used. Slow
 function, do not use to process all pixels of an image. Alpha channel not supported on purpose:
 this is for bKGD, supporting alpha may prevent it from finding a color in the palette, from the
 specification it looks like bKGD should ignore the alpha values of the palette since it can use
@@ -3384,7 +3384,7 @@ unsigned lodepng_get_color_profile(LodePNGColorProfile* profile,
       getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
 
       if(!bits_done && profile->bits < 8) {
-        /*only r is checked, < 8 bits is only relevant for greyscale*/
+        /*only r is checked, < 8 bits is only relevant for grayscale*/
         unsigned bits = getValueRequiredBits(r);
         if(bits > profile->bits) profile->bits = bits;
       }
@@ -3504,7 +3504,7 @@ static unsigned auto_choose_color_from_profile(LodePNGColorMode* mode_out,
   palettebits = n <= 2 ? 1 : (n <= 4 ? 2 : (n <= 16 ? 4 : 8));
   palette_ok = n <= 256 && bits <= 8;
   if(numpixels < n * 2) palette_ok = 0; /*don't add palette overhead if image has only a few pixels*/
-  if(!prof->colored && bits <= palettebits) palette_ok = 0; /*grey is less overhead*/
+  if(!prof->colored && bits <= palettebits) palette_ok = 0; /*gray is less overhead*/
 
   if(palette_ok) {
     const unsigned char* p = prof->palette;
@@ -3541,7 +3541,7 @@ static unsigned auto_choose_color_from_profile(LodePNGColorMode* mode_out,
 }
 
 /*Automatically chooses color type that gives smallest amount of bits in the
-output image, e.g. grey if there are only greyscale pixels, palette if there
+output image, e.g. gray if there are only grayscale pixels, palette if there
 are less than 256 colors, color key if only single transparent color, ...
 Updates values of mode with a potentially smaller color model. mode_out should
 contain the user chosen color model, but will be overwritten with the new chosen one.*/
@@ -3927,7 +3927,7 @@ static unsigned readChunk_tRNS(LodePNGColorMode* color, const unsigned char* dat
 
     for(i = 0; i != chunkLength; ++i) color->palette[4 * i + 3] = data[i];
   } else if(color->colortype == LCT_GREY) {
-    /*error: this chunk must be 2 bytes for greyscale image*/
+    /*error: this chunk must be 2 bytes for grayscale image*/
     if(chunkLength != 2) return 30;
 
     color->key_defined = 1;
@@ -3960,14 +3960,14 @@ static unsigned readChunk_bKGD(LodePNGInfo* info, const unsigned char* data, siz
     info->background_defined = 1;
     info->background_r = info->background_g = info->background_b = data[0];
   } else if(info->color.colortype == LCT_GREY || info->color.colortype == LCT_GREY_ALPHA) {
-    /*error: this chunk must be 2 bytes for greyscale image*/
+    /*error: this chunk must be 2 bytes for grayscale image*/
     if(chunkLength != 2) return 44;
 
     /*the values are truncated to bitdepth in the PNG file*/
     info->background_defined = 1;
     info->background_r = info->background_g = info->background_b = 256u * data[0] + data[1];
   } else if(info->color.colortype == LCT_RGB || info->color.colortype == LCT_RGBA) {
-    /*error: this chunk must be 6 bytes for greyscale image*/
+    /*error: this chunk must be 6 bytes for grayscale image*/
     if(chunkLength != 6) return 45;
 
     /*the values are truncated to bitdepth in the PNG file*/
@@ -4522,7 +4522,7 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
     size_t outsize;
 
     /*TODO: check if this works according to the statement in the documentation: "The converter can convert
-    from greyscale input color type, to 8-bit greyscale or greyscale with alpha"*/
+    from grayscale input color type, to 8-bit grayscale or grayscale with alpha"*/
     if(!(state->info_raw.colortype == LCT_RGB || state->info_raw.colortype == LCT_RGBA)
        && !(state->info_raw.bitdepth == 8)) {
       return 56; /*unsupported color mode conversion*/
@@ -5361,22 +5361,22 @@ static unsigned addUnknownChunks(ucvector* out, unsigned char* data, size_t data
   return 0;
 }
 
-static unsigned isGreyICCProfile(const unsigned char* profile, unsigned size) {
+static unsigned isGrayICCProfile(const unsigned char* profile, unsigned size) {
   /*
-  It is a grey profile if bytes 16-19 are "GRAY", rgb profile if bytes 16-19
+  It is a gray profile if bytes 16-19 are "GRAY", rgb profile if bytes 16-19
   are "RGB ". We do not perform any full parsing of the ICC profile here, other
   than check those 4 bytes to grayscale profile. Other than that, validity of
   the profile is not checked. This is needed only because the PNG specification
-  requires using a non-grey color model if there is an ICC profile with "RGB "
-  (sadly limiting compression opportunities if the input data is greyscale RGB
-  data), and requires using a grey color model if it is "GRAY".
+  requires using a non-gray color model if there is an ICC profile with "RGB "
+  (sadly limiting compression opportunities if the input data is grayscale RGB
+  data), and requires using a gray color model if it is "GRAY".
   */
   if(size < 20) return 0;
   return profile[16] == 'G' &&  profile[17] == 'R' &&  profile[18] == 'A' &&  profile[19] == 'Y';
 }
 
 static unsigned isRGBICCProfile(const unsigned char* profile, unsigned size) {
-  /* See comment in isGreyICCProfile*/
+  /* See comment in isGrayICCProfile*/
   if(size < 20) return 0;
   return profile[16] == 'R' &&  profile[17] == 'G' &&  profile[18] == 'B' &&  profile[19] == ' ';
 }
@@ -5450,31 +5450,31 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   }
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   if(state->info_png.iccp_defined) {
-    unsigned grey_icc = isGreyICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size);
-    unsigned grey_png = info.color.colortype == LCT_GREY || info.color.colortype == LCT_GREY_ALPHA;
+    unsigned gray_icc = isGrayICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size);
+    unsigned gray_png = info.color.colortype == LCT_GREY || info.color.colortype == LCT_GREY_ALPHA;
     /* TODO: perhaps instead of giving errors or less optimal compression, we can automatically modify
     the ICC profile here to say "GRAY" or "RGB " to match the PNG color type, unless this will require
     non trivial changes to the rest of the ICC profile */
-    if(!grey_icc && !isRGBICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size)) {
+    if(!gray_icc && !isRGBICCProfile(state->info_png.iccp_profile, state->info_png.iccp_profile_size)) {
       state->error = 100; /* Disallowed profile color type for PNG */
       goto cleanup;
     }
-    if(!state->encoder.auto_convert && grey_icc != grey_png) {
+    if(!state->encoder.auto_convert && gray_icc != gray_png) {
       /* Non recoverable: encoder not allowed to convert color type, and requested color type not
       compatible with ICC color type */
       state->error = 101;
       goto cleanup;
     }
-    if(grey_icc && !grey_png) {
-      /* Non recoverable: trying to set greyscale ICC profile while colored pixels were given */
+    if(gray_icc && !gray_png) {
+      /* Non recoverable: trying to set grayscale ICC profile while colored pixels were given */
       state->error = 102;
       goto cleanup;
-      /* NOTE: this relies on the fact that lodepng_auto_choose_color never returns palette for greyscale pixels */
+      /* NOTE: this relies on the fact that lodepng_auto_choose_color never returns palette for grayscale pixels */
     }
-    if(!grey_icc && grey_png) {
-      /* Recoverable but an unfortunate loss in compression density: We have greyscale pixels but
+    if(!gray_icc && gray_png) {
+      /* Recoverable but an unfortunate loss in compression density: We have grayscale pixels but
       are forced to store them in more expensive RGB format that will repeat each value 3 times
-      because the PNG spec does not allow an RGB ICC profile with internal greyscale color data */
+      because the PNG spec does not allow an RGB ICC profile with internal grayscale color data */
       if(info.color.colortype == LCT_GREY) info.color.colortype = LCT_RGB;
       if(info.color.colortype == LCT_GREY_ALPHA) info.color.colortype = LCT_RGBA;
       if(info.color.bitdepth < 8) info.color.bitdepth = 8;
@@ -5718,11 +5718,11 @@ const char* lodepng_error_text(unsigned code) {
     case 37: return "illegal bit depth for this color type given";
     case 38: return "the palette is too big"; /*more than 256 colors*/
     case 39: return "tRNS chunk before PLTE or has more entries than palette size";
-    case 40: return "tRNS chunk has wrong size for greyscale image";
+    case 40: return "tRNS chunk has wrong size for grayscale image";
     case 41: return "tRNS chunk has wrong size for RGB image";
     case 42: return "tRNS chunk appeared while it was not allowed for this color type";
     case 43: return "bKGD chunk has wrong size for palette image";
-    case 44: return "bKGD chunk has wrong size for greyscale image";
+    case 44: return "bKGD chunk has wrong size for grayscale image";
     case 45: return "bKGD chunk has wrong size for RGB image";
     case 48: return "empty input buffer given to decoder. Maybe caused by non-existing file?";
     case 49: return "jumped past memory while generating dynamic huffman tree";
@@ -5741,8 +5741,8 @@ const char* lodepng_error_text(unsigned code) {
     case 59: return "requested color conversion not supported";
     case 60: return "invalid window size given in the settings of the encoder (must be 0-32768)";
     case 61: return "invalid BTYPE given in the settings of the encoder (only 0, 1 and 2 are allowed)";
-    /*LodePNG leaves the choice of RGB to greyscale conversion formula to the user.*/
-    case 62: return "conversion from color to greyscale not supported";
+    /*LodePNG leaves the choice of RGB to grayscale conversion formula to the user.*/
+    case 62: return "conversion from color to grayscale not supported";
     /*(2^31-1)*/
     case 63: return "length of a chunk too long, max allowed for PNG is 2147483647 bytes per chunk";
     /*this would result in the inability of a deflated block to ever contain an end code. It must be at least 1.*/
@@ -5782,10 +5782,10 @@ const char* lodepng_error_text(unsigned code) {
     case 98: return "invalid sRGB chunk size";
     case 99: return "invalid sRGB rendering intent";
     case 100: return "invalid ICC profile color type, the PNG specification only allows RGB or GRAY";
-    case 101: return "PNG specification does not allow RGB ICC profile on grey color types and vice versa";
-    case 102: return "not allowed to set greyscale ICC profile with colored pixels by PNG specification";
-    case 103: return "Invalid palette index in bKGD chunk. Maybe it came before PLTE chunk?";
-    case 104: return "Invalid bKGD color while encoding (e.g. palette index out of range)";
+    case 101: return "PNG specification does not allow RGB ICC profile on gray color types and vice versa";
+    case 102: return "not allowed to set grayscale ICC profile with colored pixels by PNG specification";
+    case 103: return "invalid palette index in bKGD chunk. Maybe it came before PLTE chunk?";
+    case 104: return "invalid bKGD color while encoding (e.g. palette index out of range)";
   }
   return "unknown error code";
 }

@@ -117,12 +117,16 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits);
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 
-/* Similar to convertRGBModel, but the 'to' model is sRGB */
+/* Similar to convertRGBModel, but the 'to' model is sRGB. The pixel format
+of in and out must be the same and is given by state_in->info_raw. An
+error may occur if the pixel format cannot contain the new colors (e.g. palette) */
 unsigned convertToSrgb(unsigned char* out, const unsigned char* in,
                        unsigned w, unsigned h,
                        const LodePNGState* state_in);
 
-/* Similar to convertRGBModel, but the 'from' model is sRGB */
+/* Similar to convertRGBModel, but the 'from' model is sRGB. The pixel format
+of in and out must be the same and is given by state_out->info_raw. An
+error may occur if the pixel format cannot contain the new colors (e.g. palette) */
 unsigned convertFromSrgb(unsigned char* out, const unsigned char* in,
                          unsigned w, unsigned h,
                          const LodePNGState* state_out);
