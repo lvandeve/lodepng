@@ -253,116 +253,166 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits) {
   else return 0;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 
-// Values parsed from ICC profile, see parseICC for more information about this
-// subset.
-struct LodePNGICC {
-  // 0 = color model not supported by PNG (CMYK, Lab, ...), 1 = gray, 2 = RGB
+
+
+// Only temporarily here until this is integrated into lodepng.c(pp)
+#define LODEPNG_MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define LODEPNG_MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+// Only temporarily here until this is integrated into lodepng.c(pp)
+#ifdef LODEPNG_COMPILE_ALLOCATORS
+static void* lodepng_malloc(size_t size) {
+  return malloc(size);
+}
+static void lodepng_free(void* ptr) {
+  free(ptr);
+}
+#else /*LODEPNG_COMPILE_ALLOCATORS*/
+void* lodepng_malloc(size_t size);
+void lodepng_free(void* ptr);
+#endif /*LODEPNG_COMPILE_ALLOCATORS*/
+
+
+
+
+/* Parameters of a tone reproduction curve, either with a power law formula or with a lookup table. */
+typedef struct {
+  unsigned type; /* 0=linear, 1=lut, 2 = simple gamma, 3-6 = parametric (matches ICC parametric types 1-4) */
+  float* lut; /* for type 1 */
+  size_t lut_size;
+  float gamma; /* for type 2 and more */
+  float a, b, c, d, e, f; /* parameters for type 3-7 */
+} LodePNGICCCurve;
+
+void lodepng_icc_curve_init(LodePNGICCCurve* curve) {
+  curve->lut = 0;
+  curve->lut_size = 0;
+}
+
+void lodepng_icc_curve_cleanup(LodePNGICCCurve* curve) {
+  lodepng_free(curve->lut);
+}
+
+/* Values parsed from ICC profile, see parseICC for more information about this subset.*/
+typedef struct {
+  /* 0 = color model not supported by PNG (CMYK, Lab, ...), 1 = gray, 2 = RGB */
   int inputspace;
   int version_major;
   int version_minor;
   int version_bugfix;
 
-  // The whitepoint of the profile connection space (PCS). Should always be D50, but parsed and used anyway.
-  // (to be clear, whitepoint and illuminant are synonyms in practice, but here field "illuminant" is ICC's
-  // "global" whitepoint that is always D50, and the field "white" below allows deriving the whitepoint of
-  // the particular RGB space represented here)
+  /* The whitepoint of the profile connection space (PCS). Should always be D50, but parsed and used anyway.
+  (to be clear, whitepoint and illuminant are synonyms in practice, but here field "illuminant" is ICC's
+  "global" whitepoint that is always D50, and the field "white" below allows deriving the whitepoint of
+  the particular RGB space represented here) */
   float illuminant[3];
 
-  // if true, has chromatic adaptation matrix that must be used. If false, you must compute a chromatic adaptation
-  // matrix yourself from "illuminant" and "white".
-  bool has_chad;
-  float chad[9]; // chromatic adaptation matrix, if given
+  /* if true, has chromatic adaptation matrix that must be used. If false, you must compute a chromatic adaptation
+  matrix yourself from "illuminant" and "white". */
+  unsigned has_chad;
+  float chad[9]; /* chromatic adaptation matrix, if given */
 
-  // The whitepoint of the RGB color space as stored in the ICC file. If has_chad, must be adapted with the
-  // chad matrix to become the one we need to go to absolute XYZ (in fact ICC implies it should then be
-  // exactly D50 in the file, redundantly, before this transformation with chad), else use as-is (then its
-  // values can actually be something else than D50, and are the ones we need).
-  bool has_whitepoint;
+  /* The whitepoint of the RGB color space as stored in the ICC file. If has_chad, must be adapted with the
+  chad matrix to become the one we need to go to absolute XYZ (in fact ICC implies it should then be
+  exactly D50 in the file, redundantly, before this transformation with chad), else use as-is (then its
+  values can actually be something else than D50, and are the ones we need). */
+  unsigned has_whitepoint;
   float white[3];
-  // Chromaticities of the RGB space in XYZ color space, but given such that you must still
-  // whitepoint adapt them from D50 to the RGB space whitepoint to go to absolute XYZ (if has_chad,
-  // with chad, else with bradford adaptation matrix from illuminant to white).
-  bool has_chromaticity;
+  /* Chromaticities of the RGB space in XYZ color space, but given such that you must still
+  whitepoint adapt them from D50 to the RGB space whitepoint to go to absolute XYZ (if has_chad,
+  with chad, else with bradford adaptation matrix from illuminant to white). */
+  unsigned has_chromaticity;
   float red[3];
   float green[3];
   float blue[3];
-  // TODO: also need to handle blackpoint?
 
-  bool has_trc; // TRC = tone reproduction curve (aka "gamma correction")
+  unsigned has_trc; /* TRC = tone reproduction curve (aka "gamma correction") */
 
-  // Parameters of a tone reproduction curve, either with a power law formula or with a lookup table.
-  struct Curve {
-    unsigned type; // 0=linear, 1=lut, 2 = simple gamma, 3-6 = parametric (matches ICC parametric types 1-4)
-    std::vector<float> lut; // for type 1
-    float gamma; // for type 2 and more
-    float a, b, c, d, e, f; // parameters for type 3-7
-  };
+  /* TRC's for the three channels (only first one used if grayscale) */
+  LodePNGICCCurve trc[3];
+} LodePNGICC;
 
-  // TRC's for the three channels (only first one used if grayscale)
-  Curve trc[3];
-};
+void lodepng_icc_init(LodePNGICC* icc) {
+  lodepng_icc_curve_init(&icc->trc[0]);
+  lodepng_icc_curve_init(&icc->trc[1]);
+  lodepng_icc_curve_init(&icc->trc[2]);
+}
 
-// input and output in range 0-1. If color was integer 0-255, multiply with (1.0f/255)
-static float forwardTRC(const LodePNGICC::Curve& curve, float x) {
-  if(curve.type == 0) {
+void lodepng_icc_cleanup(LodePNGICC* icc) {
+  lodepng_icc_curve_cleanup(&icc->trc[0]);
+  lodepng_icc_curve_cleanup(&icc->trc[1]);
+  lodepng_icc_curve_cleanup(&icc->trc[2]);
+}
+
+/* input and output in range 0-1. If color was integer 0-255, multiply with (1.0f/255) */
+static float forwardTRC(const LodePNGICCCurve* curve, float x) {
+  if(curve->type == 0) {
     return x;
   }
-  if(curve.type == 1) { // Lookup table
-    if(x < 0 || curve.lut.empty()) return 0;
-    size_t index = (size_t)(x * (curve.lut.size() - 1));
-    if(index >= curve.lut.size()) return 1;
+  if(curve->type == 1) { /* Lookup table */
+    float v0, v1, fraction;
+    size_t index;
+    if(x < 0 || !curve->lut) return 0;
+    index = (size_t)(x * (curve->lut_size - 1));
+    if(index >= curve->lut_size) return 1;
 
-    // LERP
-    float v0 = curve.lut[index];
-    float v1 = (index + 1 < curve.lut.size()) ? curve.lut[index + 1] : 1.0f;
-    float fraction = (x * (curve.lut.size() - 1)) - index;
+    /* LERP */
+    v0 = curve->lut[index];
+    v1 = (index + 1 < curve->lut_size) ? curve->lut[index + 1] : 1.0f;
+    fraction = (x * (curve->lut_size - 1)) - index;
     return v0 * (1 - fraction) + v1 * fraction;
   }
-  if(curve.type == 2) {
-    return std::pow(x, curve.gamma);
+  if(curve->type == 2) {
+    return powf(x, curve->gamma);
   }
-  // TODO: all the ones below are untested
-  if(curve.type == 3) {
-    return x >= (-curve.b / curve.a) ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : 0;
+  /* TODO: all the ones below are untested */
+  if(curve->type == 3) {
+    return x >= (-curve->b / curve->a) ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : 0;
   }
-  if(curve.type == 4) {
-    return x >= (-curve.b / curve.a) ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : curve.c;
+  if(curve->type == 4) {
+    return x >= (-curve->b / curve->a) ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : curve->c;
   }
-  if(curve.type == 5) {
-    return x >= curve.d ? (std::pow(curve.a * x + curve.b, curve.gamma)) : (curve.c * x);
+  if(curve->type == 5) {
+    return x >= curve->d ? (powf(curve->a * x + curve->b, curve->gamma)) : (curve->c * x);
   }
-  if(curve.type == 6) {
-    return x >= curve.d ? (std::pow(curve.a * x + curve.b, curve.gamma) + curve.c) : (curve.c * x + curve.f);
+  if(curve->type == 6) {
+    return x >= curve->d ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : (curve->c * x + curve->f);
   }
   return 0;
 }
 
-// input and output in range 0-1
-static float backwardTRC(const LodePNGICC::Curve& curve, float x) {
-  if(curve.type == 0) {
+/* input and output in range 0-1 */
+static float backwardTRC(const LodePNGICCCurve* curve, float x) {
+  if(curve->type == 0) {
     return x;
   }
-  if(curve.type == 1) {
-    // TODO: use faster way of inverting the lookup table
+  if(curve->type == 1) {
+    size_t a, b, m;
+    float v;
     if(x <= 0) return 0;
     if(x >= 1) return 1;
-    // binary search in the table
-    size_t a = 0;
-    size_t b = curve.lut.size();
+    /* binary search in the table */
+    /* TODO: use faster way of inverting the lookup table */
+    a = 0;
+    b = curve->lut_size;
     for(;;) {
-      if(a == b) return curve.lut[a];
+      if(a == b) return curve->lut[a];
       if(a + 1 == b) {
-        // LERP
-        float v0 = curve.lut[a];
-        float v1 = curve.lut[b];
+        /* LERP */
+        float v0 = curve->lut[a];
+        float v1 = curve->lut[b];
+        float fraction;
         if(v0 == v1) return v0;
-        float fraction = (x - v0) / (v1 - v0);
+        fraction = (x - v0) / (v1 - v0);
         return v0 * (1 - fraction) + v1 * fraction;
       }
-      size_t m = (a + b) / 2u;
-      float v = curve.lut[m];
+      m = (a + b) / 2u;
+      v = curve->lut[m];
       if(v > x) {
         b = m;
       } else {
@@ -371,27 +421,27 @@ static float backwardTRC(const LodePNGICC::Curve& curve, float x) {
     }
     return 0;
   }
-  if(curve.type == 2) {
-    return std::pow(x, 1.0f / curve.gamma);
+  if(curve->type == 2) {
+    return powf(x, 1.0f / curve->gamma);
   }
-  if(curve.type == 3) {
-    // This curve seems to support negative values, but that's unsupported here in general.
-    return x > 0 ? ((std::pow(x, 1.0 / curve.gamma) - curve.b) / curve.a) : (-curve.b / curve.a);
+  if(curve->type == 3) {
+    /* This curve seems to support negative values, but that's unsupported here in general. */
+    return x > 0 ? ((powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) : (-curve->b / curve->a);
   }
-  if(curve.type == 4) {
-    return x > curve.c ?
-        ((std::pow(x - curve.c, 1.0 / curve.gamma) - curve.b) / curve.a) :
-        (-curve.b / curve.a);
+  if(curve->type == 4) {
+    return x > curve->c ?
+        ((powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        (-curve->b / curve->a);
   }
-  if(curve.type == 5) {
-    return x > (curve.c * curve.d) ?
-        ((std::pow(x, 1.0 / curve.gamma) - curve.b) / curve.a) :
-        (x / curve.c);
+  if(curve->type == 5) {
+    return x > (curve->c * curve->d) ?
+        ((powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        (x / curve->c);
   }
-  if(curve.type == 6) {
-    return x > (curve.c * curve.d + curve.f) ?
-        ((std::pow(x - curve.c, 1.0 / curve.gamma) - curve.b) / curve.a) :
-        ((x - curve.f) / curve.c);
+  if(curve->type == 6) {
+    return x > (curve->c * curve->d + curve->f) ?
+        ((powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        ((x - curve->f) / curve->c);
   }
   return 0;
 }
@@ -418,142 +468,150 @@ static float decodeICC15Fixed16(const unsigned char* data, size_t size, size_t* 
   return decodeICCInt32(data, size, pos) / 65536.0;
 }
 
-static bool isICCword(const unsigned char* data, size_t size, size_t pos, const char* word) {
-  if(pos + 4 > size) return false;
+static unsigned isICCword(const unsigned char* data, size_t size, size_t pos, const char* word) {
+  if(pos + 4 > size) return 0;
   return data[pos + 0] == (unsigned char)word[0] &&
          data[pos + 1] == (unsigned char)word[1] &&
          data[pos + 2] == (unsigned char)word[2] &&
          data[pos + 3] == (unsigned char)word[3];
 }
 
-// Parses a subset of the ICC profile, supporting the necessary mix of ICC v2
-// and ICC v4 required to correctly convert the RGB color space to XYZ.
-// Does not parse values not related to this specific PNG-related purpose, and
-// does not support non-RGB profiles or lookup-table based chroma (but it
-// supports lookup tables for TRC aka "gamma").
+/* Parses a subset of the ICC profile, supporting the necessary mix of ICC v2
+and ICC v4 required to correctly convert the RGB color space to XYZ.
+Does not parse values not related to this specific PNG-related purpose, and
+does not support non-RGB profiles or lookup-table based chroma (but it
+supports lookup tables for TRC aka "gamma"). */
 static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size) {
+  size_t i, j;
   size_t pos = 0;
+  unsigned version;
+  unsigned inputspace;
+  size_t numtags;
 
-  if(size < 132) return 1; // Too small to be a valid icc profile.
+  if(size < 132) return 1; /* Too small to be a valid icc profile. */
 
-  icc->has_chromaticity = false;
-  icc->has_whitepoint = false;
-  icc->has_trc = false;
-  icc->has_chad = false;
+  icc->has_chromaticity = 0;
+  icc->has_whitepoint = 0;
+  icc->has_trc = 0;
+  icc->has_chad = 0;
 
-  icc->trc[0].type = 0;
-  icc->trc[1].type = 0;
-  icc->trc[2].type = 0;
+  icc->trc[0].type = icc->trc[1].type = icc->trc[2].type = 0;
   icc->white[0] = icc->white[1] = icc->white[2] = 0;
   icc->red[0] = icc->red[1] = icc->red[2] = 0;
   icc->green[0] = icc->green[1] = icc->green[2] = 0;
   icc->blue[0] = icc->blue[1] = icc->blue[2] = 0;
 
   pos = 8;
-  unsigned version = decodeICCUint32(data, size, &pos);
+  version = decodeICCUint32(data, size, &pos);
   if(pos >= size) return 1;
   icc->version_major = (int)((version >> 24) & 255);
   icc->version_minor = (int)((version >> 20) & 15);
   icc->version_bugfix = (int)((version >> 16) & 15);
 
   pos = 16;
-  unsigned inputspace = decodeICCUint32(data, size, &pos);
+  inputspace = decodeICCUint32(data, size, &pos);
   if(pos >= size) return 1;
   if(inputspace == 0x47524159) {
-    // The string  "GRAY" as unsigned 32-bit int.
+    /* The string  "GRAY" as unsigned 32-bit int. */
     icc->inputspace = 1;
   } else if(inputspace == 0x52474220) {
-    // The string  "RGB " as unsigned 32-bit int.
+    /* The string  "RGB " as unsigned 32-bit int. */
     icc->inputspace = 2;
   } else {
-    icc->inputspace = 0;  // unsupported by PNG (CMYK, YCbCr, Lab, HSV, ...)
+    /* unsupported by PNG (CMYK, YCbCr, Lab, HSV, ...) */
+    icc->inputspace = 0;
   }
 
-  // Should always be 0.9642, 1.0, 0.8249
+  /* Should always be 0.9642, 1.0, 0.8249 */
   pos = 68;
   icc->illuminant[0] = decodeICC15Fixed16(data, size, &pos);
   icc->illuminant[1] = decodeICC15Fixed16(data, size, &pos);
   icc->illuminant[2] = decodeICC15Fixed16(data, size, &pos);
 
   pos = 128;
-  size_t numtags = decodeICCUint32(data, size, &pos);
+  numtags = decodeICCUint32(data, size, &pos);
   if(pos >= size) return 1;
-  // scan for tags we want to handle
-  for(size_t i = 0; i < numtags; i++) {
+  /* scan for tags we want to handle */
+  for(i = 0; i < numtags; i++) {
+    size_t offset;
+    unsigned tagsize;
     size_t namepos = pos;
     pos += 4;
-    size_t offset = decodeICCUint32(data, size, &pos);
-    unsigned tagsize = decodeICCUint32(data, size, &pos);
+    offset = decodeICCUint32(data, size, &pos);
+    tagsize = decodeICCUint32(data, size, &pos);
     if(pos >= size || offset >= size) return 1;
     if(offset + tagsize > size) return 1;
     if(tagsize < 8) return 1;
 
     if(isICCword(data, size, namepos, "wtpt")) {
-      offset += 8; // skip tag and reserved
+      offset += 8; /* skip tag and reserved */
       icc->white[0] = decodeICC15Fixed16(data, size, &offset);
       icc->white[1] = decodeICC15Fixed16(data, size, &offset);
       icc->white[2] = decodeICC15Fixed16(data, size, &offset);
-      icc->has_whitepoint = true;
+      icc->has_whitepoint = 1;
     } else if(isICCword(data, size, namepos, "rXYZ")) {
-      offset += 8; // skip tag and reserved
+      offset += 8; /* skip tag and reserved */
       icc->red[0] = decodeICC15Fixed16(data, size, &offset);
       icc->red[1] = decodeICC15Fixed16(data, size, &offset);
       icc->red[2] = decodeICC15Fixed16(data, size, &offset);
-      icc->has_chromaticity = true;
+      icc->has_chromaticity = 1;
     } else if(isICCword(data, size, namepos, "gXYZ")) {
-      offset += 8; // skip tag and reserved
+      offset += 8; /* skip tag and reserved */
       icc->green[0] = decodeICC15Fixed16(data, size, &offset);
       icc->green[1] = decodeICC15Fixed16(data, size, &offset);
       icc->green[2] = decodeICC15Fixed16(data, size, &offset);
-      icc->has_chromaticity = true;
+      icc->has_chromaticity = 1;
     } else if(isICCword(data, size, namepos, "bXYZ")) {
-      offset += 8; // skip tag and reserved
+      offset += 8; /* skip tag and reserved */
       icc->blue[0] = decodeICC15Fixed16(data, size, &offset);
       icc->blue[1] = decodeICC15Fixed16(data, size, &offset);
       icc->blue[2] = decodeICC15Fixed16(data, size, &offset);
-      icc->has_chromaticity = true;
+      icc->has_chromaticity = 1;
     } else if(isICCword(data, size, namepos, "chad")) {
-      offset += 8; // skip datatype keyword "sf32" and reserved
-      for(size_t j = 0; j < 9; j++) {
+      offset += 8; /* skip datatype keyword "sf32" and reserved */
+      for(j = 0; j < 9; j++) {
         icc->chad[j] = decodeICC15Fixed16(data, size, &offset);
       }
-      icc->has_chad = true;
+      icc->has_chad = 1;
     } else if(isICCword(data, size, namepos, "rTRC") ||
               isICCword(data, size, namepos, "gTRC") ||
               isICCword(data, size, namepos, "bTRC") ||
               isICCword(data, size, namepos, "kTRC")) {
       char c = (char)data[namepos];
-      // both 'k' and 'r' are stored in channel 0
+      /* both 'k' and 'r' are stored in channel 0 */
       int channel = (c == 'b') ? 2 : (c == 'g' ? 1 : 0);
-      // "curv": linear, gamma power or LUT
+      /* "curv": linear, gamma power or LUT */
       if(isICCword(data, size, offset, "curv")) {
-        icc->has_trc = true;
-        LodePNGICC::Curve* trc = &icc->trc[channel];
-        offset += 8; // skip tag "curv" and reserved
-        size_t count = decodeICCUint32(data, size, &offset);
+        size_t count;
+        LodePNGICCCurve* trc = &icc->trc[channel];
+        icc->has_trc = 1;
+        offset += 8; /* skip tag "curv" and reserved */
+        count = decodeICCUint32(data, size, &offset);
         if(count == 0) {
-          trc->type = 0; // linear
+          trc->type = 0; /* linear */
         } else if(count == 1) {
-          trc->type = 2; // gamma
+          trc->type = 2; /* gamma */
           trc->gamma = decodeICCUint16(data, size, &offset) / 256.0f;
         } else {
-          trc->type = 1; // LUT
-          if(offset + count * 2 > size || count > 16777216) return 1; // also avoid crazy count
-          trc->lut.resize(count);
-          for(size_t j = 0; j < count; j++) {
+          trc->type = 1; /* LUT */
+          if(offset + count * 2 > size || count > 16777216) return 1; /* also avoid crazy count */
+          trc->lut_size = count;
+          trc->lut = (float*)lodepng_malloc(count * sizeof(float));
+          for(j = 0; j < count; j++) {
             trc->lut[j] = decodeICCUint16(data, size, &offset) * (1.0f / 65535.0f);
           }
         }
       }
-      // "para": parametric formula with gamma power, multipliers, biases and comparison point
-      // TODO: test this on a realistic sample
+      /* "para": parametric formula with gamma power, multipliers, biases and comparison point */
+      /* TODO: test this on a realistic sample */
       if(isICCword(data, size, offset, "para")) {
-        icc->has_trc = true;
-        LodePNGICC::Curve* trc = &icc->trc[channel];
-        offset += 8; // skip tag "para" and reserved
-        unsigned type = decodeICCUint16(data, size, &offset);
+        unsigned type;
+        LodePNGICCCurve* trc = &icc->trc[channel];
+        icc->has_trc = 1;
+        offset += 8; /* skip tag "para" and reserved */
+        type = decodeICCUint16(data, size, &offset);
         offset += 2;
-        if(type > 4) return 1; // unknown parametric curve type
+        if(type > 4) return 1; /* unknown parametric curve type */
         trc->type = type + 2;
         trc->gamma = decodeICC15Fixed16(data, size, &offset);
         if(type >= 1) {
@@ -571,44 +629,46 @@ static unsigned parseICC(LodePNGICC* icc, const unsigned char* data, size_t size
           trc->f = decodeICC15Fixed16(data, size, &offset);
         }
       }
-      // TODO: verify: does the "chrm" tag participate in computation so should be parsed?
+      /* TODO: verify: does the "chrm" tag participate in computation so should be parsed? */
     }
-    // Return error if any parse went beyond the filesize. Note that the
-    // parsing itself was always safe since it bound-checks inside.
+    /* Return error if any parse went beyond the filesize. Note that the
+    parsing itself was always safe since it bound-checks inside. */
     if(offset > size) return 1;
   }
 
   return 0;
 }
 
-// Multiplies 3 vector values with 3x3 matrix
+/* Multiplies 3 vector values with 3x3 matrix */
 static void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x, double y, double z) {
-  // double used as inputs even though in general the images are float, so the sums happen in
-  // double precision, because float can give numerical problems for nearby values
+  /* double used as inputs even though in general the images are float, so the sums happen in
+  double precision, because float can give numerical problems for nearby values */
   *x2 = x * m[0] + y * m[1] + z * m[2];
   *y2 = x * m[3] + y * m[4] + z * m[5];
   *z2 = x * m[6] + y * m[7] + z * m[8];
 }
 
 static void mulMatrixMatrix(float* result, const float* a, const float* b) {
+  int i;
   float temp[9];
   mulMatrix(&temp[0], &temp[3], &temp[6], a, b[0], b[3], b[6]);
   mulMatrix(&temp[1], &temp[4], &temp[7], a, b[1], b[4], b[7]);
   mulMatrix(&temp[2], &temp[5], &temp[8], a, b[2], b[5], b[8]);
-  for(int i = 0; i < 9; i++) result[i] = temp[i];
+  for(i = 0; i < 9; i++) result[i] = temp[i];
 }
 
-// Inverts 3x3 matrix in place
+/* Inverts 3x3 matrix in place */
 static unsigned invMatrix(float* m) {
-  // double used instead of float for intermediate computations to avoid
-  // intermediate numerical precision issues
+  int i;
+  /* double used instead of float for intermediate computations to avoid
+  intermediate numerical precision issues */
   double e0 = (double)m[4] * m[8] - (double)m[5] * m[7];
   double e3 = (double)m[5] * m[6] - (double)m[3] * m[8];
   double e6 = (double)m[3] * m[7] - (double)m[4] * m[6];
-  // inverse determinant
+  /* inverse determinant */
   double d = 1.0 / (m[0] * e0 + m[1] * e3 + m[2] * e6);
-  if(std::abs(d) > 1e15) return 1; // error, likely not invertible
   float result[9];
+  if(abs(d) > 1e15) return 1; /* error, likely not invertible */
   result[0] = e0 * d;
   result[1] = ((double)m[2] * m[7] - (double)m[1] * m[8]) * d;
   result[2] = ((double)m[1] * m[5] - (double)m[2] * m[4]) * d;
@@ -618,45 +678,52 @@ static unsigned invMatrix(float* m) {
   result[6] = e6 * d;
   result[7] = ((double)m[6] * m[1] - (double)m[0] * m[7]) * d;
   result[8] = ((double)m[0] * m[4] - (double)m[3] * m[1]) * d;
-  for(int i = 0; i < 9; i++) m[i] = result[i];
-  return 0; // ok
+  for(i = 0; i < 9; i++) m[i] = result[i];
+  return 0; /* ok */
 }
 
-// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in XYZ colorspace
+/* Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in XYZ colorspace */
 static unsigned getChrmMatrixXYZ(float* m,
                                  float wX, float wY, float wZ,
                                  float rX, float rY, float rZ,
                                  float gX, float gY, float gZ,
                                  float bX, float bY, float bZ) {
-  float t[9] = {rX, gX, bX, rY, gY, bY, rZ, gZ, bZ};
-  if(invMatrix(t)) return 1; // error, not invertible
+  float t[9];
   float rs, gs, bs;
+  t[0] = rX; t[1] = gX; t[2] = bX;
+  t[3] = rY; t[4] = gY; t[5] = bY;
+  t[6] = rZ; t[7] = gZ; t[8] = bZ;
+  if(invMatrix(t)) return 1; /* error, not invertible */
   mulMatrix(&rs, &gs, &bs, t, wX, wY, wZ);
-  double r[9] = {rs * rX, gs * gX, bs * bX, rs * rY, gs * gY, bs * bY, rs * rZ, gs * gZ, bs * bZ};
-  for(int i = 0; i < 9; i++) m[i] = r[i];
+  m[0] = rs * rX; m[1] = gs * gX; m[2] = bs * bX;
+  m[3] = rs * rY; m[4] = gs * gY; m[5] = bs * bY;
+  m[6] = rs * rZ; m[7] = gs * gZ; m[8] = bs * bZ;
   return 0;
 }
 
-// Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace
+/* Get the matrix to go from linear RGB to XYZ given the RGB whitepoint and chromaticities in xy colorspace */
 static unsigned getChrmMatrixXY(float* m,
                                 float wx, float wy,
                                 float rx, float ry,
                                 float gx, float gy,
                                 float bx, float by) {
-  if(wy == 0 || ry == 0 || gy == 0 || by == 0) return 1; // error, division through zero
-  float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
-  float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
-  float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
-  float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
-  return getChrmMatrixXYZ(m, wX, wY, wZ, rX, gX, bX, rY, gY, bY, rZ, gZ, bZ);
+  if(wy == 0 || ry == 0 || gy == 0 || by == 0) {
+    return 1; /* error, division through zero */
+  } else {
+    float wX = wx / wy, wY = 1, wZ = (1 - wx - wy) / wy;
+    float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
+    float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
+    float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
+    return getChrmMatrixXYZ(m, wX, wY, wZ, rX, gX, bX, rY, gY, bY, rZ, gZ, bZ);
+  }
 }
 
-
-// Returns matrix that adapts from source whitepoint 0 to destination whitepoint 1.
-// Types: 0=XYZ scaling, 1=Bradford, 2=Vonkries
+/* Returns matrix that adapts from source whitepoint 0 to destination whitepoint 1.
+Types: 0=XYZ scaling, 1=Bradford, 2=Vonkries */
 static unsigned getAdaptationMatrix(float* m, int type,
                                     float wx0, float wy0, float wz0,
                                     float wx1, float wy1, float wz1) {
+  int i;
   static const float bradford[9] = {
     0.8951, 0.2664, -0.1614,
     -0.7502, 1.7135, 0.0367,
@@ -678,234 +745,532 @@ static unsigned getAdaptationMatrix(float* m, int type,
    0.0000000, 0.0000000, 1.0890636
   };
   if(type == 0) {
-    for(int i = 0; i < 9; i++) m[i] = 0;
+    for(i = 0; i < 9; i++) m[i] = 0;
     m[0] = wx1 / wx0;
     m[4] = wy1 / wy0;
     m[8] = wz1 / wz0;
-    return 0; // Ok
+  } else {
+    const float* cat = (type == 1) ? bradford : vonkries;
+    const float* inv = (type == 1) ? bradfordinv : vonkriesinv;
+    float rho0, gam0, bet0, rho1, gam1, bet1, rho2, gam2, bet2;
+    mulMatrix(&rho0, &gam0, &bet0, cat, wx0, wy0, wz0);
+    mulMatrix(&rho1, &gam1, &bet1, cat, wx1, wy1, wz1);
+    rho2 = rho1 / rho0;
+    gam2 = gam1 / gam0;
+    bet2 = bet1 / bet0;
+    /* Multiply diagonal matrix with cat */
+    for(i = 0; i < 3; i++) {
+      m[i + 0] = rho2 * cat[i + 0];
+      m[i + 3] = gam2 * cat[i + 3];
+      m[i + 6] = bet2 * cat[i + 6];
+    }
+    mulMatrixMatrix(m, inv, m);
   }
-  const float* cat = (type == 1) ? bradford : vonkries;
-  const float* inv = (type == 1) ? bradfordinv : vonkriesinv;
-  float rho0, gam0, bet0, rho1, gam1, bet1;
-  mulMatrix(&rho0, &gam0, &bet0, cat, wx0, wy0, wz0);
-  mulMatrix(&rho1, &gam1, &bet1, cat, wx1, wy1, wz1);
-  float rho2 = rho1 / rho0, gam2 = gam1 / gam0, bet2 = bet1 / bet0;
-  // Multiply diagonal matrix with cat
-  for(int i = 0; i < 3; i++) {
-    m[i + 0] = rho2 * cat[i + 0];
-    m[i + 3] = gam2 * cat[i + 3];
-    m[i + 6] = bet2 * cat[i + 6];
-  }
-  mulMatrixMatrix(m, inv, m);
-  return 0; // ok
+  return 0; /* ok */
 }
 
-// Make lookup table for gamma correction.
-// bits is the amount of input bits of the integer image values, it must be 8 or 16
-// type is 0 for power, 1 for srgb (then gamma parameter is ignored since the srgb formula is used)
-static std::vector<float> makeGammaTable(int bits, int type, float gamma) {
+/* Make lookup table for gamma correction.
+bits is the amount of input bits of the integer image values, it must be 8 or 16
+type is 0 for power, 1 for srgb (then gamma parameter is ignored since the srgb formula is used) */
+void makeGammaTable(float* result, int bits, int type, float gamma) {
+  size_t i;
   size_t num = 1u << bits;
-  std::vector<float> result(num);
   float mul = 1.0f / (num - 1);
-  if(type == 1) { // srgb
-    for(size_t i = 0; i < num; i++) {
+  if(type == 1) { /* sRGB */
+    for(i = 0; i < num; i++) {
       float v = i * mul;
       if(v < 0.04045f) v /= 12.92f;
-      else v = std::pow((v + 0.055f) / 1.055f, 2.4f);
+      else v = powf((v + 0.055f) / 1.055f, 2.4f);
       result[i] = v;
     }
   } else {
-    for(size_t i = 0; i < num; i++) {
-      result[i] = std::pow(i * mul, gamma);
+    for(i = 0; i < num; i++) {
+      result[i] = powf(i * mul, gamma);
     }
   }
-  return result;
 }
 
-// validate whether the ICC profile is supported here for PNG
+/* validate whether the ICC profile is supported here for PNG */
 static unsigned validateICC(const LodePNGICC* icc) {
-  // disable for unsupported things in the icc profile
-  if(icc->inputspace == 0) {
-    return 0;
-  }
-  // if we didn't recognize both chrm and trc, then maybe the ICC uses data
-  // types not supported here yet, so fall back to not using it.
+  /* disable for unsupported things in the icc profile */
+  if(icc->inputspace == 0) return 0;
+  /* if we didn't recognize both chrm and trc, then maybe the ICC uses data
+  types not supported here yet, so fall back to not using it. */
   if(icc->inputspace == 2) {
-    // RGB profile should have chromaticities
-    if(!icc->has_chromaticity) {
-      return 0;
-    }
+    /* RGB profile should have chromaticities */
+    if(!icc->has_chromaticity) return 0;
   }
-  // An ICC profile without whitepoint is invalid for the kind of profiles used here.
-  if(!icc->has_whitepoint) {
-    return 0;
-  }
-  if(!icc->has_trc) {
-    return 0;
-  }
-  return 1; // ok
+  /* An ICC profile without whitepoint is invalid for the kind of profiles used here. */
+  if(!icc->has_whitepoint) return 0;
+  if(!icc->has_trc) return 0;
+  return 1; /* ok */
 }
 
-// Returns chromaticity matrix for given ICC profile, adapted from ICC's
-// global illuminant as necessary.
-// Also returns the profile's whitepoint.
-// In case of a gray profile (icc->inputspace == 1), the identity matrix will be returned
-// so in that case you could skip the transform.
+/* Returns chromaticity matrix for given ICC profile, adapted from ICC's
+global illuminant as necessary.
+Also returns the profile's whitepoint.
+In case of a gray profile (icc->inputspace == 1), the identity matrix will be returned
+so in that case you could skip the transform. */
 static unsigned getICCChrm(float m[9], float whitepoint[3], const LodePNGICC* icc) {
-  if(icc->inputspace == 2) { // RGB profile
-    // Adaptation matrix a.
-    // This is an adaptation needed for ICC's file format (due to it using
-    // an internal global illuminant unrelated to the actual images)
+  size_t i;
+  if(icc->inputspace == 2) { /* RGB profile */
+    float red[3], green[3], blue[3];
+    float white[3]; /* the whitepoint of the RGB color space (absolute) */
+    /* Adaptation matrix a.
+    This is an adaptation needed for ICC's file format (due to it using
+    an internal global illuminant unrelated to the actual images) */
     float a[9] = {1,0,0, 0,1,0, 0,0,1};
-    // If the profile has chromatic adaptation matrix "chad", use that one,
-    // else compute it from the illuminant and whitepoint.
+    /* If the profile has chromatic adaptation matrix "chad", use that one,
+    else compute it from the illuminant and whitepoint. */
     if(icc->has_chad) {
-      for(int i = 0; i < 9; i++) a[i] = icc->chad[i];
+      for(i = 0; i < 9; i++) a[i] = icc->chad[i];
       invMatrix(a);
     } else {
       if(getAdaptationMatrix(a, 1, icc->illuminant[0], icc->illuminant[1], icc->illuminant[2],
                              icc->white[0], icc->white[1], icc->white[2])) {
-        return 1; // error computing matrix
+        return 1; /* error computing matrix */
       }
     }
-    float white[3]; // the whitepoint of the RGB color space (absolute)
-    // If the profile has a chad, then also the RGB's whitepoint must also be adapted from it (and the one
-    // given is normally D50). If it did not have a chad, then the whitepoint given is already the adapted one.
+    /* If the profile has a chad, then also the RGB's whitepoint must also be adapted from it (and the one
+    given is normally D50). If it did not have a chad, then the whitepoint given is already the adapted one. */
     if(icc->has_chad) {
       mulMatrix(&white[0], &white[1], &white[2], a, icc->white[0], icc->white[1], icc->white[2]);
     } else {
-      for(int i = 0; i < 3; i++) white[i] = icc->white[i];
+      for(i = 0; i < 3; i++) white[i] = icc->white[i];
     }
 
-    float red[3], green[3], blue[3];
     mulMatrix(&red[0], &red[1], &red[2], a, icc->red[0], icc->red[1], icc->red[2]);
     mulMatrix(&green[0], &green[1], &green[2], a, icc->green[0], icc->green[1], icc->green[2]);
     mulMatrix(&blue[0], &blue[1], &blue[2], a, icc->blue[0], icc->blue[1], icc->blue[2]);
 
-    if(getChrmMatrixXYZ(m, white[0], white[1], white[2],
-                        red[0], red[1], red[2],
-                        green[0], green[1], green[2],
-                        blue[0], blue[1], blue[2])) {
-      return 1; // error computing matrix
+    if(getChrmMatrixXYZ(m, white[0], white[1], white[2], red[0], red[1], red[2],
+                        green[0], green[1], green[2], blue[0], blue[1], blue[2])) {
+      return 1; /* error computing matrix */
     }
-    // output absolute whitepoint of the original RGB model
+    /* output absolute whitepoint of the original RGB model */
     whitepoint[0] = white[0];
     whitepoint[1] = white[1];
     whitepoint[2] = white[2];
   } else {
-    // output the unity matrix, for doing no transform
+    /* output the unity matrix, for doing no transform */
     m[0] = m[4] = m[8] = 1;
     m[1] = m[2] = m[3] = m[5] = m[6] = m[7] = 0;
-    // grayscale, don't do anything. That means we are implicitely using equal energy whitepoint "E", indicate
-    // this to the output.
+    /* grayscale, don't do anything. That means we are implicitely using equal energy whitepoint "E", indicate
+    this to the output. */
     whitepoint[0] = whitepoint[1] = whitepoint[2] = 1;
   }
-  return 0; // success
+  return 0; /* success */
 }
 
-// Outputs whitepoint and matrix to go from the icc or info profile (depending on what was in the PNG) to XYZ,
-// without applying any (rendering intent related) whitepoint adaptation
-static unsigned getChrm(float m[9], float whitepoint[3], bool use_icc, const LodePNGICC* icc, const LodePNGInfo* info) {
+/* Outputs whitepoint and matrix to go from the icc or info profile (depending on what was in the PNG) to XYZ,
+without applying any (rendering intent related) whitepoint adaptation */
+static unsigned getChrm(float m[9], float whitepoint[3], unsigned use_icc,
+                        const LodePNGICC* icc, const LodePNGInfo* info) {
+  size_t i;
   if(use_icc) {
-    if(getICCChrm(m, whitepoint, icc)) return 1;  // error in the matrix computations
+    if(getICCChrm(m, whitepoint, icc)) return 1;  /* error in the matrix computations */
   } else if(info->chrm_defined && !info->srgb_defined) {
     float wx = info->chrm_white_x / 100000.0f, wy = info->chrm_white_y / 100000.0f;
     float rx = info->chrm_red_x / 100000.0f, ry = info->chrm_red_y / 100000.0f;
     float gx = info->chrm_green_x / 100000.0f, gy = info->chrm_green_y / 100000.0f;
     float bx = info->chrm_blue_x / 100000.0f, by = info->chrm_blue_y / 100000.0f;
-    if(getChrmMatrixXY(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; // returns if error
-    // Output whitepoint, xyY to XYZ:
+    if(getChrmMatrixXY(m, wx, wy, rx, ry, gx, gy, bx, by)) return 1; /* returns if error */
+    /* Output whitepoint, xyY to XYZ: */
     whitepoint[0] = wx / wy;
     whitepoint[1] = 1;
     whitepoint[2] = (1 - wx - wy) / wy;
   } else {
-    // the standard linear sRGB to XYZ matrix
-    static const float srgb[9] = {0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041};
-    for (int i = 0; i < 9; i++) m[i] = srgb[i];
-    // sRGB's whitepoint xyY "0.3127,0.3290,1" in XYZ:
-    whitepoint[0] = 0.9504559270516716;
+    /* the standard linear sRGB to XYZ matrix */
+    static const float srgb[9] = {
+        0.4124564f, 0.3575761f, 0.1804375f,
+        0.2126729f, 0.7151522f, 0.0721750f,
+        0.0193339f, 0.1191920f, 0.9503041f
+    };
+    for(i = 0; i < 9; i++) m[i] = srgb[i];
+    /* sRGB's whitepoint xyY "0.3127,0.3290,1" in XYZ: */
+    whitepoint[0] = 0.9504559270516716f;
     whitepoint[1] = 1;
-    whitepoint[2] = 1.0890577507598784;
+    whitepoint[2] = 1.0890577507598784f;
   }
   return 0;
 }
 
-// Returns whether the color chunks in info represent the default PNG sRGB,
-// which is when either no colorometry fields are present at all, or an srgb
-// field or chrm/gama field with default values are present.
-// ICC chunks representing sRGB are currently considered not the same.
-static bool isSRGB(const LodePNGInfo* info) {
-  if(!info) return true; // the default is considered sRGB.
+/* Returns whether the color chunks in info represent the default PNG sRGB,
+which is when either no colorometry fields are present at all, or an srgb
+field or chrm/gama field with default values are present.
+ICC chunks representing sRGB are currently considered not the same. */
+static unsigned isSRGB(const LodePNGInfo* info) {
+  if(!info) return 1; /* the default is considered sRGB. */
 
-  // TODO: support some ICC profiles that represent sRGB too. Tricky due to
-  // possible slight deviations and many ways of representing its gamma
-  // function.
-  if(info->iccp_defined) return false;
+  /* TODO: support some ICC profiles that represent sRGB too. Tricky due to
+  possible slight deviations and many ways of representing its gamma function. */
+  if(info->iccp_defined) return 0;
 
-  if(info->srgb_defined) return true;
+  if(info->srgb_defined) return 1;
 
-  // The gamma chunk is unable to represent sRGB's two-part gamma, so cannot
-  // be sRGB, even if it's the default 45455.
-  if(info->gama_defined) return false;
+  /* The gamma chunk is unable to represent sRGB's two-part gamma, so cannot
+  be sRGB, even if it's the default 45455. */
+  if(info->gama_defined) return 0;
 
   if(info->chrm_defined) {
-    if(info->chrm_white_x != 31270 || info->chrm_white_y != 32900) return false;
-    if(info->chrm_red_x != 64000 || info->chrm_red_y != 33000) return false;
-    if(info->chrm_green_x != 30000 || info->chrm_green_y != 60000) return false;
-    if(info->chrm_blue_x != 15000 || info->chrm_blue_y != 6000) return false;
+    if(info->chrm_white_x != 31270 || info->chrm_white_y != 32900) return 0;
+    if(info->chrm_red_x != 64000 || info->chrm_red_y != 33000) return 0;
+    if(info->chrm_green_x != 30000 || info->chrm_green_y != 60000) return 0;
+    if(info->chrm_blue_x != 15000 || info->chrm_blue_y != 6000) return 0;
   }
 
-  return true;
+  return 1;
 }
 
-// Checks whether the RGB models are equal (chromaticities, ...). The raw byte
-// format is allowed to be different. Input pointers are allowed to be null,
-// they then represent the default PNG sRGB (same as having no color model
-// chunks at all or an srgb chunk in the PNG)
-static bool modelsEqual(const LodePNGState* state_a,
-                        const LodePNGState* state_b) {
+/* Checks whether the RGB models are equal (chromaticities, ...). The raw byte
+format is allowed to be different. Input pointers are allowed to be null,
+they then represent the default PNG sRGB (same as having no color model
+chunks at all or an srgb chunk in the PNG) */
+static unsigned modelsEqual(const LodePNGState* state_a,
+                            const LodePNGState* state_b) {
+  size_t i;
   const LodePNGInfo* a = state_a ? &state_a->info_png : 0;
   const LodePNGInfo* b = state_b ? &state_b->info_png : 0;
-  if(isSRGB(a) != isSRGB(b)) return false;
-  // now a and b are guaranteed to be non-NULL
-  if(a->iccp_defined != b->iccp_defined) return false;
+  if(isSRGB(a) != isSRGB(b)) return 0;
+  /* now a and b are guaranteed to be non-NULL */
+  if(a->iccp_defined != b->iccp_defined) return 0;
   if(a->iccp_defined) {
-    if(a->iccp_profile_size != b->iccp_profile_size) return false;
-    // TODO: return equal in more cases, such as when two ICC profiles that are
-    // not byte-for-byte equal, but represent the same color model.
-    for(size_t i = 0; i < a->iccp_profile_size; i++) {
-      if(a->iccp_profile[i] != b->iccp_profile[i]) return false;
+    if(a->iccp_profile_size != b->iccp_profile_size) return 0;
+    /* TODO: return equal in more cases, such as when two ICC profiles that are
+    not byte-for-byte equal, but represent the same color model. */
+    for(i = 0; i < a->iccp_profile_size; i++) {
+      if(a->iccp_profile[i] != b->iccp_profile[i]) return 0;
     }
-    // since the ICC model overrides gamma and chrm, those can be ignored.
-    // TODO: this doesn't cover the case where the ICC profile is invalid
-    return true;
+    /* since the ICC model overrides gamma and chrm, those can be ignored. */
+    /* TODO: this doesn't cover the case where the ICC profile is invalid */
+    return 1;
   }
 
-  if(a->srgb_defined != b->srgb_defined) return false;
+  if(a->srgb_defined != b->srgb_defined) return 0;
   if(a->srgb_defined) {
-    // since the sRGB model overrides gamma and chrm, those can be ignored.
-    // srgb_intent not checked since the conversion ignores it
-    return true;
+    /* since the sRGB model overrides gamma and chrm, those can be ignored.
+    srgb_intent not checked since the conversion ignores it */
+    return 1;
   }
 
-  if(a->gama_defined != b->gama_defined) return false;
+  if(a->gama_defined != b->gama_defined) return 0;
   if(a->gama_defined) {
-    if(a->gama_gamma != b->gama_gamma) return false;
+    if(a->gama_gamma != b->gama_gamma) return 0;
   }
 
-  if(a->chrm_defined != b->chrm_defined) return false;
+  if(a->chrm_defined != b->chrm_defined) return 0;
   if(a->chrm_defined) {
-    if(a->chrm_white_x != b->chrm_white_x) return false;
-    if(a->chrm_white_y != b->chrm_white_y) return false;
-    if(a->chrm_red_x != b->chrm_red_x) return false;
-    if(a->chrm_red_y != b->chrm_red_y) return false;
-    if(a->chrm_green_x != b->chrm_green_x) return false;
-    if(a->chrm_green_y != b->chrm_green_y) return false;
-    if(a->chrm_blue_x != b->chrm_blue_x) return false;
-    if(a->chrm_blue_y != b->chrm_blue_y) return false;
+    if(a->chrm_white_x != b->chrm_white_x) return 0;
+    if(a->chrm_white_y != b->chrm_white_y) return 0;
+    if(a->chrm_red_x != b->chrm_red_x) return 0;
+    if(a->chrm_red_y != b->chrm_red_y) return 0;
+    if(a->chrm_green_x != b->chrm_green_x) return 0;
+    if(a->chrm_green_y != b->chrm_green_y) return 0;
+    if(a->chrm_blue_x != b->chrm_blue_x) return 0;
+    if(a->chrm_blue_y != b->chrm_blue_y) return 0;
   }
 
-  return true;
+  return 1;
+}
+
+#define DISABLE_GAMMA 0 /* only set to 1 for experimental testing */
+
+unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
+                      unsigned w, unsigned h, const LodePNGState* state) {
+  unsigned error = 0;
+  size_t i;
+  const LodePNGColorMode* mode_in = &state->info_raw;
+  const LodePNGInfo* info = &state->info_png;
+  unsigned char* data = 0;
+  float* gammatable = 0;
+  int bit16 = mode_in->bitdepth > 8;
+  size_t num = bit16 ? 65535 : 256;
+  LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
+
+  size_t n = w * h;
+
+  unsigned use_icc = 0;
+  LodePNGICC icc;
+  lodepng_icc_init(&icc);
+  if(info->iccp_defined) {
+    if(parseICC(&icc, info->iccp_profile, info->iccp_profile_size)) {
+      /* corrupted ICC profile */
+      error = 1;
+      goto cleanup;
+    }
+    use_icc = validateICC(&icc);
+  }
+
+  data = (unsigned char*)lodepng_malloc(w * h * (bit16 ? 8 : 4));
+  if(lodepng_convert(data, in, &tempmode, mode_in, w, h)) {
+    error = 1;
+    goto cleanup;
+  }
+
+#if !DISABLE_GAMMA
+  {
+    float* gammatable_r;
+    float* gammatable_g;
+    float* gammatable_b;
+
+    if(use_icc) {
+      if(icc.inputspace == 2) {
+        /* RGB profile */
+        float mul = 1.0f / (num - 1);
+        gammatable = (float*)lodepng_malloc(num * 3 * sizeof(float));
+        gammatable_r = &gammatable[0];
+        gammatable_g = &gammatable[num];
+        gammatable_b = &gammatable[num * 2];
+        for(i = 0; i < num; i++) {
+          gammatable_r[i] = forwardTRC(&icc.trc[0], i * mul);
+          gammatable_g[i] = forwardTRC(&icc.trc[1], i * mul);
+          gammatable_b[i] = forwardTRC(&icc.trc[2], i * mul);
+        }
+      } else {
+        /* Gray profile */
+        float mul = 1.0f / (num - 1);
+        gammatable = (float*)lodepng_malloc(num * sizeof(float));
+        for(i = 0; i < num; i++) {
+          gammatable[i] = forwardTRC(&icc.trc[0], i * mul);
+        }
+        gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
+      }
+    } else if(info->gama_defined && !info->srgb_defined) {
+      float gamma = 100000.0f / info->gama_gamma;
+      gammatable = (float*)lodepng_malloc(num * sizeof(float));
+      makeGammaTable(gammatable, bit16 ? 16 : 8, 0, gamma);
+      gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
+    } else {
+      /* sRGB gamma expand */
+      gammatable = (float*)lodepng_malloc(num * sizeof(float));
+      makeGammaTable(gammatable, bit16 ? 16 : 8, 1, 0);
+      gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
+    }
+
+    if(bit16) {
+      for(i = 0; i < n; i++) {
+        out[i * 4 + 0] = gammatable_r[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
+        out[i * 4 + 1] = gammatable_g[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
+        out[i * 4 + 2] = gammatable_b[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
+        out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
+      }
+    } else {
+      for(i = 0; i < n; i++) {
+        out[i * 4 + 0] = gammatable_r[data[i * 4 + 0]];
+        out[i * 4 + 1] = gammatable_g[data[i * 4 + 1]];
+        out[i * 4 + 2] = gammatable_b[data[i * 4 + 2]];
+        out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
+      }
+    }
+  }
+#else
+  (void)makeGammaTable;
+  (void)forwardTRC;
+  (void)backwardTRC;
+  if(bit16) {
+    for(i = 0; i < n; i++) {
+      out[i * 4 + 0] = (data[i * 8 + 0] * 256 + data[i * 8 + 1]) * (1 / 65535.0);
+      out[i * 4 + 1] = (data[i * 8 + 2] * 256 + data[i * 8 + 3]) * (1 / 65535.0);
+      out[i * 4 + 2] = (data[i * 8 + 4] * 256 + data[i * 8 + 5]) * (1 / 65535.0);
+      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
+    }
+  } else {
+    for(i = 0; i < n; i++) {
+      out[i * 4 + 0] = data[i * 4 + 0] * (1 / 255.0);
+      out[i * 4 + 1] = data[i * 4 + 1] * (1 / 255.0);
+      out[i * 4 + 2] = data[i * 4 + 2] * (1 / 255.0);
+      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
+    }
+  }
+#endif /* !DISABLE_GAMMA */
+
+  {
+    float m[9]; /* XYZ to linear RGB matrix */
+
+    /* Must be called even for grayscale, to get the correct whitepoint to output */
+    if (getChrm(m, whitepoint, use_icc, &icc, info)) {
+      error = 1;
+      goto cleanup;
+    }
+    /* Apply the above computed linear-RGB-to-XYZ matrix to the pixels.
+    The transform  if it's the unit matrix (which is the case if grayscale profile) */
+    if(!use_icc || icc.inputspace == 2) {
+      for(i = 0; i < n; i++) {
+        size_t j = i * 4;
+        mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
+      }
+    }
+  }
+
+cleanup:
+  lodepng_icc_cleanup(&icc);
+  lodepng_free(data);
+  lodepng_free(gammatable);
+  return error;
+}
+
+unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigned h,
+                        const LodePNGState* state,
+                        const float whitepoint[3], unsigned rendering_intent) {
+  unsigned error = 0;
+  size_t i, c;
+  const LodePNGColorMode* mode_out = &state->info_raw;
+  const LodePNGInfo* info = &state->info_png;
+  float* im = 0;
+  unsigned char* data = 0;
+
+  size_t n = w * h;
+  int bit16 = mode_out->bitdepth > 8;
+
+  float m[9]; /* XYZ to linear RGB matrix */
+  float white[3]; /* The whitepoint (absolute) of the target RGB space */
+
+  unsigned use_icc = 0;
+  LodePNGICC icc;
+  lodepng_icc_init(&icc);
+  if(info->iccp_defined) {
+    if(parseICC(&icc, info->iccp_profile, info->iccp_profile_size)) {
+      /* corrupted ICC profile */
+      error = 1;
+      goto cleanup;
+    }
+    use_icc = validateICC(&icc);
+  }
+
+  im = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
+  data = (unsigned char*)lodepng_malloc(w * h * 8);
+
+  for(i = 0; i < n * 4; i++) {
+    im[i] = in[i];
+  }
+
+  if(getChrm(m, white, use_icc, &icc, info)) {
+    error = 1;
+    goto cleanup;
+  }
+  if(invMatrix(m)) return 1; /* error, not invertible */
+
+  /* for relative rendering intent (any except absolute "3"), must whitepoint adapt to the original whitepoint.
+  this also ensures grayscale stays grayscale (with absolute, grayscale could become e.g. blue or sepia) */
+  if(rendering_intent != 3) {
+    float a[9] = {1,0,0, 0,1,0, 0,0,1};
+    /* "white" = absolute whitepoint of the new target RGB space, read from the target color profile.
+    "whitepoint" is original absolute whitepoint (input as parameter of this function) of an
+    RGB space the XYZ data once had before it was converted to XYZ, in other words the whitepoint that
+    we want to adapt our current data to to make sure values that had equal R==G==B in the old space have
+    the same property now (white stays white and gray stays gray).
+    Note: "absolute" whitepoint above means, can be used as-is, not needing further adaptation itself like icc.white does.*/
+    if(getAdaptationMatrix(a, 1, whitepoint[0], whitepoint[1], whitepoint[2], white[0], white[1], white[2])) {
+      error = 1;
+      goto cleanup;
+    }
+    /* multiply the from xyz matrix with the adaptation matrix: in total,
+    the resulting matrix first adapts in XYZ space, then converts to RGB*/
+    mulMatrixMatrix(m, m, a);
+  }
+
+  /* Apply the above computed XYZ-to-linear-RGB matrix to the pixels.
+  This transformation also includes the whitepoint adaptation. The transform
+  can be skipped only if it's the unit matrix (only if grayscale profile and no
+  whitepoint adaptation, such as with rendering intent 3)*/
+  if(!use_icc || icc.inputspace == 2 || rendering_intent != 3) {
+    for(i = 0; i < n; i++) {
+      size_t j = i * 4;
+      mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
+    }
+  }
+
+#if !DISABLE_GAMMA
+  /* Due to out of gamut values and/or numerical precision, some values can be outside of range 0-1, but
+  the gamma function (trc) may not support this (e.g. resulting in NaN for negative values), so clip
+  the values first.*/
+  for(i = 0; i < n; i++) {
+    for(c = 0; c < 3; c++) {
+      im[i * 4 + c] = LODEPNG_MIN(LODEPNG_MAX(0.0f, im[i * 4 + c]), 1.0f);
+    }
+  }
+  /* Input is floating point, so lookup table cannot be used, but it's ensured to use float pow, not the slower double pow. */
+  if(use_icc) {
+    for(i = 0; i < n; i++) {
+      for(c = 0; c < 3; c++) {
+        /* TODO: this is likely very slow */
+        im[i * 4 + c] = backwardTRC(&icc.trc[c], im[i * 4 + c]);
+      }
+    }
+  } else if(info->gama_defined && !info->srgb_defined) {
+    float gamma = info->gama_gamma / 100000.0f;
+    for(i = 0; i < n; i++) {
+      for(c = 0; c < 3; c++) {
+        im[i * 4 + c] = powf(im[i * 4 + c], gamma);
+      }
+    }
+  } else {
+    for(i = 0; i < n; i++) {
+      for(c = 0; c < 3; c++) {
+        /* sRGB gamma compress */
+        float* v = &im[i * 4 + c];
+        *v = (*v < 0.0031308f) ? (*v * 12.92f) : (1.055f * powf(*v, 1/2.4f) - 0.055f);
+      }
+    }
+  }
+#endif /* !DISABLE_GAMMA */
+
+  /* TODO: check if also 1/2/4 bit case needed: rounding is at different fine-grainedness for 8 and 16 bits below. */
+  if(bit16) {
+    LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
+
+    for(i = 0; i < n; i++) {
+      for(c = 0; c < 4; c++) {
+        size_t j = i * 8 + c * 2;
+        int i16 = (int)(0.5f + 65535.0f * LODEPNG_MIN(LODEPNG_MAX(0.0f, im[i * 4 + c]), 1.0f));
+        data[j + 0] = i16 >> 8;
+        data[j + 1] = i16 & 255;
+      }
+    }
+
+    if(lodepng_convert(out, data, mode_out, &mode16, w, h)) {
+      error = 1;
+      goto cleanup;
+    }
+  } else {
+    LodePNGColorMode mode8 = lodepng_color_mode_make(LCT_RGBA, 8);
+
+    for(i = 0; i < n; i++) {
+      for(c = 0; c < 4; c++) {
+        int i8 = (int)(0.5f + 255.0f * LODEPNG_MIN(LODEPNG_MAX(0.0f, im[i * 4 + c]), 1.0f));
+        data[i * 4 + c] = i8;
+      }
+    }
+
+    if(lodepng_convert(out, data, mode_out, &mode8, w, h)) {
+      error = 1;
+      goto cleanup;
+    }
+  }
+
+cleanup:
+  lodepng_icc_cleanup(&icc);
+  lodepng_free(im);
+  lodepng_free(data);
+  return error;
+}
+
+unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
+                         unsigned w, unsigned h,
+                         const LodePNGState* state_out,
+                         const LodePNGState* state_in,
+                         unsigned rendering_intent) {
+  if(modelsEqual(state_in, state_out)) {
+    return lodepng_convert(out, in, &state_out->info_raw, &state_in->info_raw, w, h);
+  } else {
+    unsigned error = 0;
+    float* xyz = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
+    float whitepoint[3];
+    error = convertToXYZ(&xyz[0], whitepoint, in, w, h, state_in);
+    if (!error) convertFromXYZ(out, &xyz[0], w, h, state_out, whitepoint, rendering_intent);
+    lodepng_free(xyz);
+    return error;
+  }
 }
 
 unsigned convertToSrgb(unsigned char* out, const unsigned char* in,
@@ -926,252 +1291,11 @@ unsigned convertFromSrgb(unsigned char* out, const unsigned char* in,
   return convertRGBModel(out, in, w, h, state_out, &srgb, 1);
 }
 
-unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
-                         unsigned w, unsigned h,
-                         const LodePNGState* state_out,
-                         const LodePNGState* state_in,
-                         unsigned rendering_intent) {
-  if(modelsEqual(state_in, state_out)) {
-    return lodepng_convert(out, in, &state_out->info_raw, &state_in->info_raw, w, h);
-  }
-
-  std::vector<float> xyz(w * h * 4);
-  float whitepoint[3];
-  if(convertToXYZ(&xyz[0], whitepoint, in, w, h, state_in)) return 1;
-  if(convertFromXYZ(out, &xyz[0], w, h, state_out, whitepoint, rendering_intent)) return 1;
-  return 0;
-}
-
-#define DISABLE_GAMMA 0 // only set to 1 for experimental testing
-
-
-unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
-                      unsigned w, unsigned h, const LodePNGState* state) {
-  const LodePNGColorMode* mode_in = &state->info_raw;
-  const LodePNGInfo* info = &state->info_png;
-
-  size_t n = w * h;
-
-  bool use_icc = false;
-  LodePNGICC icc;
-  if(info->iccp_defined) {
-    if(parseICC(&icc, info->iccp_profile, info->iccp_profile_size)) return 1;  // corrupted ICC profile
-    use_icc = validateICC(&icc);
-  }
-
-  int bit16 = mode_in->bitdepth > 8;
-  std::vector<unsigned char> data(w * h * (bit16 ? 8 : 4));
-  LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
-  if(lodepng_convert(data.data(), in, &tempmode, mode_in, w, h)) return 1;
-
-#if !DISABLE_GAMMA
-  std::vector<float> gammatable;
-  float* gammatable_r;
-  float* gammatable_g;
-  float* gammatable_b;
-
-  if(use_icc) {
-    size_t num = bit16 ? 65535 : 256;
-    if(icc.inputspace == 2) {
-      // RGB profile
-      gammatable.resize(num * 3);
-      float mul = 1.0f / (num - 1);
-      gammatable_r = &gammatable[0];
-      gammatable_g = &gammatable[num];
-      gammatable_b = &gammatable[num * 2];
-      for(size_t i = 0; i < num; i++) {
-        gammatable_r[i] = forwardTRC(icc.trc[0], i * mul);
-        gammatable_g[i] = forwardTRC(icc.trc[1], i * mul);
-        gammatable_b[i] = forwardTRC(icc.trc[2], i * mul);
-      }
-    } else {
-      // Gray profile
-      gammatable.resize(num);
-      float mul = 1.0f / (num - 1);
-      for(size_t i = 0; i < num; i++) {
-        gammatable[i] = forwardTRC(icc.trc[0], i * mul);
-      }
-      gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
-    }
-  } else if(info->gama_defined && !info->srgb_defined) {
-    float gamma = 100000.0f / info->gama_gamma;
-    gammatable = makeGammaTable(bit16 ? 16 : 8, 0, gamma);
-    gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
-  } else {
-    // sRGB gamma expand
-    gammatable = makeGammaTable(bit16 ? 16 : 8, 1, 0);
-    gammatable_r = gammatable_g = gammatable_b = &gammatable[0];
-  }
-
-  if(bit16) {
-    for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = gammatable_r[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
-      out[i * 4 + 1] = gammatable_g[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
-      out[i * 4 + 2] = gammatable_b[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
-      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
-    }
-  } else {
-    for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = gammatable_r[data[i * 4 + 0]];
-      out[i * 4 + 1] = gammatable_g[data[i * 4 + 1]];
-      out[i * 4 + 2] = gammatable_b[data[i * 4 + 2]];
-      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
-    }
-  }
-#else
-  (void)makeGammaTable;
-  (void)forwardTRC;
-  (void)backwardTRC;
-  if(bit16) {
-    for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = (data[i * 8 + 0] * 256 + data[i * 8 + 1]) * (1 / 65535.0);
-      out[i * 4 + 1] = (data[i * 8 + 2] * 256 + data[i * 8 + 3]) * (1 / 65535.0);
-      out[i * 4 + 2] = (data[i * 8 + 4] * 256 + data[i * 8 + 5]) * (1 / 65535.0);
-      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
-    }
-  } else {
-    for(size_t i = 0; i < n; i++) {
-      out[i * 4 + 0] = data[i * 4 + 0] * (1 / 255.0);
-      out[i * 4 + 1] = data[i * 4 + 1] * (1 / 255.0);
-      out[i * 4 + 2] = data[i * 4 + 2] * (1 / 255.0);
-      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
-    }
-  }
-#endif // !DISABLE_GAMMA
-
-  float m[9]; // XYZ to linear RGB matrix
-
-  // Must be called even for grayscale, to get the correct whitepoint to output
-  if (getChrm(m, whitepoint, use_icc, &icc, info)) return 1;
-  // Apply the above computed linear-RGB-to-XYZ matrix to the pixels.
-  // The transform  if it's the unit matrix (which is the case if grayscale profile)
-  if(!use_icc || icc.inputspace == 2) {
-    for(unsigned i = 0; i < n; i++) {
-      size_t j = i * 4;
-      mulMatrix(&out[j + 0], &out[j + 1], &out[j + 2], m, out[j + 0], out[j + 1], out[j + 2]);
-    }
-  }
-
-  return 0; // ok
-}
-
-unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigned h,
-                        const LodePNGState* state,
-                        const float whitepoint[3], unsigned rendering_intent) {
-  const LodePNGColorMode* mode_out = &state->info_raw;
-  const LodePNGInfo* info = &state->info_png;
-  std::vector<float> im(in, in + w * h * 4);
-  std::vector<unsigned char> data(w * h * 8);
-
-  bool use_icc = false;
-  LodePNGICC icc;
-  if(info->iccp_defined) {
-    if(parseICC(&icc, info->iccp_profile, info->iccp_profile_size)) return 1;  // corrupted ICC profile
-    use_icc = validateICC(&icc);
-  }
-
-  size_t n = w * h;
-
-  int bit16 = mode_out->bitdepth > 8;
-
-  float m[9]; // XYZ to linear RGB matrix
-  float white[3]; // The whitepoint (absolute) of the target RGB space
-
-  if(getChrm(m, white, use_icc, &icc, info)) return 1;
-  if(invMatrix(m)) return 1; // error, not invertible
-
-  // for relative rendering intent (any except absolute "3"), must whitepoint adapt to the original whitepoint.
-  // this also ensures grayscale stays grayscale (with absolute, grayscale could become e.g. blue or sepia)
-  if(rendering_intent != 3) {
-    float a[9] = {1,0,0, 0,1,0, 0,0,1};
-    // "white" = absolute whitepoint of the new target RGB space, read from the target color profile.
-    // "whitepoint" is original absolute whitepoint (input as parameter of this function) of an
-    // RGB space the XYZ data once had before it was converted to XYZ, in other words the whitepoint that
-    // we want to adapt our current data to to make sure values that had equal R==G==B in the old space have
-    // the same property now (white stays white and gray stays gray).
-    // Note: "absolute" whitepoint above means, can be used as-is, not needing further adaptation itself like icc.white does.
-    if(getAdaptationMatrix(a, 1, whitepoint[0], whitepoint[1], whitepoint[2], white[0], white[1], white[2])) {
-      return 1; // error
-    }
-    // multiply the from xyz matrix with the adaptation matrix: in total,
-    // the resulting matrix first adapts in XYZ space, then converts to RGB
-    mulMatrixMatrix(m, m, a);
-  }
-
-  // Apply the above computed XYZ-to-linear-RGB matrix to the pixels.
-  // This transformation also includes the whitepoint adaptation. The transform
-  // can be skipped only if it's the unit matrix (only if grayscale profile and no
-  // whitepoint adaptation, such as with rendering intent 3)
-  if(!use_icc || icc.inputspace == 2 || rendering_intent != 3) {
-    for(unsigned i = 0; i < n; i++) {
-      size_t j = i * 4;
-      mulMatrix(&im[j + 0], &im[j + 1], &im[j + 2], m, im[j + 0], im[j + 1], im[j + 2]);
-    }
-  }
-
-#if !DISABLE_GAMMA
-  // Due to out of gamut values and/or numerical precision, some values can be outside of range 0-1, but
-  // the gamma function (trc) may not support this (e.g. resulting in NaN for negative values), so clip
-  // the values first.
-  for(unsigned i = 0; i < n; i++) {
-    for(unsigned c = 0; c < 3; c++) {
-      im[i * 4 + c] = std::min(std::max(0.0f, im[i * 4 + c]), 1.0f);
-    }
-  }
-  // Input is floating point, so lookup table cannot be used, but it's ensured to use float pow, not the slower double pow.
-  if(use_icc) {
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 3; c++) {
-        // TODO: this is likely very slow
-        im[i * 4 + c] = backwardTRC(icc.trc[c], im[i * 4 + c]);
-      }
-    }
-  } else if(info->gama_defined && !info->srgb_defined) {
-    float gamma = info->gama_gamma / 100000.0f;
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 3; c++) {
-        im[i * 4 + c] = std::pow(im[i * 4 + c], gamma);
-      }
-    }
-  } else {
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 3; c++) {
-        // sRGB gamma compress
-        float& v = im[i * 4 + c];
-        v = (v < 0.0031308f) ? (v * 12.92f) : (1.055f * std::pow(v, 1/2.4f) - 0.055f);
-      }
-    }
-  }
-#endif // !DISABLE_GAMMA
-
-  // TODO: check if also 1/2/4 bit case needed: rounding is at different fine-grainedness for 8 and 16 bits below.
-  if(bit16) {
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 4; c++) {
-        size_t j = i * 8 + c * 2;
-        int i16 = (int)(0.5f + 65535.0f * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
-        data[j + 0] = i16 >> 8;
-        data[j + 1] = i16 & 255;
-      }
-    }
-
-    LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
-    if(lodepng_convert(out, data.data(), mode_out, &mode16, w, h)) return 1;
-  } else {
-    for(unsigned i = 0; i < n; i++) {
-      for(unsigned c = 0; c < 4; c++) {
-        int i8 = (int)(0.5f + 255.0f * std::min(std::max(0.0f, im[i * 4 + c]), 1.0f));
-        data[i * 4 + c] = i8;
-      }
-   }
-
-    LodePNGColorMode mode8 = lodepng_color_mode_make(LCT_RGBA, 8);
-    if(lodepng_convert(out, data.data(), mode_out, &mode8, w, h)) return 1;
-  }
-
-  return 0; // ok
-}
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+
 
 //This uses a stripped down version of picoPNG to extract detailed zlib information while decompressing.
 static const unsigned long LENBASE[29] = {3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
