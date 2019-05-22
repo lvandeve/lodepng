@@ -4052,7 +4052,7 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     length = (unsigned)chunkLength - string2_begin;
     /*will fail if zlib error, e.g. if length is too small*/
     error = zlib_decompress(&decoded.data, &decoded.size,
-                            (const unsigned char*)(&data[string2_begin]),
+                            &data[string2_begin],
                             length, zlibsettings);
     if(error) break;
     ucvector_push_back(&decoded, 0);
