@@ -461,6 +461,7 @@ static unsigned decodeICCUint32(const unsigned char* data, size_t size, size_t* 
 static int decodeICCInt32(const unsigned char* data, size_t size, size_t* pos) {
   *pos += 4;
   if (*pos > size) return 0;
+  /*TODO: this is incorrect if sizeof(int) != 4*/
   return (data[*pos - 4] << 24) | (data[*pos - 3] << 16) | (data[*pos - 2] << 8) | (data[*pos - 1] << 0);
 }
 
@@ -735,9 +736,9 @@ static unsigned getAdaptationMatrix(float* m, int type,
    -0.0085287, 0.0400428, 0.9684867
   };
   static const float vonkries[9] = {
-    0.4002400, 0.7076000, -0.0808100,
-    -0.2263000, 1.1653200, 0.0457000,
-    0.0000000, 0.0000000, 0.9182200,
+    0.40024, 0.70760, -0.08081,
+    -0.22630, 1.16532, 0.04570,
+    0.00000, 0.00000, 0.91822,
   };
   static const float vonkriesinv[9] = {
     1.8599364, -1.1293816, 0.2198974,
@@ -1092,6 +1093,10 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
       error = 1;
       goto cleanup;
     }
+    /* Note: no whitepoint adaptation done to m here, because we only do the
+    adaptation in convertFromXYZ (we only whitepoint adapt when going to the
+    target RGB space, but here we're going from the source RGB space to XYZ) */
+
     /* Apply the above computed linear-RGB-to-XYZ matrix to the pixels.
     The transform  if it's the unit matrix (which is the case if grayscale profile) */
     if(!use_icc || icc.inputspace == 2) {

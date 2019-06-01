@@ -4132,7 +4132,7 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     if(compressed) {
       /*will fail if zlib error, e.g. if length is too small*/
       error = zlib_decompress(&decoded.data, &decoded.size,
-                              (const unsigned char*)(&data[begin]),
+                              &data[begin],
                               length, zlibsettings);
       if(error) break;
       if(decoded.allocsize < decoded.size) decoded.allocsize = decoded.size;
@@ -4245,7 +4245,7 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSetting
   length = (unsigned)chunkLength - string2_begin;
   ucvector_init(&decoded);
   error = zlib_decompress(&decoded.data, &decoded.size,
-                          (const unsigned char*)(&data[string2_begin]),
+                          &data[string2_begin],
                           length, zlibsettings);
   if(!error) {
     info->iccp_profile_size = decoded.size;

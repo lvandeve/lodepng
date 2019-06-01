@@ -39,7 +39,7 @@ freely, subject to the following restrictions:
 
 #include <SDL/SDL.h> //SDL is used for timing.
 
-#define NUM_DECODE 5 //set to 0 for not benchmarking encoding at all, 1 for normal, higher for decoding multiple times to measure better
+#define NUM_DECODE 10 //set to 0 for not benchmarking decoding at all, 1 for normal, higher for decoding multiple times to measure better
 
 double total_dec_time = 0;
 double total_enc_time = 0;

@@ -63,7 +63,7 @@ void showHelp() {
                "Without options shows a default set of stats. With options, shows only selected options.\n"
                "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
-               "-s: show header summary on one line\n"
+               "-o: show header summary on one line\n"
                "-h: show header info\n"
                "-p: show PNG file info\n"
                "-e: check the PNG for errors or warnings\n"
@@ -74,6 +74,7 @@ void showHelp() {
                "    hex: Use only hex\n"
                "--size=<width>: render width (not used by hex, hex16 or palette):\n"
                "-l: show palette (if any)\n"
+               "-s: show color statistics\n"
                "-r: render the PNG image in terminal (with --mode and --size)\n"
                "--mode=<mode>: render mode for -r:\n"
                "    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
@@ -1079,6 +1080,10 @@ void showHeaderInfo(Data& data, const Options& options) {
     std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
     std::cout << "Width: " << data.w << std::endl;
     std::cout << "Height: " << data.h << std::endl;
+    if(options.verbose) {
+      double bpp = data.buffer.size() / (double)(data.w * data.h);
+      std::cout << "Compressed bpp: " << bpp << std::endl;
+    }
     std::cout << "Interlace method: " << info.interlace_method << std::endl;
     if(options.verbose) {
       std::cout << "Compression method: " << info.compression_method << std::endl;
