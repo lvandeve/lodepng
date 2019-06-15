@@ -669,7 +669,7 @@ static unsigned invMatrix(float* m) {
   /* inverse determinant */
   double d = 1.0 / (m[0] * e0 + m[1] * e3 + m[2] * e6);
   float result[9];
-  if(abs(d) > 1e15) return 1; /* error, likely not invertible */
+  if(fabs(d) > 1e15) return 1; /* error, likely not invertible */
   result[0] = e0 * d;
   result[1] = ((double)m[2] * m[7] - (double)m[1] * m[8]) * d;
   result[2] = ((double)m[1] * m[5] - (double)m[2] * m[4]) * d;
@@ -985,7 +985,7 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
   unsigned char* data = 0;
   float* gammatable = 0;
   int bit16 = mode_in->bitdepth > 8;
-  size_t num = bit16 ? 65535 : 256;
+  size_t num = bit16 ? 65536 : 256;
   LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
 
   size_t n = w * h;
@@ -1053,14 +1053,14 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
         out[i * 4 + 0] = gammatable_r[data[i * 8 + 0] * 256u + data[i * 8 + 1]];
         out[i * 4 + 1] = gammatable_g[data[i * 8 + 2] * 256u + data[i * 8 + 3]];
         out[i * 4 + 2] = gammatable_b[data[i * 8 + 4] * 256u + data[i * 8 + 5]];
-        out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
+        out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0f);
       }
     } else {
       for(i = 0; i < n; i++) {
         out[i * 4 + 0] = gammatable_r[data[i * 4 + 0]];
         out[i * 4 + 1] = gammatable_g[data[i * 4 + 1]];
         out[i * 4 + 2] = gammatable_b[data[i * 4 + 2]];
-        out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
+        out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0f);
       }
     }
   }
@@ -1070,17 +1070,17 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
   (void)backwardTRC;
   if(bit16) {
     for(i = 0; i < n; i++) {
-      out[i * 4 + 0] = (data[i * 8 + 0] * 256 + data[i * 8 + 1]) * (1 / 65535.0);
-      out[i * 4 + 1] = (data[i * 8 + 2] * 256 + data[i * 8 + 3]) * (1 / 65535.0);
-      out[i * 4 + 2] = (data[i * 8 + 4] * 256 + data[i * 8 + 5]) * (1 / 65535.0);
-      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0);
+      out[i * 4 + 0] = (data[i * 8 + 0] * 256 + data[i * 8 + 1]) * (1 / 65535.0f);
+      out[i * 4 + 1] = (data[i * 8 + 2] * 256 + data[i * 8 + 3]) * (1 / 65535.0f);
+      out[i * 4 + 2] = (data[i * 8 + 4] * 256 + data[i * 8 + 5]) * (1 / 65535.0f);
+      out[i * 4 + 3] = (data[i * 8 + 6] * 256 + data[i * 8 + 7]) * (1 / 65535.0f);
     }
   } else {
     for(i = 0; i < n; i++) {
-      out[i * 4 + 0] = data[i * 4 + 0] * (1 / 255.0);
-      out[i * 4 + 1] = data[i * 4 + 1] * (1 / 255.0);
-      out[i * 4 + 2] = data[i * 4 + 2] * (1 / 255.0);
-      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0);
+      out[i * 4 + 0] = data[i * 4 + 0] * (1 / 255.0f);
+      out[i * 4 + 1] = data[i * 4 + 1] * (1 / 255.0f);
+      out[i * 4 + 2] = data[i * 4 + 2] * (1 / 255.0f);
+      out[i * 4 + 3] = data[i * 4 + 3] * (1 / 255.0f);
     }
   }
 #endif /* !DISABLE_GAMMA */

@@ -33,8 +33,8 @@ Testing instructions:
 *) Compile with g++ with all warnings and run the unit test
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
-*) Idem but with clang, which may sometimes give different warnings
-clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
+*) Compile with clang, which may sometimes give different warnings
+clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
@@ -1922,6 +1922,7 @@ void addColor16(std::vector<unsigned char>& colors, unsigned short r, unsigned s
   colors.push_back((a >> 8) & 255);
 }
 
+// Tests auto_convert
 // colors is in RGBA, inbitdepth must be 8 or 16, the amount of bits per channel.
 // colortype and bitdepth are the expected values. insize is amount of pixels. So the amount of bytes is insize * 4 * (inbitdepth / 8)
 void testAutoColorModel(const std::vector<unsigned char>& colors, unsigned inbitdepth, LodePNGColorType colortype, unsigned bitdepth, bool key) {
@@ -2203,7 +2204,7 @@ void assertColorProfileDataEqual(const lodepng::State& a, const lodepng::State& 
 // Tests the gAMA, cHRM, sRGB, iCCP chunks
 void testColorProfile() {
   std::cout << "testColorProfile" << std::endl;
- {
+  {
     unsigned error;
     unsigned w = 32, h = 32;
     std::vector<unsigned char> image(w * h * 4);
@@ -2234,7 +2235,7 @@ void testColorProfile() {
     ASSERT_EQUALS(image.size(), image2.size());
     for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
   }
- {
+  {
     unsigned error;
     unsigned w = 32, h = 32;
     std::vector<unsigned char> image(w * h * 4);
@@ -2256,7 +2257,7 @@ void testColorProfile() {
     ASSERT_EQUALS(image.size(), image2.size());
     for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
   }
- {
+  {
     unsigned error;
     unsigned w = 32, h = 32;
     std::vector<unsigned char> image(w * h * 4);
@@ -2286,7 +2287,7 @@ void testColorProfile() {
     unsigned error;
     unsigned w = 32, h = 32;
     std::vector<unsigned char> image(w * h * 4);
-    for(size_t i = 0; i + 4 < image.size(); i += 4) {
+    for(size_t i = 0; i + 4 <= image.size(); i += 4) {
       image[i] = image[i + 1] = image[i + 2] = image[i + 3] = i;
     }
     std::vector<unsigned char> png;
@@ -2307,6 +2308,85 @@ void testColorProfile() {
     ASSERT_EQUALS(32, h);
     ASSERT_EQUALS(image.size(), image2.size());
     for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+
+  // grayscale ICC profile, using an input image with grayscale colors but that
+  // would normally benefit from a palette (which auto_convert would normally
+  // choose). But the PNG spec does not allow combining palette with GRAY ICC
+  // profile, so the encoder should not choose to use palette after all.
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    int colors[3] = {0, 3, 133};
+    for(size_t i = 0; i + 4 <= image.size(); i += 4) {
+      image[i] = image[i + 1] = image[i + 2] = image[i + 3] = colors[(i / 4) % 3];
+    }
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.iccp_defined = 1;
+    std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
+    testprofile[0] = testprofile[1] = 0;
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_NOT_EQUALS(LCT_PALETTE, state2.info_png.color.colortype);
+  }
+
+  // RGB ICC profile, using an input image with grayscale colors: the encoder
+  // is forced to choose an RGB color type anyway with auto_convert
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i + 4 <= image.size(); i += 4) {
+      image[i] = image[i + 1] = image[i + 2] = (i / 4) & 255;
+      image[i + 3] = 255;
+    }
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.iccp_defined = 1;
+    std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
+    testprofile[0] = testprofile[1] = 0;
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertColorProfileDataEqual(state, state2);
+    // LCT_RGB or LCT_PALETTE are both ok, gray is not (it likely chooses palette in practice)
+    ASSERT_NOT_EQUALS(LCT_GREY, state2.info_png.color.colortype);
+    ASSERT_NOT_EQUALS(LCT_GREY_ALPHA, state2.info_png.color.colortype);
+  }
+
+  // Encoder must give error when forcing invalid combination of color/gray
+  // PNG with gray/color ICC Profile
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    int colors[3] = {0, 5, 33};
+    for(size_t i = 0; i + 4 <= image.size(); i += 4) {
+      image[i] = 255;
+      image[i + 1] = image[i + 2] = image[i + 3] = colors[(i / 4) % 3];
+    }
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.iccp_defined = 1;
+    std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
+    testprofile[0] = testprofile[1] = 0;
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NOT_EQUALS(0, error);  // must give error due to color image input with gray profile
   }
 }
 
