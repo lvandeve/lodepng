@@ -46,6 +46,9 @@ mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedant
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
+*) try the fuzzer
+clang++ -fsanitize=fuzzer lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
+
 *) Check if all examples compile without warnings:
 g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/''*.c -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp

@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190615
+LodePNG version 20190630
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -39,7 +39,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190615";
+const char* LODEPNG_VERSION_STRING = "20190630";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -1092,7 +1092,8 @@ static unsigned inflateHuffmanBlock(ucvector* out, const unsigned char* in, size
   return error;
 }
 
-static unsigned inflateNoCompression(ucvector* out, const unsigned char* in, size_t* bp, size_t* pos, size_t inlength) {
+static unsigned inflateNoCompression(ucvector* out, const unsigned char* in, size_t* bp, size_t* pos,
+                                     size_t inlength, const LodePNGDecompressSettings* settings) {
   size_t p;
   unsigned LEN, NLEN, n, error = 0;
 
@@ -1106,7 +1107,9 @@ static unsigned inflateNoCompression(ucvector* out, const unsigned char* in, siz
   NLEN = in[p] + 256u * in[p + 1]; p += 2;
 
   /*check if 16-bit NLEN is really the one's complement of LEN*/
-  if(LEN + NLEN != 65535) return 21; /*error: NLEN is not one's complement of LEN*/
+  if(!settings->ignore_nlen && LEN + NLEN != 65535) {
+    return 21; /*error: NLEN is not one's complement of LEN*/
+  }
 
   if(!ucvector_resize(out, (*pos) + LEN)) return 83; /*alloc fail*/
 
@@ -1138,7 +1141,7 @@ static unsigned lodepng_inflatev(ucvector* out,
     BTYPE += 2u * readBitFromStream(&bp, in);
 
     if(BTYPE == 3) return 20; /*error: invalid BTYPE*/
-    else if(BTYPE == 0) error = inflateNoCompression(out, in, &bp, &pos, insize); /*no compression*/
+    else if(BTYPE == 0) error = inflateNoCompression(out, in, &bp, &pos, insize, settings); /*no compression*/
     else error = inflateHuffmanBlock(out, in, &bp, &pos, insize, BTYPE); /*compression, BTYPE 01 or 10*/
 
     if(error) return error;
@@ -2054,13 +2057,14 @@ const LodePNGCompressSettings lodepng_default_compress_settings = {2, 1, DEFAULT
 
 void lodepng_decompress_settings_init(LodePNGDecompressSettings* settings) {
   settings->ignore_adler32 = 0;
+  settings->ignore_nlen = 0;
 
   settings->custom_zlib = 0;
   settings->custom_inflate = 0;
   settings->custom_context = 0;
 }
 
-const LodePNGDecompressSettings lodepng_default_decompress_settings = {0, 0, 0, 0};
+const LodePNGDecompressSettings lodepng_default_decompress_settings = {0, 0, 0, 0, 0};
 
 #endif /*LODEPNG_COMPILE_DECODER*/
 
