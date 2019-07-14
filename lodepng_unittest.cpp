@@ -87,6 +87,9 @@ g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wext
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -g3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
+*) Idem for undefined behavior
+clang++ -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there (some are legit)
 cat lodepng.cpp lodepng_util.cpp | grep iostream
 cat lodepng.cpp lodepng_util.cpp | grep stdio

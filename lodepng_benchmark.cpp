@@ -45,6 +45,7 @@ double total_dec_time = 0;
 double total_enc_time = 0;
 size_t total_enc_size = 0;
 size_t total_in_size = 0; // This is the uncompressed data in the raw color format
+size_t total_in_pixels = 0;
 
 bool verbose = false;
 
@@ -138,6 +139,7 @@ void doCodecTest(Image& image) {
   colormode.colortype = image.colorType;
   colormode.bitdepth = image.bitDepth;
   total_in_size += lodepng_get_raw_size(image.width, image.height, &colormode);
+  total_in_pixels += image.width * image.height;
 
   if(verbose) {
     printValue("encoding time", t_enc1 - t_enc0, "s");
@@ -458,8 +460,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s (" << ((total_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s)" << std::endl;
-  std::cout << "Total encoding time: " << total_enc_time << "s (" << ((total_in_size/1024.0/1024.0)/(total_enc_time)) << " MB/s)" << std::endl;
+  std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s (" << ((total_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s, " << ((total_in_pixels/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MP/s)" << std::endl;
+  std::cout << "Total encoding time: " << total_enc_time << "s (" << ((total_in_size/1024.0/1024.0)/(total_enc_time)) << " MB/s, (" << ((total_in_pixels/1024.0/1024.0)/(total_enc_time)) << " MP/s)" << std::endl;
   std::cout << "Total uncompressed size  : " << total_in_size << std::endl;
   std::cout << "Total encoded size: " << total_enc_size << " (" << (100.0 * total_enc_size / total_in_size) << "%)" << std::endl;
 
