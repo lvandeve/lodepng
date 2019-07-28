@@ -743,10 +743,6 @@ typedef struct LodePNGState {
   LodePNGColorMode info_raw; /*specifies the format in which you would like to get the raw pixel buffer*/
   LodePNGInfo info_png; /*info of the PNG image obtained after decoding*/
   unsigned error;
-#ifdef LODEPNG_COMPILE_CPP
-  /* For the lodepng::State subclass. */
-  virtual ~LodePNGState(){}
-#endif
 } LodePNGState;
 
 /*init, cleanup and copy functions to use with this struct*/
