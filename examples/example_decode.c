@@ -38,7 +38,7 @@ Decode from disk to raw pixels with a single function call
 */
 void decodeOneStep(const char* filename) {
   unsigned error;
-  unsigned char* image;
+  unsigned char* image = 0;
   unsigned width, height;
 
   error = lodepng_decode32_file(&image, &width, &height, filename);
@@ -55,7 +55,7 @@ Load PNG file from disk to memory first, then decode to raw pixels in memory.
 */
 void decodeTwoSteps(const char* filename) {
   unsigned error;
-  unsigned char* image;
+  unsigned char* image = 0;
   unsigned width, height;
   unsigned char* png = 0;
   size_t pngsize;
@@ -77,7 +77,7 @@ Load PNG file from disk using a State, normally needed for more advanced usage.
 */
 void decodeWithState(const char* filename) {
   unsigned error;
-  unsigned char* image;
+  unsigned char* image = 0;
   unsigned width, height;
   unsigned char* png = 0;
   size_t pngsize;

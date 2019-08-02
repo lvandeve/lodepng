@@ -2326,31 +2326,32 @@ unsigned lodepng_chunk_create(unsigned char** out, size_t* outlength, unsigned l
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
-/* / Color types and such                                                   / */
+/* / Color types, channels, bits                                            / */
 /* ////////////////////////////////////////////////////////////////////////// */
 
-/*return type is a LodePNG error code*/
-static unsigned checkColorValidity(unsigned char colortype, unsigned bd) /*bd = bitdepth*/ {
+/*checks if the colortype is valid and the bitdepth bd is allowed for this colortype.
+Return value is a LodePNG error code.*/
+static unsigned checkColorValidity(LodePNGColorType colortype, unsigned bd) {
   switch(colortype) {
-    case 0: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8 || bd == 16)) return 37; break; /*gray*/
-    case 2: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*RGB*/
-    case 3: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8            )) return 37; break; /*palette*/
-    case 4: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*gray + alpha*/
-    case 6: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*RGBA*/
-    default: return 31;
+    case LCT_GREY:       if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8 || bd == 16)) return 37; break;
+    case LCT_RGB:        if(!(                                 bd == 8 || bd == 16)) return 37; break;
+    case LCT_PALETTE:    if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8            )) return 37; break;
+    case LCT_GREY_ALPHA: if(!(                                 bd == 8 || bd == 16)) return 37; break;
+    case LCT_RGBA:       if(!(                                 bd == 8 || bd == 16)) return 37; break;
+    default: return 31; /* invalid color type */
   }
   return 0; /*allowed color type / bits combination*/
 }
 
 static unsigned getNumColorChannels(LodePNGColorType colortype) {
   switch(colortype) {
-    case 0: return 1; /*gray*/
-    case 2: return 3; /*RGB*/
-    case 3: return 1; /*palette*/
-    case 4: return 2; /*gray + alpha*/
-    case 6: return 4; /*RGBA*/
+    case LCT_GREY: return 1;
+    case LCT_RGB: return 3;
+    case LCT_PALETTE: return 1;
+    case LCT_GREY_ALPHA: return 2;
+    case LCT_RGBA: return 4;
+    default: return 0; /*invalid color type*/
   }
-  return 0; /*unexisting color type*/
 }
 
 static unsigned lodepng_get_bpp_lct(LodePNGColorType colortype, unsigned bitdepth) {
@@ -3640,7 +3641,6 @@ static void Adam7_getpassvalues(unsigned passw[7], unsigned passh[7], size_t fil
 unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
                          const unsigned char* in, size_t insize) {
   unsigned width, height;
-  unsigned char colortype;
   LodePNGInfo* info = &state->info_png;
   if(insize == 0 || in == 0) {
     CERROR_RETURN_ERROR(state->error, 48); /*error: the given data is empty*/
@@ -3668,18 +3668,28 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   /*read the values given in the header*/
   width = lodepng_read32bitInt(&in[16]);
   height = lodepng_read32bitInt(&in[20]);
+  /*TODO: remove the undocumented feature that allows to give null pointers to width or height*/
+  if(w) *w = width;
+  if(h) *h = height;
   info->color.bitdepth = in[24];
-  colortype = in[25];
+  info->color.colortype = (LodePNGColorType)in[25];
   info->compression_method = in[26];
   info->filter_method = in[27];
   info->interlace_method = in[28];
 
-  if(width == 0 || height == 0) {
-    CERROR_RETURN_ERROR(state->error, 93);
-  }
+  /*errors returned only after the parsing so other values are still output*/
 
-  if(w) *w = width;
-  if(h) *h = height;
+  /*error: invalid image size*/
+  if(width == 0 || height == 0) CERROR_RETURN_ERROR(state->error, 93);
+  /*error: invalid colortype or bitdepth combination*/
+  state->error = checkColorValidity(info->color.colortype, info->color.bitdepth);
+  if(state->error) return state->error;
+  /*error: only compression method 0 is allowed in the specification*/
+  if(info->compression_method != 0) CERROR_RETURN_ERROR(state->error, 32);
+  /*error: only filter method 0 is allowed in the specification*/
+  if(info->filter_method != 0) CERROR_RETURN_ERROR(state->error, 33);
+  /*error: only interlace methods 0 and 1 exist in the specification*/
+  if(info->interlace_method > 1) CERROR_RETURN_ERROR(state->error, 34);
 
   if(!state->decoder.ignore_crc) {
     unsigned CRC = lodepng_read32bitInt(&in[29]);
@@ -3689,15 +3699,6 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
     }
   }
 
-  /*error: only compression method 0 is allowed in the specification*/
-  if(info->compression_method != 0) CERROR_RETURN_ERROR(state->error, 32);
-  /*error: only filter method 0 is allowed in the specification*/
-  if(info->filter_method != 0) CERROR_RETURN_ERROR(state->error, 33);
-  /*error: only interlace methods 0 and 1 exist in the specification*/
-  if(info->interlace_method > 1) CERROR_RETURN_ERROR(state->error, 34);
-
-  state->error = checkColorValidity(colortype, info->color.bitdepth);
-  if(!state->error) info->color.colortype = (LodePNGColorType)colortype;
   return state->error;
 }
 
