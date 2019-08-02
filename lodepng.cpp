@@ -389,10 +389,10 @@ void LodePNGBitWriter_init(LodePNGBitWriter* writer, ucvector* data) {
 
 /*TODO: this ignores potential out of memory errors*/
 #define WRITEBIT(/*size_t**/ writer, /*unsigned char*/ bit){\
-    /* append new byte */\
-    if(((writer->bp) & 7u) == 0) ucvector_push_back(writer->data, (unsigned char)0);\
-    (writer->data->data[writer->data->size - 1]) |= (bit << ((writer->bp) & 7u));\
-    ++writer->bp;\
+  /* append new byte */\
+  if(((writer->bp) & 7u) == 0) ucvector_push_back(writer->data, (unsigned char)0);\
+  (writer->data->data[writer->data->size - 1]) |= (bit << ((writer->bp) & 7u));\
+  ++writer->bp;\
 }
 
 /* LSB of value is written first, and LSB of bytes is used first */
@@ -400,6 +400,7 @@ static void writeBits(LodePNGBitWriter* writer, unsigned value, size_t nbits) {
   if(nbits == 1) { /* compiler should statically compile this case if nbits == 1 */
     WRITEBIT(writer, value);
   } else {
+    /* TODO: increase output size nly once here rather than in each WRITEBIT */
     size_t i;
     for(i = 0; i != nbits; ++i) {
       WRITEBIT(writer, (unsigned char)((value >> i) & 1));
@@ -411,6 +412,7 @@ static void writeBits(LodePNGBitWriter* writer, unsigned value, size_t nbits) {
 static void writeBitsReversed(LodePNGBitWriter* writer, unsigned value, size_t nbits) {
   size_t i;
   for(i = 0; i != nbits; ++i) {
+    /* TODO: increase output size only once here rather than in each WRITEBIT */
     WRITEBIT(writer, (unsigned char)((value >> (nbits - 1u - i)) & 1u));
   }
 }
@@ -431,6 +433,7 @@ void LodePNGBitReader_init(LodePNGBitReader* reader, const unsigned char* data, 
   reader->bp = 0;
 }
 
+/* Out of bounds must be checked before using this function */
 static unsigned readBits(LodePNGBitReader* reader, size_t nbits) {
   /* TODO: faster bit reading technique */
   if(nbits == 1) { /* compiler should statically compile only this case if nbits == 1 */
