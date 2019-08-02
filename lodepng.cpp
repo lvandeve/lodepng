@@ -2330,7 +2330,7 @@ unsigned lodepng_chunk_create(unsigned char** out, size_t* outlength, unsigned l
 /* ////////////////////////////////////////////////////////////////////////// */
 
 /*return type is a LodePNG error code*/
-static unsigned checkColorValidity(LodePNGColorType colortype, unsigned bd) /*bd = bitdepth*/ {
+static unsigned checkColorValidity(unsigned char colortype, unsigned bd) /*bd = bitdepth*/ {
   switch(colortype) {
     case 0: if(!(bd == 1 || bd == 2 || bd == 4 || bd == 8 || bd == 16)) return 37; break; /*gray*/
     case 2: if(!(                                 bd == 8 || bd == 16)) return 37; break; /*RGB*/
@@ -3640,6 +3640,7 @@ static void Adam7_getpassvalues(unsigned passw[7], unsigned passh[7], size_t fil
 unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
                          const unsigned char* in, size_t insize) {
   unsigned width, height;
+  unsigned char colortype;
   LodePNGInfo* info = &state->info_png;
   if(insize == 0 || in == 0) {
     CERROR_RETURN_ERROR(state->error, 48); /*error: the given data is empty*/
@@ -3668,7 +3669,7 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   width = lodepng_read32bitInt(&in[16]);
   height = lodepng_read32bitInt(&in[20]);
   info->color.bitdepth = in[24];
-  info->color.colortype = (LodePNGColorType)in[25];
+  colortype = in[25];
   info->compression_method = in[26];
   info->filter_method = in[27];
   info->interlace_method = in[28];
@@ -3695,7 +3696,8 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   /*error: only interlace methods 0 and 1 exist in the specification*/
   if(info->interlace_method > 1) CERROR_RETURN_ERROR(state->error, 34);
 
-  state->error = checkColorValidity(info->color.colortype, info->color.bitdepth);
+  state->error = checkColorValidity(colortype, info->color.bitdepth);
+  if(!state->error) info->color.colortype = (LodePNGColorType)colortype;
   return state->error;
 }
 
