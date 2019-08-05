@@ -39,15 +39,32 @@ freely, subject to the following restrictions:
 
 #include <SDL/SDL.h> //SDL is used for timing.
 
-#define NUM_DECODE 10 //set to 0 for not benchmarking decoding at all, 1 for normal, higher for decoding multiple times to measure better
+bool apply_mods = false;
+
+#define NUM_DECODE 5 //decode multiple times to measure better. Must be at least 1.
+
+size_t total_pixels = 0;
+size_t total_png_orig_size = 0;
+size_t total_raw_orig_size = 0; // This is the uncompressed data in the raw color format in the original input PNGs
 
 double total_dec_time = 0;
+size_t total_png_in_size = 0;
+size_t total_raw_in_size = 0; // This is the uncompressed data in the raw color format in the input PNGs given to the decoder (not same as orig when using the encoded ones)
+size_t total_raw_dec_size = 0; // This is the uncompressed data in the raw color format of raw image buffers output by the decoder
+
 double total_enc_time = 0;
-size_t total_enc_size = 0;
-size_t total_in_size = 0; // This is the uncompressed data in the raw color format
-size_t total_in_pixels = 0;
+size_t total_raw_enc_size = 0; // This is the uncompressed data in the raw color format of the raw images given to the encoder
+size_t total_png_out_size = 0;
+size_t total_raw_out_size = 0; // This is the uncompressed data in the raw color format of the encoded PNGs
 
 bool verbose = false;
+bool do_decode = false;
+bool do_encode = false;
+bool decode_encoded = false; // do the decoding benchmark on the encoded images rather than the original inputs
+
+bool color_convert = true;
+
+std::string dumpdir;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,16 +72,12 @@ double getTime() {
   return SDL_GetTicks() / 1000.0;
 }
 
-void fail() {
-  throw 1; //that's how to let a unittest fail
-}
-
 template<typename T, typename U>
 void assertEquals(const T& expected, const U& actual, const std::string& message = "") {
   if(expected != (T)actual) {
     std::cout << "Error: Not equal! Expected " << expected << " got " << actual << "." << std::endl;
     std::cout << "Message: " << message << std::endl;
-    fail();
+    std::exit(1);
   }
 }
 
@@ -72,7 +85,7 @@ void assertTrue(bool value, const std::string& message = "") {
   if(!value) {
     std::cout << "Error: expected true." << std::endl;
     std::cout << "Message: " << message << std::endl;
-    fail();
+    std::exit(1);
   }
 }
 
@@ -83,6 +96,7 @@ struct Image {
   unsigned height;
   LodePNGColorType colorType;
   unsigned bitDepth;
+  std::string name;
 };
 
 //Utility for debug messages
@@ -104,366 +118,234 @@ void printValue(const std::string& name, const T& value, const std::string& s2, 
 }
 
 //Test LodePNG encoding and decoding the encoded result, using the C interface
-void doCodecTest(Image& image) {
+std::vector<unsigned char> testEncode(Image& image) {
   unsigned char* encoded = 0;
   size_t encoded_size = 0;
-  unsigned char* decoded = 0;
-  unsigned decoded_w;
-  unsigned decoded_h;
+  lodepng::State state;
+  state.info_raw.colortype = image.colorType;
+  state.info_raw.bitdepth = image.bitDepth;
+
+  // Try custom compression settings
+  if(apply_mods) {
+    state.encoder.filter_strategy = LFS_ZERO;
+    state.encoder.zlibsettings.btype = 0;
+    //state.encoder.zlibsettings.btype = 1;
+    //state.encoder.auto_convert = 0;
+    //state.encoder.zlibsettings.use_lz77 = 0;
+  }
 
   double t_enc0 = getTime();
 
-  unsigned error_enc = lodepng_encode_memory(&encoded, &encoded_size, &image.data[0],
-                                             image.width, image.height, image.colorType, image.bitDepth);
+  unsigned error_enc = lodepng_encode(&encoded, &encoded_size, &image.data[0],
+                                      image.width, image.height, &state);
 
   double t_enc1 = getTime();
 
-  assertEquals(0, error_enc, "encoder error C");
+  assertEquals(0, error_enc, "encoder error");
 
-  double t_dec0 = getTime();
-  for(int i = 0; i < NUM_DECODE; i++) {
-    unsigned error_dec = lodepng_decode_memory(&decoded, &decoded_w, &decoded_h,
-                                               encoded, encoded_size, image.colorType, image.bitDepth);
-    assertEquals(0, error_dec, "decoder error C");
-  }
-  double t_dec1 = getTime();
-
-
-  assertEquals(image.width, decoded_w);
-  assertEquals(image.height, decoded_h);
-
-  total_enc_size += encoded_size;
+  total_raw_enc_size += lodepng_get_raw_size(image.width, image.height, &state.info_raw);
+  total_png_out_size += encoded_size;
   total_enc_time += (t_enc1 - t_enc0);
-  total_dec_time += (t_dec1 - t_dec0);
-  LodePNGColorMode colormode;
-  colormode.colortype = image.colorType;
-  colormode.bitdepth = image.bitDepth;
-  total_in_size += lodepng_get_raw_size(image.width, image.height, &colormode);
-  total_in_pixels += image.width * image.height;
 
   if(verbose) {
     printValue("encoding time", t_enc1 - t_enc0, "s");
     std::cout << "compression: " << ((double)(encoded_size) / (double)(image.data.size())) * 100 << "%"
-              << " ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
-              << " size: " << encoded_size << std::endl;
-    if(NUM_DECODE> 0) printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
-    std::cout << std::endl;
+              << ", ratio: " << ((double)(image.data.size()) / (double)(encoded_size))
+              << ", size: " << encoded_size
+              << ", bpp: " << (8.0 * encoded_size / image.width / image.height) << std::endl;
   }
 
-  //LodePNG_saveFile(encoded, encoded_size, "test.png");
+  if(!dumpdir.empty()) {
+    std::string dumpname = dumpdir;
+    if(dumpname[dumpname.size() - 1] != '/') dumpname += "/";
+    dumpname += image.name;
+    if(lodepng_save_file(encoded, encoded_size, dumpname.c_str())) {
+      std::cout << "WARNING: failed to dump " << dumpname << ". The dir must already exist." << std::endl;
+    } else if(verbose) {
+      std::cout << "saved to: " << dumpname << std::endl;
+    }
+  }
 
+  // output image stats
+  {
+    lodepng::State inspect;
+    unsigned w, h;
+    lodepng_inspect(&w, &h, &inspect, encoded, encoded_size);
+    total_raw_out_size += lodepng_get_raw_size(w, h, &inspect.info_png.color);
+  }
+
+  std::vector<unsigned char> result(encoded, encoded + encoded_size);
   free(encoded);
+  return result;
+}
+
+void testDecode(const std::vector<unsigned char>& png) {
+  lodepng::State state;
+  unsigned char* decoded = 0;
+  unsigned w, h;
+
+  // Try custom decompression settings
+  if(apply_mods) {
+    state.decoder.color_convert = 0;
+    //state.decoder.ignore_crc = 1;
+  }
+
+  double t_dec0 = getTime();
+  for(int i = 0; i < NUM_DECODE; i++) {
+    unsigned error_dec = lodepng_decode(&decoded, &w, &h, &state, png.data(), png.size());
+    assertEquals(0, error_dec, "decoder error");
+  }
+  double t_dec1 = getTime();
+
+  total_dec_time += (t_dec1 - t_dec0);
+
+  total_raw_dec_size += lodepng_get_raw_size(w, h, &state.info_raw);
+
+  if(verbose) {
+    printValue("decoding time", t_dec1 - t_dec0, "/", NUM_DECODE, " s");
+  }
   free(decoded);
-}
 
-static const int IMGSIZE = 4096;
-
-void testPatternSine() {
-  if(verbose) std::cout << "sine pattern" << std::endl;
-
-  /*
-  There's something annoying about this pattern: it encodes worse, slower and with worse compression,
-  when adjusting the parameters, while all other images go faster and higher compression, and vice versa.
-  It responds opposite to optimizations...
-  */
-
-  Image image;
-  int w = IMGSIZE / 2;
-  int h = IMGSIZE / 2;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_RGBA;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 4);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    //pattern 1
-    image.data[4 * w * y + 4 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 2] = (unsigned char)(127 * (1 + std::sin((                    x * x + (h - y - 1) * (h - y - 1)) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 3] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) + (h - y - 1) * (h - y - 1)) / (w * h / 8.0))));
+  // input image stats
+  {
+    lodepng::State inspect;
+    unsigned w, h;
+    lodepng_inspect(&w, &h, &inspect, png.data(), png.size());
+    total_raw_in_size += lodepng_get_raw_size(w, h, &inspect.info_png.color);
+    total_png_in_size += png.size();
   }
-
-  doCodecTest(image);
 }
 
-void testPatternSineNoAlpha() {
-  if(verbose) std::cout << "sine pattern w/o alpha" << std::endl;
-
-  /*
-  There's something annoying about this pattern: it encodes worse, slower and with worse compression,
-  when adjusting the parameters, while all other images go faster and higher compression, and vice versa.
-  It responds opposite to optimizations...
-  */
-
-  Image image;
-  int w = IMGSIZE / 2;
-  int h = IMGSIZE / 2;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_RGB;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 3);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    //pattern 1
-    image.data[3 * w * y + 3 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
-    image.data[3 * w * y + 3 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
-    image.data[3 * w * y + 3 * x + 2] = (unsigned char)(127 * (1 + std::sin((                    x * x + (h - y - 1) * (h - y - 1)) / (w * h / 8.0))));
-  }
-
-  doCodecTest(image);
+std::string getFilePart(const std::string& path) {
+  if(path.empty()) return "";
+  int slash = path.size() - 1;
+  while(slash >= 0 && path[slash] != '/') slash--;
+  return path.substr(slash + 1);
 }
 
-void testPatternXor() {
-  if(verbose) std::cout << "xor pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE;
-  int h = IMGSIZE;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_RGB;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 3);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    image.data[3 * w * y + 3 * x + 0] = x ^ y;
-    image.data[3 * w * y + 3 * x + 1] = x ^ y;
-    image.data[3 * w * y + 3 * x + 2] = x ^ y;
-  }
-
-  doCodecTest(image);
-}
-
-static unsigned int m_w = 1;
-static unsigned int m_z = 2;
-
-//"Multiply-With-Carry" generator of G. Marsaglia
-unsigned int getRandomUint() {
-  m_z = 36969 * (m_z & 65535) + (m_z >> 16);
-  m_w = 18000 * (m_w & 65535) + (m_w >> 16);
-  return (m_z << 16) + m_w;  //32-bit result
-}
-
-void testPatternPseudoRan() {
-  if(verbose) std::cout << "pseudorandom pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE / 2;
-  int h = IMGSIZE / 2;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_RGB;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 3);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    unsigned int random = getRandomUint();
-    image.data[3 * w * y + 3 * x + 0] = random % 256;
-    image.data[3 * w * y + 3 * x + 1] = (random >> 8) % 256;
-    image.data[3 * w * y + 3 * x + 2] = (random >> 16) % 256;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternSineXor() {
-  if(verbose) std::cout << "sine+xor pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE / 2;
-  int h = IMGSIZE / 2;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_RGBA;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 4);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    //pattern 1
-    image.data[4 * w * y + 4 * x + 0] = (unsigned char)(127 * (1 + std::sin((                    x * x +                     y * y) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 1] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) +                     y * y) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 2] = (unsigned char)(127 * (1 + std::sin((                    x * x + (h - y - 1) * (h - y - 1)) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 3] = (unsigned char)(127 * (1 + std::sin(((w - x - 1) * (w - x - 1) + (h - y - 1) * (h - y - 1)) / (w * h / 8.0))));
-    image.data[4 * w * y + 4 * x + 0] = image.data[4 * w * y + 4 * x + 0] / 2 + ((x ^ y) % 256) / 2;
-    image.data[4 * w * y + 4 * x + 1] = image.data[4 * w * y + 4 * x + 1] / 2 + ((x ^ y) % 256) / 2;
-    image.data[4 * w * y + 4 * x + 2] = image.data[4 * w * y + 4 * x + 2] / 2 + ((x ^ y) % 256) / 2;
-    image.data[4 * w * y + 4 * x + 3] = image.data[4 * w * y + 4 * x + 3] / 2 + ((x ^ y) % 256) / 2;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternGreyMandel() {
-  if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE / 2;
-  int h = IMGSIZE / 2;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_GREY;
-  image.bitDepth = 8;
-  image.data.resize(w * h);
-
-  double pr, pi;
-  double newRe, newIm, oldRe, oldIm;
-  // go to a position in the mandelbrot where there's lots of entropy
-  double zoom = 1779.8, moveX = -0.7431533999637661, moveY = -0.1394057861346605;
-  int maxIterations = 300;
-
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    pr = 1.5 * (x - w / 2) / (0.5 * zoom * w) + moveX;
-    pi = (y - h / 2) / (0.5 * zoom * h) + moveY;
-    newRe = newIm = oldRe = oldIm = 0; //these should start at 0,0
-    int i;
-    for(i = 0; i < maxIterations; i++) {
-        oldRe = newRe;
-        oldIm = newIm;
-        newRe = oldRe * oldRe - oldIm * oldIm + pr;
-        newIm = 2 * oldRe * oldIm + pi;
-        if((newRe * newRe + newIm * newIm) > 4) break;
-    }
-    image.data[w * y + x] = i % 256;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternGreyMandelSmall() {
-  if(verbose) std::cout << "grey mandelbrot pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE / 8;
-  int h = IMGSIZE / 8;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_GREY;
-  image.bitDepth = 8;
-  image.data.resize(w * h);
-
-  double pr, pi;
-  double newRe, newIm, oldRe, oldIm;
-  // go to a position in the mandelbrot where there's lots of entropy
-  double zoom = 1779.8, moveX = -0.7431533999637661, moveY = -0.1394057861346605;
-  int maxIterations = 300;
-
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    pr = 1.5 * (x - w / 2) / (0.5 * zoom * w) + moveX;
-    pi = (y - h / 2) / (0.5 * zoom * h) + moveY;
-    newRe = newIm = oldRe = oldIm = 0; //these should start at 0,0
-    int i;
-    for(i = 0; i < maxIterations; i++) {
-        oldRe = newRe;
-        oldIm = newIm;
-        newRe = oldRe * oldRe - oldIm * oldIm + pr;
-        newIm = 2 * oldRe * oldIm + pi;
-        if((newRe * newRe + newIm * newIm) > 4) break;
-    }
-    image.data[w * y + x] = i % 256;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternX() {
-  if(verbose) std::cout << "x pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE;
-  int h = IMGSIZE;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_GREY;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 4);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    image.data[w * y + x + 0] = x % 256;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternY() {
-  if(verbose) std::cout << "y pattern" << std::endl;
-
-  Image image;
-  int w = IMGSIZE;
-  int h = IMGSIZE;
-  image.width = w;
-  image.height = h;
-  image.colorType = LCT_GREY;
-  image.bitDepth = 8;
-  image.data.resize(w * h * 4);
-  for(int y = 0; y < h; y++)
-  for(int x = 0; x < w; x++) {
-    image.data[w * y + x + 0] = y % 256;
-  }
-
-  doCodecTest(image);
-}
-
-void testPatternDisk(const std::string& filename) {
+void testFile(const std::string& filename) {
   if(verbose) std::cout << "file " << filename << std::endl;
 
-  Image image;
-  image.colorType = LCT_RGB;
-  image.bitDepth = 8;
-  lodepng::decode(image.data, image.width, image.height, filename, image.colorType, image.bitDepth);
+  std::vector<unsigned char> png;
+  if(lodepng::load_file(png, filename)) {
+    std::cout << "\nfailed to load file " << filename << std::endl << std::endl;
+    return;
+  }
 
-  doCodecTest(image);
+  // input image stats
+  {
+    lodepng::State inspect;
+    unsigned w, h;
+    lodepng_inspect(&w, &h, &inspect, png.data(), png.size());
+    total_pixels += (w * h);
+    total_png_orig_size += png.size();
+    size_t raw_size = lodepng_get_raw_size(w, h, &inspect.info_png.color);
+    total_raw_orig_size += raw_size;
+    if(verbose) std::cout << "orig compressed size: " << png.size() << ", pixels: " << (w * h) << ", raw size: " << raw_size << std::endl;
+  }
+
+  if(do_encode) {
+    Image image;
+    image.name = getFilePart(filename);
+    image.colorType = LCT_RGBA;
+    image.bitDepth = 8;
+    assertEquals(0, lodepng::decode(image.data, image.width, image.height, filename, image.colorType, image.bitDepth));
+
+    std::vector<unsigned char> temp = testEncode(image);
+    if(decode_encoded) png = temp;
+  }
+
+  if(do_decode) {
+    testDecode(png);
+  }
+
+  if(verbose) std::cout << std::endl;
+}
+
+void showHelp(int argc, char *argv[]) {
+  (void)argc;
+  std::cout << "Usage: " << argv[0] << " png_filenames... [OPTIONS...] [--dumpdir directory]" << std::endl;
+  std::cout << "Options:" << std::endl;
+  std::cout << "  -h: show this help" << std::endl;
+  std::cout << "  -v: verbose" << std::endl;
+  std::cout << "  -d: decode only" << std::endl;
+  std::cout << "  -e: encode only" << std::endl;
+  std::cout << "  -o: decode on original images rather than encoded ones (always true if -d without -e)" << std::endl;
+  std::cout << "  -m: apply modifications to encoder and decoder settings, the modification itself must be implemented or changed in the benchmark source code (search for apply_mods in the code, for encode and for decode)" << std::endl;
 }
 
 int main(int argc, char *argv[]) {
   verbose = false;
+  do_decode = true;
+  do_encode = true;
+  decode_encoded = true;
 
   std::vector<std::string> files;
 
   for(int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if(arg == "-v") verbose = true;
+    else if(arg == "-h" || arg == "--help") { showHelp(argc, argv); return 0; }
+    else if(arg == "-d") do_decode ? (do_encode = false) : (do_decode = true);
+    else if(arg == "-e") do_encode ? (do_decode = false) : (do_encode = true);
+    else if(arg == "-o") decode_encoded = false;
+    else if(arg == "-m") apply_mods = true;
+    else if(arg == "--dumpdir" && i + 1 < argc) {
+      dumpdir = argv[++i];
+    }
     else files.push_back(arg);
   }
 
-  std::cout << "NUM_DECODE: " << NUM_DECODE << std::endl;
+  if(!do_encode) decode_encoded = false;
 
   if(files.empty()) {
-    //testPatternDisk("testdata/frymire.png");
-    //testPatternGreyMandel();
-
-    testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
-    testPatternDisk("testdata/ephyse_franco-chon-s-butchery.png");
-    testPatternDisk("testdata/jwbalsley_subway-rats.png");
-    testPatternDisk("testdata/Biomenace_complete.png");
-    testPatternDisk("testdata/frymire.png");
-    testPatternDisk("testdata/lena.png");
-    testPatternDisk("testdata/linedrawing.png");
-    //testPatternSine();
-    //testPatternSineNoAlpha();
-    testPatternXor();
-    testPatternPseudoRan();
-    //testPatternSineXor();
-    testPatternGreyMandel();
-    //testPatternX();
-    //testPatternY();
-    //testPatternDisk("Data/purplesmall.png");
-
-    /*testPatternDisk("testdata/Ecce_homo_by_Hieronymus_Bosch.png");
-    testPatternSine();*/
-  } else {
-    for(size_t i = 0; i < files.size(); i++) {
-      testPatternDisk(files[i]);
-    }
+    std::cout << "must give .png filenames to benchamrk" << std::endl;
+    showHelp(argc, argv);
+    return 1;
   }
 
-  std::cout << "Total decoding time: " << total_dec_time/NUM_DECODE << "s (" << ((total_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s, " << ((total_in_pixels/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MP/s)" << std::endl;
-  std::cout << "Total encoding time: " << total_enc_time << "s (" << ((total_in_size/1024.0/1024.0)/(total_enc_time)) << " MB/s, (" << ((total_in_pixels/1024.0/1024.0)/(total_enc_time)) << " MP/s)" << std::endl;
-  std::cout << "Total uncompressed size  : " << total_in_size << std::endl;
-  std::cout << "Total encoded size: " << total_enc_size << " (" << (100.0 * total_enc_size / total_in_size) << "%)" << std::endl;
 
-  if(verbose) std::cout << "benchmark done" << std::endl;
+
+  for(size_t i = 0; i < files.size(); i++) {
+    testFile(files[i]);
+  }
+
+  // test images stats
+  if(verbose) {
+    std::cout << "Final Summary: " << std::endl;
+    std::cout << "input images: " << files.size() << std::endl;
+    std::cout << "total_pixels: " << total_pixels << std::endl;
+    // file size of original PNGs that were given as command line arguments to the tool
+    std::cout << "total_png_orig_size: " << total_png_orig_size << " (" << (8.0 * total_png_orig_size / total_pixels) << " bpp)" << std::endl;
+    // size of the data inside the original PNGs, dependent on color encoding (bit depth used in the PNG)
+    std::cout << "total_raw_orig_size: " << total_raw_orig_size << " (" << (8.0 * total_raw_orig_size / total_pixels) << " bpp)" << std::endl;
+    // size of the pixel data given to the benchmark encoder, dependent on color encoding (bit depth used in the image representation in the benchmark tool, probably 32 bits)
+    if(do_encode) std::cout << "total_raw_enc_size: " << total_raw_enc_size << " (" << (8.0 * total_raw_enc_size / total_pixels) << " bpp)" << std::endl;
+    // file size of PNGs created by the benchmark encoder
+    if(do_encode) std::cout << "total_png_out_size: " << total_png_out_size << " (" << (8.0 * total_png_out_size / total_pixels) << " bpp)" << std::endl;
+    // size of the data inside the PNGs created by the benchmark encoder, dependent on color encoding (bit depth used in the PNG), may differ from total_raw_orig_size since the encoder may choose to use a different color encoding
+    if(do_encode) std::cout << "total_raw_out_size: " << total_raw_out_size << " (" << (8.0 * total_raw_out_size / total_pixels) << " bpp)" << std::endl;
+    // size of file size of the PNGs given to the benchmark decoder, this could either be the original ones or the ones encoded by the benchmark encoder depending on user options
+    if(do_decode) std::cout << "total_png_in_size: " << total_png_in_size << " (" << (8.0 * total_png_in_size / total_pixels) << " bpp)" << std::endl;
+    // size of the data inside the PNGs mentioned at total_png_in_size, dependent on color encoding (bit depth used in the image representation in the benchmark tool, probably 32 bits)
+    if(do_decode) std::cout << "total_raw_in_size: " << total_raw_in_size << " (" << (8.0 * total_raw_in_size / total_pixels) << " bpp)" << std::endl;
+    // size of the pixel data requested from the benchmark decoder, dependent on color encoding requested (bit depth used in the image representation in the benchmark tool, probably 32 bits)
+    if(do_decode) std::cout << "total_raw_dec_size: " << total_raw_dec_size << " (" << (8.0 * total_raw_dec_size / total_pixels) << " bpp)" << std::endl;
+  }
+
+  // final encoding stats
+  if(do_encode) {
+    std::cout << "encoding time: " << total_enc_time << "s on " << total_pixels << " pixels and " << total_raw_out_size << " raw bytes ("
+              << ((total_raw_enc_size/1024.0/1024.0)/(total_enc_time)) << " MB/s, " << ((total_pixels/1024.0/1024.0)/(total_enc_time)) << " MP/s)" << std::endl;
+    std::cout << "encoded size: " << total_png_out_size << " (" << (100.0 * total_png_out_size / total_raw_out_size) << "%), bpp: "
+              << (8.0 * total_png_out_size / total_pixels) << std::endl;
+  }
+
+  // final decoding stats
+  if(do_decode) {
+    if(verbose) std::cout << "decoding iterations: " << NUM_DECODE << std::endl;
+    std::cout << "decoding time: " << total_dec_time/NUM_DECODE << "s on " << total_pixels << " pixels and " << total_png_in_size
+              << " compressed bytes (" << ((total_raw_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s, "
+              << ((total_pixels/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MP/s)" << std::endl;
+  }
 }

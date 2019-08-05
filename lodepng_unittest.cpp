@@ -38,20 +38,22 @@ clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-c
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+
 mv lodepng.cpp lodepng.c ; clang -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
 *) Compile with C with -pedantic but not -ansi flag so it warns about // style comments in C++-only ifdefs
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
 *) try lodepng_benchmark.cpp
-g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
 g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
 *) try the fuzzer
 clang++ -fsanitize=fuzzer lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
 
-*) Check if all examples compile without warnings:
+*) Check if all C++ examples compile without warnings:
 g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
+
+*) Check if all C examples compile without warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/''*.c -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp
 
 *) Check pngdetail.cpp:
@@ -75,8 +77,10 @@ rm *.o
 
 *) analyze with clang:
 clang++ lodepng.cpp --analyze
+
 More verbose:
 clang++ --analyze -Xanalyzer -analyzer-output=text lodepng.cpp
+
 Or html, look under lodepng.plist dir afterwards and find the numbered locations in the pages:
 clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 
@@ -85,18 +89,22 @@ clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) Try with clang++ and address sanitizer (to get line numbers, make sure 'llvm' is also installed to get 'llvm-symbolizer'
-clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
-clang++ -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -g3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -O3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+
+clang++ -g3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) Idem for undefined behavior
-clang++ -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi -O3 && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -O3 -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there (some are legit)
 cat lodepng.cpp lodepng_util.cpp | grep iostream
 cat lodepng.cpp lodepng_util.cpp | grep stdio
 cat lodepng.cpp lodepng_util.cpp | grep "#include"
 
-*) check that no plain "free", "malloc" and "realloc" used, but the lodepng_* versions instead
+*) try the Makefile
+make clean && make -j
+
+*) check that no plain "free", "malloc", "realloc", "strlen", "memcpy", ... used, but the lodepng_* versions instead
 
 *) check version dates in copyright message and LODEPNG_VERSION_STRING
 
@@ -156,6 +164,13 @@ std::string valtostr(const T* val) {
   return sstream.str();
 }
 
+template<typename T>
+std::string valtostr(const std::vector<T>& val) {
+  std::ostringstream sstream;
+  sstream << "[vector with size " << val.size() << "]";
+  return sstream.str();
+}
+
 // TODO: remove, use only ASSERT_EQUALS (it prints line number). Requires adding extra message ability to ASSERT_EQUALS
 template<typename T, typename U>
 void assertEquals(const T& expected, const U& actual, const std::string& message = "") {
@@ -193,14 +208,14 @@ void assertNoError(unsigned error) {
 #define STR_EXPAND(s) #s
 #define STR(s) STR_EXPAND(s)
 #define ASSERT_EQUALS(e, v) {\
-  if(e != v) {\
+  if((e) != (v)) {\
     std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_EQUALS failed: ";\
     std::cout << "Expected " << valtostr(e) << " but got " << valtostr(v) << ". " << std::endl;\
     fail();\
   }\
 }
 #define ASSERT_NOT_EQUALS(e, v) {\
-  if(e == v) {\
+  if((e) == (v)) {\
     std::cout << std::string("line ") + STR(__LINE__) + ": " + STR(v) + " ASSERT_NOT_EQUALS failed: ";\
     std::cout << "Expected not " << valtostr(e) << " but got " << valtostr(v) << ". " << std::endl;\
     fail();\
@@ -2922,8 +2937,104 @@ void testICCGray() {
   }
 }
 
+// input is base64-encoded png image and base64-encoded RGBA pixels (8 bit per channel)
+void testPNGSuiteImage(const std::string& name, bool expect_error, const std::string& png64, const std::string& pixels64) {
+  std::cout << "PngSuite: " << name << std::endl;
+  std::vector<unsigned char> png, pixels;
+  fromBase64(png, png64);
+  fromBase64(pixels, pixels64);
+
+  std::vector<unsigned char> decoded;
+  unsigned w, h;
+  unsigned error = lodepng::decode(decoded, w, h, png);
+  if(expect_error) {
+    ASSERT_EQUALS(true, error != 0);
+    return;
+  }
+
+  assertNoError(error);
+  ASSERT_EQUALS(pixels, decoded);
+}
+
+void testPNGSuite() {
+  /*
+  LICENSE of the PngSuite images:
+
+  PngSuite
+  --------
+
+  Permission to use, copy, modify and distribute these images for any
+  purpose and without fee is hereby granted.
+
+
+  (c) Willem van Schaik, 1996, 2011
+  */
+
+  // For now, to keep it reasonable in here, only a few of the smaller images are tested
+  // TODO: use a checksum of the pixels instead to avoid the huge base64 strings
+
+  testPNGSuiteImage("cdfn2c08.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAgCAIAAACgkq6HAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAAlwSFlzAAAAAQAAAAQAMlIwkwAAASdJREFUeJxV0mFx7DAMBOCvmRAQBVMIhVAIhaNwFPogvFI4CA2FQGggVBDcH3acNpMZja1daVfWWwWClWRvZ3OPGwGSA6YOjw5QepxgcX+lg2ZYKc7BXNip1G9f1bP6X9WqvqtMregBTk691NTCcbUYCXX19d0qbuqyVvVTDZNwdjWFJS+/c/PEw/5QZNnTGa1HIsNHeAUlEc0gztheyguRLlWN8XRs2Vv0Hm12xRGt5j2rS/qY753w6+oPI+OefuPNA/KyHuISZZYCJf+VyKVrlINR8nyw3I95MRy2XeCMwSiwK0FGSwxGODk4yyV8lgpP0o612UlTU3EtjXL5nNozrQTLr8RbxZMix9Z9cDQfxz1B2kK0WY0dabc5EtlRf0B1/Ku63McfFzN1pnMg8LcAAAAASUVORK5CYII=",
+      "/wAA//8AAP//EQD//1UA//9EAP//AAD//wAA//8AAP//AAD//wAA//9mAP//dwD//3cA//8zAP//AAD//wAA//8AAP//EQD//3cA//93AP//dwD//1UA//8AAP//AAD//wAA//9EAP//dwD//3cA//93AP//dwD//xEA//8AAP//AAD//4gA//+qAP/dqgD/7qoA//+qAP//RAD//wAA//8AAP//7gD/3f8A/3f/AP+Z/wD///8A//+IAP//AAD//yIA///uAP+q/wD/d/8A/3f/AP/d/wD//5kA//8AAP//MwD//+4A/3f/AP93/wD/d/8A/7v/AP//qgD//wAA//9EAP/d7gD/AP8A/wD/Vf8A/zP/RP8A//+7AP//EQD//1UA/7vuAP8A/yL/AP93/wD/Zv8z/wD//7sA//8iAP//VQD/qu4A/wD/iP8Au+7/AN3u/yL/Iv/uuwD//yIA//9mAP+Z7gD/AO6Z/wBV//8AiP//Iv9E/927AP//MwD//2YA/5nuAP8AzKr/VQD//yIz//8i/1X/zLsA//8zAP//dwD/iO4A/wC7u//MAMz/dyLu/yL/Vf/MuwD//0QA//93AP+I7gD/AKq7/+4Amf+IIsz/Iu5m/8y7AP//RAD//3cA/4juAP8Rqrv/7gCZ/5kizP8i7mb/u7sA//9EAP//dwD/iO4A/xGqu//uAJn/iCLM/yLuZv+7uwD//0QA//93AP+I7gD/ALu7/+4Aqv+IIt3/Iu5m/8y7AP//RAD//3cA/4juAP8Au7v/mQDu/1Ui//8i/1X/zLsA//9EAP//ZgD/me4A/wDdqv8iIv//EVX//yL/RP/MuwD//zMA//9mAP+Z7gD/AP+Z/wCI//8Au///Iv9E/927AP//MwD//1UA/6ruAP8A/2b/AN27/wDuu/8i/yL/7rsA//8iAP//VQD/zO4A/wD/Iv8A/3f/AP9m/zP/AP//uwD//yIA//9EAP/d7gD/Ef8A/xH/RP8R/yL/Vf8A//+7AP//EQD//zMA///uAP+I/wD/d/8A/3f/AP+7/wD//6oA//8AAP//IgD//+4A/6r/AP93/wD/d/8A/93/AP//mQD//wAA//8AAP//7gD/7v8A/4j/AP+q/wD///8A//+IAP//AAD//wAA//93AP//mQD/7pkA//+ZAP//mQD//zMA//8AAP//AAD//0QA//93AP//dwD//3cA//93AP//EQD//wAA//8AAP//EQD//3cA//93AP//dwD//1UA//8AAP//AAD//wAA//8AAP//VQD//3cA//93AP//IgD//wAA//8AAP//AAD//wAA//8AAP//RAD//zMA//8AAP//AAD//wAA/w==");
+  testPNGSuiteImage("cdhn2c08.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAICAIAAAAX52r4AAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAAlwSFlzAAAABAAAAAEAH+hVZQAAAOtJREFUeJx9kmuxwyAUhL/M1MBawEIsxEIsxEIs3FiohVjAAhaOhSMh9wePQtt0hwEG5rx2d7r4QADVxbg3eN3zxbr7iEc5BTOssJaHFtIHeleo9RDao8EBCawvIFgglN5dRIjwLLNsuHBh3RRy5AQgwSn8D2aYA+TlEEuZB+sr0EpeHJE/zl1PtshGrMPICAdz3GFNzIJoJANr8+foE6xRdAeBMJGQqhSGnE6kOzjAdPUULfjyRtECAQfXIEJmCYMY8D1T5HDU1JWi6WqdhkFkH63xZhCNIr8oPsAGkacvNu2d8YOH3ql+a9N/CM1cqmi++6QAAAAASUVORK5CYII=",
+      "/wAA//8AAP//AAD//wAA//8AAP//AAD//yIA//8zAP//RAD//1UA//9VAP//ZgD//2YA//93AP//dwD//3cA//93AP//dwD//2YA//9mAP//VQD//0QA//9EAP//IgD//xEA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8RAP//RAD//5kA///uAP//7gD//+4A/93uAP/M7gD/u+4A/6ruAP+Z7gD/me4A/5nuAP+I7gD/me4A/5nuAP+Z7gD/qu4A/7vuAP/M7gD/7u4A///uAP//7gD//8wA//9VAP//IgD//wAA//8AAP//AAD//wAA//8RAP//VQD//3cA//93AP//uwD/7v8A/6r/AP9m/wD/AP8A/wD/Iv8A/4j/AO6Z/wDdqv8Au6r/ALu7/wC7u/8Au7v/AMyq/wDdmf8A/5n/AP9m/wD/Ef8R/wD/mf8A/8z/AP//7gD//3cA//93AP//ZgD//yIA//8AAP//AAD//2YA//93AP//dwD//3cA/927AP93/wD/d/8A/1X/Ef8A/2b/AP93/wCq//8RRP//dwD//90Au//dAKr/3QCZ/90Aqv+7AMz/RAD//wB3//8AzMz/AP93/xH/M/93/wD/d/8A/6ruAP//dwD//3cA//93AP//dwD//yIA//8AAP//ZgD//3cA//93AP//dwD/3bsA/3f/AP93/wD/Vf8R/wD/Zv8A/3f/ALv//xFV//9VEf//qhHM/7sRu/+7Ebv/uxG7/5kR3f8zEf//AIj//wDdzP8A/3f/Ef8z/3f/AP93/wD/qu4A//93AP//dwD//3cA//93AP//EQD//wAA//8RAP//VQD//3cA//93AP//uwD/7v8A/6r/AP9m/wD/AP8A/wD/Iv8A/2b/AP+I/wDuiP8A3Zn/AN2Z/wDMmf8A3Zn/AN2Z/wDuiP8A/3f/AP9V/wD/Ef8i/wD/mf8A/8z/AP//7gD//3cA//93AP//ZgD//yIA//8AAP//AAD//wAA//8AAP//EQD//zMA//+IAP//3QD//90A///dAP/u3QD/zN0A/7vdAP+q3QD/qt0A/5ndAP+Z3QD/md0A/5ndAP+Z3QD/qt0A/7vdAP/M3QD/3d0A///dAP//3QD//90A//+7AP//RAD//yIA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//EQD//zMA//9EAP//RAD//1UA//9mAP//ZgD//2YA//9mAP//ZgD//2YA//9mAP//ZgD//1UA//9VAP//RAD//zMA//8iAP//EQD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA/w==");
+  testPNGSuiteImage("cdsn2c08.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAAlwSFlzAAAAAQAAAAEATyXE1gAAAHtJREFUeJxFzlENwkAURNFTgoFnYS3UQisBC1gACSCBSsDCVgIroSuhlbB8NIX5mUwyubldQzCQ2KjMcBZ8zKFiP0zcaRd53Stb3n2LNWvJSVIwX/PoNvbbNlQkJ0dqRI0Qxz5Qg+VlffxQXQuyEsphFxNP3V93hxQKfAEqsC/QF17WrgAAAABJRU5ErkJggg==",
+      "/wAA//8RAP//VQD//3cA//9mAP//RAD//wAA//8AAP//EQD//90A/7vuAP+Z7gD/me4A/93uAP//iAD//wAA//9VAP+77gD/AP9V/wC7u/8A3ar/M/8R/+67AP//IgD//3cA/4juAP8Au7v/uwC7/3ci3f8i7lX/zLsA//9EAP//dwD/iO4A/wC7u/+ZEcz/VTPu/yL/Vf/MuwD//0QA//9VAP+77gD/AP9E/wDdmf8A7oj/M/8R/+67AP//IgD//xEA///MAP/M3QD/md0A/6rdAP/u3QD//3cA//8AAP//AAD//xEA//9VAP//ZgD//2YA//8zAP//AAD//wAA/w==");
+  testPNGSuiteImage("s01i3p01.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAFS3GZcAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAANQTFRFAAD/injSVwAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII=",
+      "AAD//w==");
+  testPNGSuiteImage("s01n3p01.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAANQTFRFAAD/injSVwAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII=",
+      "AAD//w==");
+  testPNGSuiteImage("s02i3p01.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACAQMAAAE/f6/xAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAANQTFRFAP//GVwvJQAAAAtJREFUeJxjYAABAAAGAAH+jGfIAAAAAElFTkSuQmCC",
+      "AP///wD///8A////AP///w==");
+  testPNGSuiteImage("s02n3p01.png", false,
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACAQMAAABIeJ9nAAAABGdBTUEAAYagMeiWXwAAAANzQklUBAQEd/i1owAAAANQTFRFAP//GVwvJQAAAAxJREFUeJxjYGBgAAAABAAB9hc4VQAAAABJRU5ErkJggg==",
+      "AP///wD///8A////AP///w==");
+  testPNGSuiteImage("xd0n2c08.png", true,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAAIAAADMaKZiAAAABGdBTUEAAYagMeiWXwAAAEhJREFUeJzt1cEJADAMAkCF7JH9t3ITO0Qr9KH4zuErtA0EO4AKFPgcoO3kfUx4QIECD0qHH8KEBxQo8KB0OCOpQIG7cHejwAGCsfleD0DPSwAAAABJRU5ErkJggg==",
+      "");
+  testPNGSuiteImage("xd3n2c08.png", true,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAwIAAACLyNyyAAAABGdBTUEAAYagMeiWXwAAAEhJREFUeJzt1cEJADAMAkCF7JH9t3ITO0Qr9KH4zuErtA0EO4AKFPgcoO3kfUx4QIECD0qHH8KEBxQo8KB0OCOpQIG7cHejwAGCsfleD0DPSwAAAABJRU5ErkJggg==",
+      "");
+  testPNGSuiteImage("xd9n2c08.png", true,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgYwIAAAAS+qv/AAAABGdBTUEAAYagMeiWXwAAAEhJREFUeJzt1cEJADAMAkCF7JH9t3ITO0Qr9KH4zuErtA0EO4AKFPgcoO3kfUx4QIECD0qHH8KEBxQo8KB0OCOpQIG7cHejwAGCsfleD0DPSwAAAABJRU5ErkJggg==",
+      "");
+  testPNGSuiteImage("xdtn0g01.png", true,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAQAAAABbAUdZAAAABGdBTUEAAYagMeiWXwAAAABJRU5ErkJggg==",
+      "");
+  testPNGSuiteImage("xhdn0g08.png", true,
+      "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAAAAABDU1VNAAAABGdBTUEAAYagMeiWXwAAAEFJREFUeJxjZGAkABQIyLMMBQWMDwgp+PcfP2B5MBwUMMoRkGdkonlcDAYFjI/wyv7/z/iH5nExGBQwyuCVZWQEAFDl/nE14thZAAAAAElFTkSuQmCC",
+      "");
+  testPNGSuiteImage("xlfn0g04.png", true,
+      "iVBORwoKGgoAAAAKSUhEUgAAACAAAAAgBAAAAACT4cgpAAAABGdBTUEAAYagMeiWXwAAAEhJREFUeJxjYGAQFFRSMjZ2cQkKTUsrL2cgQwCV29FBjgAqd+ZMcgRQuatWkSOAyt29mxwBVO6ZM+QIoHLv3iVHAJX77h0ZAgAfFO4B6v9B+gAAAABJRU5ErkJggg==",
+      "");
+  testPNGSuiteImage("xs1n0g01.png", true,
+      "CVBORw0KGgoAAAANSUhEUgAAACAAAAAgAQAAAABbAUdZAAAABGdBTUEAAYagMeiWXwAAAFtJREFUeJwtzLEJAzAMBdHr0gSySiALejRvkBU8gsGNCmFFB1Hx4IovqurSpIRszqklUwbnUzRXEuIRsiG/SyY9G0JzJSVei9qynm9qyjBpLp0pYW7pbzBl8L8fEIdJL9AvFMkAAAAASUVORK5CYII=",
+      "");
+  testPNGSuiteImage("xs2n0g01.png", true,
+      "iVFORw0KGgoAAAANSUhEUgAAACAAAAAgAQAAAABbAUdZAAAABGdBTUEAAYagMeiWXwAAAFtJREFUeJwtzLEJAzAMBdHr0gSySiALejRvkBU8gsGNCmFFB1Hx4IovqurSpIRszqklUwbnUzRXEuIRsiG/SyY9G0JzJSVei9qynm9qyjBpLp0pYW7pbzBl8L8fEIdJL9AvFMkAAAAASUVORK5CYII=",
+      "");
+  testPNGSuiteImage("xs4n0g01.png", true,
+      "iVBOZw0KGgoAAAANSUhEUgAAACAAAAAgAQAAAABbAUdZAAAABGdBTUEAAYagMeiWXwAAAFtJREFUeJwtzLEJAzAMBdHr0gSySiALejRvkBU8gsGNCmFFB1Hx4IovqurSpIRszqklUwbnUzRXEuIRsiG/SyY9G0JzJSVei9qynm9qyjBpLp0pYW7pbzBl8L8fEIdJL9AvFMkAAAAASUVORK5CYII=",
+      "");
+  testPNGSuiteImage("xs7n0g01.png", true,
+      "iVBORw0KIAoAAAANSUhEUgAAACAAAAAgAQAAAABbAUdZAAAABGdBTUEAAYagMeiWXwAAAFtJREFUeJwtzLEJAzAMBdHr0gSySiALejRvkBU8gsGNCmFFB1Hx4IovqurSpIRszqklUwbnUzRXEuIRsiG/SyY9G0JzJSVei9qynm9qyjBpLp0pYW7pbzBl8L8fEIdJL9AvFMkAAAAASUVORK5CYII=",
+      "");
+  /*testPNGSuiteImage("name.png", false,
+      "png64",
+      "pixels64");
+  testPNGSuiteImage("error.png", true,
+      "png64",
+      "");*/
+}
+
 void doMain() {
   //PNG
+  testPNGSuite();
   testPNGCodec();
   testPngSuiteTiny();
   testPaletteFilterTypesZero();
