@@ -2601,6 +2601,108 @@ void testBkgdChunk2() {
   ASSERT_EQUALS(LCT_GREY, state2.info_png.color.colortype);
 }
 
+// Test particular cHRM+gAMA conversion to srgb
+// gamma = gamma given 100000x multiplied form of PNG, or 0 to set none at all
+// wx..by = whitepoint and chromaticities, given in the 100000x multiplied form of PNG
+// r, g, b: r, g, b values to encode in the PNG's data
+// er, eg, eb: expected r, g, b values after decoding and converting to sRGB
+void testChrmToSrgb(unsigned gamma, unsigned wx, unsigned wy, unsigned rx, unsigned ry, unsigned gx, unsigned gy, unsigned bx, unsigned by,
+                    unsigned char r, unsigned char g, unsigned char b, unsigned char er, unsigned char eg, unsigned char eb,
+                    int max_dist = 0) {
+  std::vector<unsigned char> image(4);
+  image[0] = r;
+  image[1] = g;
+  image[2] = b;
+  image[3] = 255;
+  lodepng::State state;
+  if(gamma) {
+    state.info_png.gama_defined = 1;
+    state.info_png.gama_gamma = gamma;
+  }
+  state.info_png.chrm_defined = 1;
+  state.info_png.chrm_white_x = wx;
+  state.info_png.chrm_white_y = wy;
+  state.info_png.chrm_red_x = rx;
+  state.info_png.chrm_red_y = ry;
+  state.info_png.chrm_green_x = gx;
+  state.info_png.chrm_green_y = gy;
+  state.info_png.chrm_blue_x = bx;
+  state.info_png.chrm_blue_y = by;
+
+  std::vector<unsigned char> image2(4);
+  convertToSrgb(image2.data(), image.data(), 1, 1, &state);
+
+  if(max_dist == 0) {
+    ASSERT_EQUALS(er, image2[0]);
+    ASSERT_EQUALS(eg, image2[1]);
+    ASSERT_EQUALS(eb, image2[2]);
+  } else {
+    ASSERT_NEAR(er, image2[0], max_dist);
+    ASSERT_NEAR(eg, image2[1], max_dist);
+    ASSERT_NEAR(eb, image2[2], max_dist);
+  }
+
+  // Also test the opposite direction
+
+  std::vector<unsigned char> image3(4);
+  convertFromSrgb(image3.data(), image2.data(), 1, 1, &state);
+
+  if(max_dist == 0) {
+    ASSERT_EQUALS(r, image3[0]);
+    ASSERT_EQUALS(g, image3[1]);
+    ASSERT_EQUALS(b, image3[2]);
+  } else {
+    ASSERT_NEAR(r, image3[0], max_dist);
+    ASSERT_NEAR(g, image3[1], max_dist);
+    ASSERT_NEAR(b, image3[2], max_dist);
+  }
+}
+
+void testChrmToSrgb() {
+  std::cout << "testChrmToSrgb" << std::endl;
+  // srgb gamma approximation and chromaticities defined as standard by png (multiplied by 100000)
+  int sg = 45455; // srgb gamma approximation
+  (void)sg;
+  int swx = 31270;
+  int swy = 32900;
+  int srx = 64000;
+  int sry = 33000;
+  int sgx = 30000;
+  int sgy = 60000;
+  int sbx = 15000;
+  int sby = 6000;
+
+  testChrmToSrgb(sg, swx, swy, srx, sry, sgx, sgy, sbx, sby, 0, 0, 0, 0, 0, 0);
+  testChrmToSrgb(sg, swx, swy, srx, sry, sgx, sgy, sbx, sby, 255, 255, 255, 255, 255, 255);
+
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 50, 50, 50, 50, 50, 50);
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 128, 128, 128, 128, 128, 128);
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 200, 200, 200, 200, 200, 200);
+
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 255, 0, 0, 255, 0, 0);
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 0, 255, 0, 0, 255, 0);
+  testChrmToSrgb(0, swx, swy, srx, sry, sgx, sgy, sbx, sby, 0, 0, 255, 0, 0, 255);
+
+  // swap red and green chromaticities
+  testChrmToSrgb(0, swx, swy, sgx, sgy, srx, sry, sbx, sby, 255, 0, 0, 0, 255, 0);
+  testChrmToSrgb(0, swx, swy, sgx, sgy, srx, sry, sbx, sby, 0, 255, 0, 255, 0, 0);
+  testChrmToSrgb(0, swx, swy, sgx, sgy, srx, sry, sbx, sby, 0, 0, 255, 0, 0, 255);
+
+  // swap red/green/blue chromaticities
+  testChrmToSrgb(0, swx, swy, sgx, sgy, sbx, sby, srx, sry, 255, 0, 0, 0, 255, 0);
+  testChrmToSrgb(0, swx, swy, sgx, sgy, sbx, sby, srx, sry, 0, 255, 0, 0, 0, 255);
+  testChrmToSrgb(0, swx, swy, sgx, sgy, sbx, sby, srx, sry, 0, 0, 255, 255, 0, 0);
+
+  // different whitepoint does not affect white or gray, due to the relative rendering intent (adaptation)
+  testChrmToSrgb(0, 35000, 25000, srx, sry, sgx, sgy, sbx, sby, 0, 0, 0, 0, 0, 0);
+  testChrmToSrgb(0, 35000, 25000, srx, sry, sgx, sgy, sbx, sby, 50, 50, 50, 50, 50, 50);
+  testChrmToSrgb(0, 35000, 25000, srx, sry, sgx, sgy, sbx, sby, 128, 128, 128, 128, 128, 128);
+  testChrmToSrgb(0, 35000, 25000, srx, sry, sgx, sgy, sbx, sby, 200, 200, 200, 200, 200, 200);
+  testChrmToSrgb(0, 35000, 25000, srx, sry, sgx, sgy, sbx, sby, 255, 255, 255, 255, 255, 255);
+}
+
+
+
 void testXYZ() {
   std::cout << "testXYZ" << std::endl;
   unsigned w = 512, h = 512;
@@ -3061,6 +3163,7 @@ void doMain() {
   test16bitColorEndianness();
   testAutoColorModels();
   testNoAutoConvert();
+  testChrmToSrgb();
   testXYZ();
   testICC();
   testICCGray();

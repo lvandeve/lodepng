@@ -666,7 +666,7 @@ static void mulMatrix(float* x2, float* y2, float* z2, const float* m, double x,
 
 static void mulMatrixMatrix(float* result, const float* a, const float* b) {
   int i;
-  float temp[9];
+  float temp[9]; /* temp is to allow result and a or b to be the same */
   mulMatrix(&temp[0], &temp[3], &temp[6], a, b[0], b[3], b[6]);
   mulMatrix(&temp[1], &temp[4], &temp[7], a, b[1], b[4], b[7]);
   mulMatrix(&temp[2], &temp[5], &temp[8], a, b[2], b[5], b[8]);
@@ -730,7 +730,7 @@ static unsigned getChrmMatrixXY(float* m,
     float rX = rx / ry, rY = 1, rZ = (1 - rx - ry) / ry;
     float gX = gx / gy, gY = 1, gZ = (1 - gx - gy) / gy;
     float bX = bx / by, bY = 1, bZ = (1 - bx - by) / by;
-    return getChrmMatrixXYZ(m, wX, wY, wZ, rX, gX, bX, rY, gY, bY, rZ, gZ, bZ);
+    return getChrmMatrixXYZ(m, wX, wY, wZ, rX, rY, rZ, gX, gY, gZ, bX, bY, bZ);
   }
 }
 
@@ -1350,7 +1350,7 @@ unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
     float* xyz = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
     float whitepoint[3];
     error = convertToXYZ(&xyz[0], whitepoint, in, w, h, state_in);
-    if (!error) convertFromXYZ(out, &xyz[0], w, h, state_out, whitepoint, rendering_intent);
+    if (!error) error = convertFromXYZ(out, &xyz[0], w, h, state_out, whitepoint, rendering_intent);
     lodepng_free(xyz);
     return error;
   }

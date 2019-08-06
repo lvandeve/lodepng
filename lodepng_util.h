@@ -252,9 +252,6 @@ unsigned convertFromXYZFloat(float* out, const float* in, unsigned w, unsigned h
                              const float whitepoint[3], unsigned rendering_intent);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
-// TODO: add convertToSrgb and convertFromSrgb: may be faster than using XYZ as
-// intermediatery, and even skip computation altogether if it already was sRGB.
-
 /*
 The information for extractZlibInfo.
 */
