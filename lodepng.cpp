@@ -884,10 +884,10 @@ static unsigned generateFixedLitLenTree(HuffmanTree* tree) {
   if(!bitlen) return 83; /*alloc fail*/
 
   /*288 possible codes: 0-255=literals, 256=endcode, 257-285=lengthcodes, 286-287=unused*/
-  for(i =   0; i <= 143; ++i) bitlen[i] = 8;
-  for(i = 144; i <= 255; ++i) bitlen[i] = 9;
-  for(i = 256; i <= 279; ++i) bitlen[i] = 7;
-  for(i = 280; i <= 287; ++i) bitlen[i] = 8;
+  for(i =   0; i < 144; ++i) bitlen[i] = 8;
+  for(i = 144; i < 256; ++i) bitlen[i] = 9;
+  for(i = 256; i < 280; ++i) bitlen[i] = 7;
+  for(i = 280; i < 288; ++i) bitlen[i] = 8;
 
   error = HuffmanTree_makeFromLengths(tree, bitlen, NUM_DEFLATE_CODE_SYMBOLS, 15);
 
@@ -2983,33 +2983,28 @@ static void getPixelColorRGBA8(unsigned char* r, unsigned char* g,
   if(mode->colortype == LCT_GREY) {
     if(mode->bitdepth == 8) {
       *r = *g = *b = in[i];
-      if(mode->key_defined && *r == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = (mode->key_defined && *r == mode->key_r) ? 0 : 255;
     } else if(mode->bitdepth == 16) {
       *r = *g = *b = in[i * 2 + 0];
-      if(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = (mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r) ? 0 : 255;
     } else {
       unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
       size_t j = i * mode->bitdepth;
       unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
       *r = *g = *b = (value * 255) / highest;
-      if(mode->key_defined && value == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = (mode->key_defined && value == mode->key_r) ? 0 : 255;
     }
   } else if(mode->colortype == LCT_RGB) {
     if(mode->bitdepth == 8) {
       *r = in[i * 3 + 0]; *g = in[i * 3 + 1]; *b = in[i * 3 + 2];
-      if(mode->key_defined && *r == mode->key_r && *g == mode->key_g && *b == mode->key_b) *a = 0;
-      else *a = 255;
+      *a = (mode->key_defined && *r == mode->key_r && *g == mode->key_g && *b == mode->key_b) ? 0 : 255;
     } else {
       *r = in[i * 6 + 0];
       *g = in[i * 6 + 2];
       *b = in[i * 6 + 4];
-      if(mode->key_defined && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
+      *a = (mode->key_defined && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
          && 256U * in[i * 6 + 2] + in[i * 6 + 3] == mode->key_g
-         && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b) *a = 0;
-      else *a = 255;
+         && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b) ? 0 : 255;
     }
   } else if(mode->colortype == LCT_PALETTE) {
     unsigned index;
