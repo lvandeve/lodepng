@@ -1,0 +1,75 @@
+.TH "LodePNG User Manual" 1 "04 Nov 2016" "LodePNG documentation"
+
+.SH NAME
+pngdetail
+
+.SH DESCRIPTION
+Shows detailed information about a PNG image and its compression.
+ Based of LodePNG library.
+
+.SH SYNOPSIS
+pngdetail [filename.png] [options]...
+
+.SH OPTIONS
+.TP
+-s
+show PNG file summary on one line
+.TP
+-p
+show PNG file info
+.TP
+-P
+show extra PNG file info
+.TP
+-l
+show palette (if any)
+.TP
+-a
+show ascii art rendering of PNG image. Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).
+.TP
+-A
+show larger ascii art rendering of PNG image. Adding more A's makes it larger.
+.TP
+-#
+show every pixel color in CSS RGBA hex format (huge output)
+.TP
+-@
+show every pixel color with 16-bit per channel (huge output)
+.TP
+-c
+show PNG chunks
+.TP
+-C
+show PNG chunks (alternate format)
+.TP
+-f
+show PNG filters
+.TP
+-z
+show Zlib info
+.TP
+-b
+show Zlib blocks
+.TP
+-B
+show Zlib block symbol counts
+.TP
+-7
+show all lz77 values (huge output)
+.TP
+-x
+print most numbers in hexadecimal
+
+.SH EXAMPLE
+pngdetail sample.png
+
+.SH COPYRIGHT
+Copyright 2005-2013 Lode Vandevenne.
+ All rights reserved.
+
+.SH SEE ALSO
+ pngreencode(1), pnglossy(1), pnginfo(1), pngcheck(1).
+
+.SH CONTACTS
+ Website: http://lodev.org/lodepng/
+ Autors: Lode Vandevenne <lode.vandevenne@gmail.com>

@@ -33,6 +33,7 @@ Not part of the stable API of lodepng, more loose separate utils.
 
 #include <string>
 #include <vector>
+#include <cstdlib>
 #include "lodepng.h"
 
 namespace lodepng {

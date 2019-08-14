@@ -33,6 +33,7 @@ freely, subject to the following restrictions:
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <cstdlib>
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -35,6 +35,15 @@ This sample shows how LodePNG can be used for a conforming PNG editor.
 
 #include <iostream>
 
+void showHelp(char * pname)
+{
+    std::cout << "pngreencode by Lode Vandevenne\n"
+              "Reencode a PNG image\n"
+              "Usage: " << pname <<
+              " sample.png sample-re.png\n"
+              << std::endl;
+}
+
 int main(int argc, char *argv[]) {
   std::vector<unsigned char> image;
   unsigned w, h;
@@ -45,6 +54,7 @@ int main(int argc, char *argv[]) {
   //check if user gave a filename
   if(argc < 3) {
     std::cout << "please provide in and out filename" << std::endl;
+    showHelp(argv[0]);
     return 0;
   }
 
