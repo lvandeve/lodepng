@@ -31,33 +31,35 @@ Testing instructions:
 *) Ensure no tests commented out below or early return in doMain
 
 *) Compile with g++ with all warnings and run the unit test
-g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
+g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with clang, which may sometimes give different warnings
-clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3
+clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3
 
 *) Compile with pure ISO C90 and all warnings:
-mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
-mv lodepng.cpp lodepng.c ; clang -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+mv lodepng.cpp lodepng.c ; clang -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
 *) Compile with C with -pedantic but not -ansi flag so it warns about // style comments in C++-only ifdefs
-mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedantic -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
 *) try lodepng_benchmark.cpp
-g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
+g++ lodepng.cpp lodepng_benchmark.cpp -Werror -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
 *) try the fuzzer
 clang++ -fsanitize=fuzzer lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
 
+clang++ -fsanitize=fuzzer,address,undefined lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
+
 *) Check if all C++ examples compile without warnings:
-g++ -I ./ lodepng.cpp examples/''*.cpp -W -Wall -ansi -pedantic -O3 -c
+g++ -I ./ lodepng.cpp examples/''*.cpp -Werror -W -Wall -ansi -pedantic -O3 -c
 
 *) Check if all C examples compile without warnings:
-mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/''*.c -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp
+mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/''*.c -Werror -W -Wall -ansi -pedantic -O3 -c ; mv lodepng.c lodepng.cpp
 
 *) Check pngdetail.cpp:
-g++ lodepng.cpp lodepng_util.cpp pngdetail.cpp -W -Wall -ansi -pedantic -O3 -o pngdetail
+g++ lodepng.cpp lodepng_util.cpp pngdetail.cpp -Werror -W -Wall -ansi -pedantic -O3 -o pngdetail
 ./pngdetail testdata/PngSuite/basi0g01.png
 
 *) Test compiling with some code sections with #defines disabled, for unused static function warnings etc...
@@ -89,12 +91,12 @@ clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) Try with clang++ and address sanitizer (to get line numbers, make sure 'llvm' is also installed to get 'llvm-symbolizer'
-clang++ -O3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -O3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
-clang++ -g3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -g3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) Idem for undefined behavior
-clang++ -O3 -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -O3 -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there (some are legit)
 cat lodepng.cpp lodepng_util.cpp | grep iostream
@@ -111,7 +113,7 @@ make clean && make -j
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 
 *) check examples/sdl.cpp with the png test suite images (the "x" ones are expected to show error)
-g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng && ./showpng testdata/PngSuite/''*.png
+g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Werror -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng && ./showpng testdata/PngSuite/''*.png
 
 *) strip trailing spaces and ensure consistent newlines
 
@@ -2661,16 +2663,15 @@ void testChrmToSrgb(unsigned gamma, unsigned wx, unsigned wy, unsigned rx, unsig
 void testChrmToSrgb() {
   std::cout << "testChrmToSrgb" << std::endl;
   // srgb gamma approximation and chromaticities defined as standard by png (multiplied by 100000)
-  int sg = 45455; // srgb gamma approximation
-  (void)sg;
-  int swx = 31270;
-  int swy = 32900;
-  int srx = 64000;
-  int sry = 33000;
-  int sgx = 30000;
-  int sgy = 60000;
-  int sbx = 15000;
-  int sby = 6000;
+  unsigned sg = 45455; // srgb gamma approximation
+  unsigned swx = 31270;
+  unsigned swy = 32900;
+  unsigned srx = 64000;
+  unsigned sry = 33000;
+  unsigned sgx = 30000;
+  unsigned sgy = 60000;
+  unsigned sbx = 15000;
+  unsigned sby = 6000;
 
   testChrmToSrgb(sg, swx, swy, srx, sry, sgx, sgy, sbx, sby, 0, 0, 0, 0, 0, 0);
   testChrmToSrgb(sg, swx, swy, srx, sry, sgx, sgy, sbx, sby, 255, 255, 255, 255, 255, 255);

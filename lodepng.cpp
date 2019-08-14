@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190805
+LodePNG version 20190814
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190805";
+const char* LODEPNG_VERSION_STRING = "20190814";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -168,6 +168,7 @@ About uivector, ucvector and string:
 */
 
 #ifdef LODEPNG_COMPILE_ZLIB
+#ifdef LODEPNG_COMPILE_ENCODER
 /*dynamic vector of unsigned ints*/
 typedef struct uivector {
   unsigned* data;
@@ -215,7 +216,6 @@ static void uivector_init(uivector* p) {
   p->size = p->allocsize = 0;
 }
 
-#ifdef LODEPNG_COMPILE_ENCODER
 /*returns 1 if success, 0 if failure ==> nothing done*/
 static unsigned uivector_push_back(uivector* p, unsigned c) {
   if(!uivector_resize(p, p->size + 1)) return 0;
@@ -455,34 +455,73 @@ static void writeBitsReversed(LodePNGBitWriter* writer, unsigned value, size_t n
 
 typedef struct {
   const unsigned char* data;
-  size_t bitsize;
+  size_t size; /*size of data in bytes*/
+  size_t bitsize; /*size of data in bits, end of valid bp values, should be 8*size*/
   size_t bp;
+  unsigned buffer; /*buffer for reading bits. NOTE: 'unsigned' must support at least 32 bits*/
 } LodePNGBitReader;
 
 /* data size argument is in bytes */
 void LodePNGBitReader_init(LodePNGBitReader* reader, const unsigned char* data, size_t size) {
   reader->data = data;
+  reader->size = size;
   reader->bitsize = size << 3u; /* size in bits */
   reader->bp = 0;
+  reader->buffer = 0;
 }
 
-/* Out of bounds must be checked before using this function */
-static unsigned readBits(LodePNGBitReader* reader, size_t nbits) {
-  /* TODO: faster bit reading technique */
-  if(nbits == 1) { /* compiler should statically compile only this case if nbits == 1 */
-    unsigned result = (unsigned)(reader->data[reader->bp >> 3u] >> (reader->bp & 0x7u)) & 1u;
-    reader->bp++;
-    return result;
+/*Ensures the reader can at least read nbits bits in one or more readBits calls.
+Returns 0 if there are enough bits available, or amount of shortage of bits if not.
+The 'nbits' parameter must be <= 17. */
+static unsigned ensureBits(LodePNGBitReader* reader, size_t nbits) {
+  if(nbits == 1) { /*the compiler is intended to perform do this 'if' statically for efficiency*/
+    if(reader->bp >= reader->bitsize) return 1;
+    reader->buffer = (unsigned)reader->data[reader->bp >> 3u] >> (reader->bp & 7u);
+    return 0;
   } else {
-    unsigned result = 0, i;
-    for(i = 0; i != nbits; ++i) {
-      result += (((unsigned)reader->data[reader->bp >> 3u] >> (unsigned)(reader->bp & 0x7u)) & 1u) << i;
-      reader->bp++;
+    size_t start = reader->bp >> 3u;
+    unsigned rem = reader->bitsize - reader->bp;
+    if(rem >= 24) {
+      reader->buffer = (unsigned)(reader->data[start + 0] | (unsigned)((reader->data[start + 1] << 8u)) |
+                       (unsigned)(reader->data[start + 2] << 16u)) >> (reader->bp & 7u);
+      return 0;
+    } else {
+      size_t size = reader->size;
+      reader->buffer = 0;
+      if(start + 0 < size) reader->buffer |= reader->data[start + 0];
+      if(start + 1 < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
+      if(start + 2 < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
+      reader->buffer >>= (reader->bp & 7u);
+      return (rem >= nbits) ? 0 : (nbits - rem);
     }
-    return result;
   }
 }
+
+/* Get bits without advancing the bit pointer. Must have enough bits available with ensureBits */
+static unsigned peekBits(LodePNGBitReader* reader, size_t nbits) {
+  return reader->buffer & ((1u << nbits) - 1u);
+}
+
+/* Must have enough bits available with ensureBits */
+static void advanceBits(LodePNGBitReader* reader, size_t nbits) {
+  reader->buffer >>= nbits;
+  reader->bp += nbits;
+}
+
+/* Must have enough bits available with ensureBits */
+static unsigned readBits(LodePNGBitReader* reader, size_t nbits) {
+  unsigned result = peekBits(reader, nbits);
+  advanceBits(reader, nbits);
+  return result;
+}
 #endif /*LODEPNG_COMPILE_DECODER*/
+
+static unsigned reverseBits(unsigned bits, unsigned num) {
+  /*TODO: implement faster lookup table based version when needed*/
+  unsigned i, result = 0;
+  for(i = 0; i < num; i++) result |= ((bits >> (num - i - 1u)) & 1u) << i;
+  return result;
+}
 
 /* ////////////////////////////////////////////////////////////////////////// */
 /* / Deflate - Huffman                                                      / */
@@ -528,83 +567,133 @@ static const unsigned CLCL_ORDER[NUM_CODE_LENGTH_CODES]
 Huffman tree struct, containing multiple representations of the tree
 */
 typedef struct HuffmanTree {
-  unsigned* tree2d;
-  unsigned* tree1d;
-  unsigned* lengths; /*the lengths of the codes of the 1d-tree*/
+  unsigned* codes; /*the huffman codes (bit patterns representing the symbols)*/
+  unsigned* lengths; /*the lengths of the huffman codes*/
   unsigned maxbitlen; /*maximum number of bits a single code can get*/
   unsigned numcodes; /*number of symbols in the alphabet = number of codes*/
+  /* for reading only */
+  unsigned* table_len; /*length of symbol from lookup table, or max length if secondary lookup needed*/
+  unsigned* table_value; /*value of symbol from lookup table, or pointer to secondary table if needed*/
 } HuffmanTree;
 
 /*function used for debug purposes to draw the tree in ascii art with C++*/
 /*
 static void HuffmanTree_draw(HuffmanTree* tree) {
   std::cout << "tree. length: " << tree->numcodes << " maxbitlen: " << tree->maxbitlen << std::endl;
-  for(size_t i = 0; i != tree->tree1d.size; ++i) {
+  for(size_t i = 0; i != tree->codes.size; ++i) {
     if(tree->lengths.data[i])
-      std::cout << i << " " << tree->tree1d.data[i] << " " << tree->lengths.data[i] << std::endl;
+      std::cout << i << " " << tree->codes.data[i] << " " << tree->lengths.data[i] << std::endl;
   }
   std::cout << std::endl;
 }*/
 
 static void HuffmanTree_init(HuffmanTree* tree) {
-  tree->tree2d = 0;
-  tree->tree1d = 0;
+  tree->codes = 0;
   tree->lengths = 0;
+  tree->table_len = 0;
+  tree->table_value = 0;
 }
 
 static void HuffmanTree_cleanup(HuffmanTree* tree) {
-  lodepng_free(tree->tree2d);
-  lodepng_free(tree->tree1d);
+  lodepng_free(tree->codes);
   lodepng_free(tree->lengths);
+  lodepng_free(tree->table_len);
+  lodepng_free(tree->table_value);
 }
 
-/*the tree representation used by the decoder. return value is error*/
-static unsigned HuffmanTree_make2DTree(HuffmanTree* tree) {
-  unsigned nodefilled = 0; /*up to which node it is filled*/
-  unsigned treepos = 0; /*position in the tree (1 of the numcodes columns)*/
-  unsigned n, i;
+/* amount of bits for first huffman table lookup, see HuffmanTree_makeTable and huffmanDecodeSymbol.*/
+#define FIRSTBITS 8u
 
-  tree->tree2d = (unsigned*)lodepng_malloc(tree->numcodes * 2 * sizeof(unsigned));
-  if(!tree->tree2d) return 83; /*alloc fail*/
+/* make table for huffman decoding */
+static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
+  static const unsigned headsize = 1u << FIRSTBITS; /*size of the first table*/
+  static const unsigned mask = headsize - 1u;
+  size_t i, pointer, size; /*total table size*/
+  unsigned* maxlens = (unsigned*)lodepng_malloc(headsize * sizeof(unsigned));
+  if(!maxlens) return 83; /*alloc fail*/
 
-  /*
-  convert tree1d[] to tree2d[][]. In the 2D array, a value of 32767 means
-  uninited, a value >= numcodes is an address to another bit, a value < numcodes
-  is a code. The 2 rows are the 2 possible bit values (0 or 1), there are as
-  many columns as codes - 1.
-  A good huffman tree has N * 2 - 1 nodes, of which N - 1 are internal nodes.
-  Here, the internal nodes are stored (what their 0 and 1 option point to).
-  There is only memory for such good tree currently, if there are more nodes
-  (due to too long length codes), error 55 will happen
-  */
-  for(n = 0; n < tree->numcodes * 2; ++n) {
-    tree->tree2d[n] = 32767; /*32767 here means the tree2d isn't filled there yet*/
+  /* compute maxlens: max total bit length of symbols sharing prefix in the first table*/
+  for(i = 0; i < headsize; ++i) maxlens[i] = 0;
+  for(i = 0; i < tree->numcodes; i++) {
+    unsigned symbol = tree->codes[i];
+    unsigned l = tree->lengths[i];
+    unsigned index;
+    if(l <= FIRSTBITS) continue; /*symbols that fit in first table don't increase secondary table size*/
+    /*get the FIRSTBITS MSBs, the MSBs of the symbol are encoded first. See later comment about the reversing*/
+    index = reverseBits(symbol >> (l - FIRSTBITS), FIRSTBITS);
+    maxlens[index] = LODEPNG_MAX(maxlens[index], l);
   }
+  /* compute total table size: size of first table plus all secondary tables for symbols longer than FIRSTBITS */
+  size = headsize;
+  for(i = 0; i < headsize; ++i) {
+    unsigned l = maxlens[i];
+    if(l > FIRSTBITS) size += (1u << (l - FIRSTBITS));
+  }
+  tree->table_len = (unsigned*)lodepng_malloc(size * sizeof(unsigned));
+  tree->table_value = (unsigned*)lodepng_malloc(size * sizeof(unsigned));
+  if(!tree->table_len || !tree->table_value) {
+    lodepng_free(maxlens);
+    return 83; /*alloc fail*/
+  }
+  /*initialize with an invalid length to indicate unused entries*/
+  for(i = 0; i < size; ++i) tree->table_len[i] = 16;
 
-  for(n = 0; n < tree->numcodes; ++n) /*the codes*/ {
-    for(i = 0; i != tree->lengths[n]; ++i) /*the bits for this code*/ {
-      unsigned char bit = (unsigned char)((tree->tree1d[n] >> (tree->lengths[n] - i - 1)) & 1);
-      /*oversubscribed, see comment in lodepng_error_text*/
-      if(treepos > 2147483647 || treepos + 2 > tree->numcodes) return 55;
-      if(tree->tree2d[2 * treepos + bit] == 32767) /*not yet filled in*/ {
-        if(i + 1 == tree->lengths[n]) /*last bit*/ {
-          tree->tree2d[2 * treepos + bit] = n; /*put the current code in it*/
-          treepos = 0;
-        } else {
-          /*put address of the next step in here, first that address has to be found of course
-          (it's just nodefilled + 1)...*/
-          ++nodefilled;
-          /*addresses encoded with numcodes added to it*/
-          tree->tree2d[2 * treepos + bit] = nodefilled + tree->numcodes;
-          treepos = nodefilled;
-        }
+  /*fill in the first table for long symbols: max prefix size and pointer to secondary tables*/
+  pointer = headsize;
+  for(i = 0; i < headsize; ++i) {
+    unsigned l = maxlens[i];
+    if(l <= FIRSTBITS) continue;
+    tree->table_len[i] = l;
+    tree->table_value[i] = pointer;
+    pointer += (1u << (l - FIRSTBITS));
+  }
+  lodepng_free(maxlens);
+
+  /*fill in the first table for short symbols, or secondary table for long symbols*/
+  for(i = 0; i < tree->numcodes; ++i) {
+    unsigned l = tree->lengths[i];
+    unsigned symbol = tree->codes[i]; /*the huffman bit pattern. i itself is the value.*/
+    /*reverse bits, because the huffman bits are given in MSB first order but the bit reader reads LSB first*/
+    unsigned reverse = reverseBits(symbol, l);
+    if(l == 0) {
+      continue;
+    } else if(l <= FIRSTBITS) {
+      /*short symbol, fully in first table, replicated num times if l < FIRSTBITS*/
+      unsigned num = 1u << (FIRSTBITS - l);
+      unsigned j;
+      for(j = 0; j < num; ++j) {
+        /*bit reader will read the l bits of symbol first, the remaining FIRSTBITS - l bits go to the MSB's*/
+        unsigned index = reverse | (j << l);
+        if(tree->table_len[index] != 16) return 55; /*invalid tree: long symbol shares prefix with short symbol*/
+        tree->table_len[index] = l;
+        tree->table_value[index] = i;
       }
-      else treepos = tree->tree2d[2 * treepos + bit] - tree->numcodes;
+    } else {
+      /*long symbol, shares prefix with other long symbols in first lookup table, needs second lookup*/
+      /*the FIRSTBITS MSBs of the symbol are the first table index*/
+      unsigned index = reverse & mask;
+      unsigned maxlen = tree->table_len[index];
+      /*log2 of secondary table length, should be >= l - FIRSTBITS*/
+      unsigned tablelen = maxlen - FIRSTBITS;
+      unsigned start = tree->table_value[index]; /*starting index in secondary table*/
+      unsigned num = 1u << (tablelen - (l - FIRSTBITS)); /*amount of entries of this symbol in secondary table*/
+      unsigned j;
+      if(maxlen < l) return 55; /*invalid tree: long symbol shares prefix with short symbol*/
+      for(j = 0; j < num; ++j) {
+        unsigned reverse2 = reverse >> FIRSTBITS; /* l - FIRSTBITS bits */
+        unsigned index2 = start + (reverse2 | (j << (l - FIRSTBITS)));
+        tree->table_len[index2] = l;
+        tree->table_value[index2] = i;
+      }
     }
   }
 
-  for(n = 0; n < tree->numcodes * 2; ++n) {
-    if(tree->tree2d[n] == 32767) tree->tree2d[n] = 0; /*remove possible remaining 32767's*/
+  /* A good huffman tree has N * 2 - 1 nodes, of which N - 1 are internal nodes.
+  If that is not the case (due to too long length codes), the table will not
+  have been fully used, and this is an error (not all bit combinations can be
+  decoded): an oversubscribed huffman tree, indicated by error 55. */
+  for(i = 0; i < size; ++i) {
+    if(tree->table_len[i] == 16) return 55;
   }
 
   return 0;
@@ -616,39 +705,39 @@ numcodes, lengths and maxbitlen must already be filled in correctly. return
 value is error.
 */
 static unsigned HuffmanTree_makeFromLengths2(HuffmanTree* tree) {
-  uivector blcount;
-  uivector nextcode;
+  unsigned* blcount;
+  unsigned* nextcode;
   unsigned error = 0;
   unsigned bits, n;
 
-  uivector_init(&blcount);
-  uivector_init(&nextcode);
-
-  tree->tree1d = (unsigned*)lodepng_malloc(tree->numcodes * sizeof(unsigned));
-  if(!tree->tree1d) error = 83; /*alloc fail*/
-
-  if(!uivector_resizev(&blcount, tree->maxbitlen + 1, 0)
-  || !uivector_resizev(&nextcode, tree->maxbitlen + 1, 0))
-    error = 83; /*alloc fail*/
+  tree->codes = (unsigned*)lodepng_malloc(tree->numcodes * sizeof(unsigned));
+  blcount = (unsigned*)lodepng_malloc((tree->maxbitlen + 1) * sizeof(unsigned));
+  nextcode = (unsigned*)lodepng_malloc((tree->maxbitlen + 1) * sizeof(unsigned));
+  if(!tree->codes || !blcount || !nextcode) error = 83; /*alloc fail*/
 
   if(!error) {
+    for(n = 0; n != tree->maxbitlen + 1; n++) blcount[n] = nextcode[n] = 0;
     /*step 1: count number of instances of each code length*/
-    for(bits = 0; bits != tree->numcodes; ++bits) ++blcount.data[tree->lengths[bits]];
+    for(bits = 0; bits != tree->numcodes; ++bits) ++blcount[tree->lengths[bits]];
     /*step 2: generate the nextcode values*/
     for(bits = 1; bits <= tree->maxbitlen; ++bits) {
-      nextcode.data[bits] = (nextcode.data[bits - 1] + blcount.data[bits - 1]) << 1;
+      nextcode[bits] = (nextcode[bits - 1] + blcount[bits - 1]) << 1;
     }
     /*step 3: generate all the codes*/
     for(n = 0; n != tree->numcodes; ++n) {
-      if(tree->lengths[n] != 0) tree->tree1d[n] = nextcode.data[tree->lengths[n]]++;
+      if(tree->lengths[n] != 0) {
+        tree->codes[n] = nextcode[tree->lengths[n]]++;
+        /*remove superfluous bits from the code*/
+        tree->codes[n] &= ((1u << tree->lengths[n]) - 1u);
+      }
     }
   }
 
-  uivector_cleanup(&blcount);
-  uivector_cleanup(&nextcode);
+  lodepng_free(blcount);
+  lodepng_free(nextcode);
 
-  if(!error) return HuffmanTree_make2DTree(tree);
-  else return error;
+  if(!error) error = HuffmanTree_makeTable(tree);
+  return error;
 }
 
 /*
@@ -869,7 +958,7 @@ static unsigned HuffmanTree_makeFromFrequencies(HuffmanTree* tree, const unsigne
 }
 
 static unsigned HuffmanTree_getCode(const HuffmanTree* tree, unsigned index) {
-  return tree->tree1d[index];
+  return tree->codes[index];
 }
 
 static unsigned HuffmanTree_getLength(const HuffmanTree* tree, unsigned index) {
@@ -915,15 +1004,20 @@ static unsigned generateFixedDistanceTree(HuffmanTree* tree) {
 returns the code, or (unsigned)(-1) if error happened
 */
 static unsigned huffmanDecodeSymbol(LodePNGBitReader* reader, const HuffmanTree* codetree) {
-  unsigned treepos = 0, ct;
-  /* TODO: make faster: read multipe bits at once and use lookup table */
-  for(;;) {
-    if(reader->bp >= reader->bitsize) return (unsigned)(-1); /*error: end of input memory reached without endcode*/
-    ct = codetree->tree2d[(treepos << 1) + readBits(reader, 1)];
-    if(ct < codetree->numcodes) return ct; /*the symbol is decoded, return it*/
-    else treepos = ct - codetree->numcodes; /*symbol not yet decoded, instead move tree position*/
-
-    if(treepos >= codetree->numcodes) return (unsigned)(-1); /*error: it appeared outside the codetree*/
+  unsigned code, l, value;
+  if(ensureBits(reader, 15) > 1) return (unsigned)(-1);
+  code = peekBits(reader, FIRSTBITS);
+  l = codetree->table_len[code];
+  value = codetree->table_value[code];
+  if(l <= FIRSTBITS) {
+    advanceBits(reader, l);
+    return value;
+  } else {
+    unsigned index2;
+    advanceBits(reader, FIRSTBITS);
+    index2 = value + peekBits(reader, l - FIRSTBITS);
+    advanceBits(reader, codetree->table_len[index2] - FIRSTBITS);
+    return codetree->table_value[index2];
   }
 }
 #endif /*LODEPNG_COMPILE_DECODER*/
@@ -955,7 +1049,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   unsigned* bitlen_cl = 0;
   HuffmanTree tree_cl; /*the code tree for code length codes (the huffman tree for compressed huffman trees)*/
 
-  if((reader->bp) + 14 > reader->bitsize) return 49; /*error: the bit pointer is or will go past the memory*/
+  if(ensureBits(reader, 14)) return 49; /*error: the bit pointer is or will go past the memory*/
 
   /*number of literal/length codes + 257. Unlike the spec, the value 257 is added to it here already*/
   HLIT =  readBits(reader, 5) + 257;
@@ -964,19 +1058,20 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   /*number of code length codes. Unlike the spec, the value 4 is added to it here already*/
   HCLEN = readBits(reader, 4) + 4;
 
-  if((reader->bp) + HCLEN * 3 > reader->bitsize) return 50; /*error: the bit pointer is or will go past the memory*/
+  bitlen_cl = (unsigned*)lodepng_malloc(NUM_CODE_LENGTH_CODES * sizeof(unsigned));
+  if(!bitlen_cl) return 83 /*alloc fail*/;
 
   HuffmanTree_init(&tree_cl);
 
   while(!error) {
     /*read the code length codes out of 3 * (amount of code length codes) bits*/
-
-    bitlen_cl = (unsigned*)lodepng_malloc(NUM_CODE_LENGTH_CODES * sizeof(unsigned));
-    if(!bitlen_cl) ERROR_BREAK(83 /*alloc fail*/);
-
-    for(i = 0; i != NUM_CODE_LENGTH_CODES; ++i) {
-      if(i < HCLEN) bitlen_cl[CLCL_ORDER[i]] = readBits(reader, 3);
-      else bitlen_cl[CLCL_ORDER[i]] = 0; /*if not, it must stay 0*/
+    if((reader->bp) + HCLEN * 3 > reader->bitsize) ERROR_BREAK(50); /*error: the bit pointer is or will go past the memory*/
+    for(i = 0; i != HCLEN; ++i) {
+      ensureBits(reader, 3);
+      bitlen_cl[CLCL_ORDER[i]] = readBits(reader, 3);
+    }
+    for(i = HCLEN; i != NUM_CODE_LENGTH_CODES; ++i) {
+      bitlen_cl[CLCL_ORDER[i]] = 0;
     }
 
     error = HuffmanTree_makeFromLengths(&tree_cl, bitlen_cl, NUM_CODE_LENGTH_CODES, 7);
@@ -1003,7 +1098,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
 
         if(i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
 
-        if((reader->bp + 2) > reader->bitsize) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
+        if(ensureBits(reader, 2)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 2);
 
         if(i < HLIT + 1) value = bitlen_ll[i - 1];
@@ -1017,7 +1112,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         }
       } else if(code == 17) /*repeat "0" 3-10 times*/ {
         unsigned replength = 3; /*read in the bits that indicate repeat length*/
-        if((reader->bp + 3) > reader->bitsize) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
+        if(ensureBits(reader, 3)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 3);
 
         /*repeat this value in the next lengths*/
@@ -1030,7 +1125,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         }
       } else if(code == 18) /*repeat "0" 11-138 times*/ {
         unsigned replength = 11; /*read in the bits that indicate repeat length*/
-        if((reader->bp + 7) > reader->bitsize) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
+        if(ensureBits(reader, 7)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 7);
 
         /*repeat this value in the next lengths*/
@@ -1102,7 +1197,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
 
       /*part 2: get extra bits and add the value of that to length*/
       numextrabits_l = LENGTHEXTRA[code_ll - FIRST_LENGTH_CODE_INDEX];
-      if((reader->bp + numextrabits_l) > reader->bitsize) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+      if(ensureBits(reader, numextrabits_l)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       length += readBits(reader, numextrabits_l);
 
       /*part 3: get distance code*/
@@ -1120,7 +1215,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
 
       /*part 4: get extra bits from distance*/
       numextrabits_d = DISTANCEEXTRA[code_d];
-      if((reader->bp + numextrabits_d) > reader->bitsize) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+      if(ensureBits(reader, numextrabits_d)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
       distance += readBits(reader, numextrabits_d);
 
       /*part 5: fill in all the out[n] values based on the length and dist*/
@@ -1157,7 +1252,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
 static unsigned inflateNoCompression(ucvector* out, size_t* pos,
                                      LodePNGBitReader* reader, const LodePNGDecompressSettings* settings) {
   size_t bytepos;
-  size_t size = reader->bitsize >> 3u;
+  size_t size = reader->size;
   unsigned LEN, NLEN, error = 0;
 
   /*go to first boundary of byte*/
@@ -1198,10 +1293,9 @@ static unsigned lodepng_inflatev(ucvector* out,
 
   while(!BFINAL) {
     unsigned BTYPE;
-    if(reader.bp + 2 >= reader.bitsize) return 52; /*error, bit pointer will jump past memory*/
+    if(ensureBits(&reader, 3)) return 52; /*error, bit pointer will jump past memory*/
     BFINAL = readBits(&reader, 1);
-    BTYPE = 1u * readBits(&reader, 1);
-    BTYPE += 2u * readBits(&reader, 1);
+    BTYPE = readBits(&reader, 2);
 
     if(BTYPE == 3) return 20; /*error: invalid BTYPE*/
     else if(BTYPE == 0) error = inflateNoCompression(out, &pos, &reader, settings); /*no compression*/

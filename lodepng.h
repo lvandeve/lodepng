@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190805
+LodePNG version 20190814
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -1785,8 +1785,9 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+*) 14 aug 2019: around 25% faster decoding thanks to huffman lookup tables.
 *) 15 jun 2019 (!): auto_choose_color API changed (for bugfix: don't use palette
-   if ICC profile) and non-ICC LodePNGColorProfile renamed to LodePNGColorStats.
+   if gray ICC profile) and non-ICC LodePNGColorProfile renamed to LodePNGColorStats.
 *) 30 dec 2018: code style changes only: removed newlines before opening braces.
 *) 10 sep 2018: added way to inspect metadata chunks without full decoding.
 *) 19 aug 2018 (!): fixed color mode bKGD is encoded with and made it use
