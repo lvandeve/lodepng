@@ -37,7 +37,8 @@ This sample shows how LodePNG can be used for a conforming PNG editor.
 #include <iostream>
 #include <stdlib.h>
 
-#define QUANT_DEFAULT 64
+#define QUANT_DEFAULT 6
+#define QUANT_BASE    8
 
 void showHelp(char * pname)
 {
@@ -61,12 +62,12 @@ unsigned char QuantColor(unsigned char color, int qbase, int quant)
     if ((qbase > 0) && (quant > 0))
     {
         c = (int)color;
-        c *= quant;
-        c += (qbase / 2);
-        c /= qbase;
-        c *= qbase;
-        c += (quant / 2);
-        c /= quant;
+        c <<= quant;
+        c += (qbase >> 1);
+        c >>= qbase;
+        c <<= qbase;
+        c += (quant >> 1);
+        c >>= quant;
         color = ByteClamp(c);
     }
     return color;
@@ -109,7 +110,7 @@ int main(int argc, char *argv[])
         whb = w * h * bpp;
         for (i = 0; i < whb; i++)
         {
-            image[i] = QuantColor(image[i], 256, quant);
+            image[i] = QuantColor(image[i], QUANT_BASE, quant);
         }
     }
     else
