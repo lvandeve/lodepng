@@ -344,6 +344,7 @@ static void lodepng_add32bitInt(ucvector* buffer, unsigned value) {
 
 #ifdef LODEPNG_COMPILE_DISK
 
+#ifdef LODEPNG_COMPILE_DECODER
 /* returns negative value on error. This should be pure C compatible, so no fstat. */
 static long lodepng_filesize(const char* filename) {
   FILE* file;
@@ -388,6 +389,7 @@ unsigned lodepng_load_file(unsigned char** out, size_t* outsize, const char* fil
 
   return lodepng_buffer_file(*out, (size_t)size, filename);
 }
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
 unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const char* filename) {
@@ -5942,12 +5944,14 @@ const char* lodepng_error_text(unsigned code) {
 namespace lodepng {
 
 #ifdef LODEPNG_COMPILE_DISK
+#ifdef LODEPNG_COMPILE_DECODER
 unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filename) {
   long size = lodepng_filesize(filename.c_str());
   if(size < 0) return 78;
   buffer.resize((size_t)size);
   return size == 0 ? 0 : lodepng_buffer_file(&buffer[0], (size_t)size, filename.c_str());
 }
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
 unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename) {
