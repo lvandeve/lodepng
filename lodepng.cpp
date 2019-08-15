@@ -317,9 +317,9 @@ static char* alloc_string(const char* in) {
 
 /* ////////////////////////////////////////////////////////////////////////// */
 
-static 
-unsigned lodepng_read32bitInt(const unsigned char* buffer) {
-  return (((unsigned)buffer[0] << 24u) | ((unsigned)buffer[1] << 16u) | ((unsigned)buffer[2] << 8u) | (unsigned)buffer[3]);
+static unsigned lodepng_read32bitInt(const unsigned char* buffer) {
+  return (((unsigned)buffer[0] << 24u) | ((unsigned)buffer[1] << 16u) |
+         ((unsigned)buffer[2] << 8u) | (unsigned)buffer[3]);
 }
 
 #if defined(LODEPNG_COMPILE_PNG) || defined(LODEPNG_COMPILE_ENCODER)
@@ -2602,8 +2602,7 @@ unsigned lodepng_can_have_alpha(const LodePNGColorMode* info) {
       || lodepng_has_palette_alpha(info);
 }
 
-static 
-size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth) {
+static size_t lodepng_get_raw_size_lct(unsigned w, unsigned h, LodePNGColorType colortype, unsigned bitdepth) {
   size_t bpp = lodepng_get_bpp_lct(colortype, bitdepth);
   size_t n = (size_t)w * (size_t)h;
   return ((n / 8u) * bpp) + ((n & 7u) * bpp + 7u) / 8u;
