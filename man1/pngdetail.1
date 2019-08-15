@@ -1,4 +1,4 @@
-.TH "LodePNG User Manual" 1 "04 Nov 2016" "LodePNG documentation"
+.TH LodePNG 1 "05 Aug 2019" "0.20190805" "User Manual"
 
 .SH NAME
 pngdetail
@@ -12,29 +12,50 @@ pngdetail [filename.png] [options]...
 
 .SH OPTIONS
 .TP
--s
-show PNG file summary on one line
+-o
+show header summary on one line
+.TP
+-h
+show header info
 .TP
 -p
 show PNG file info
 .TP
--P
-show extra PNG file info
+-e
+check the PNG for errors or warnings
+.TP
+-i
+show ICC profile details (if any)
+.TP
+-I
+show ICC profile in binary (hex)
+.TP
+--format=<format>
+hex display mode for -i:
+    mix: Use printable ASCII characters, hex for others
+    hex: Use only hex
+.TP
+--size=<width>
+render width (not used by hex, hex16 or palette):
 .TP
 -l
 show palette (if any)
 .TP
--a
-show ascii art rendering of PNG image. Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).
+-s
+show color statistics
 .TP
--A
-show larger ascii art rendering of PNG image. Adding more A's makes it larger.
+-r
+render the PNG image in terminal (with --mode and --size)
 .TP
--#
-show every pixel color in CSS RGBA hex format (huge output)
+--mode=<mode>
+render mode for -r:
+    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).
+    hex:     CSS hex notation for every pixel.
+    hex16:   Like hex but shows 16 bits values per channel.
+    palette: Shows palette index of each pixel, only for palette images.
 .TP
--@
-show every pixel color with 16-bit per channel (huge output)
+--size=<width>
+render width (not used by hex, hex16 or palette):
 .TP
 -c
 show PNG chunks
@@ -57,8 +78,17 @@ show Zlib block symbol counts
 -7
 show all lz77 values (huge output)
 .TP
+-v
+be more verbose
+.TP
+-t
+expand long texts
+.TP
 -x
-print most numbers in hexadecimal
+print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)
+.TP
+-?, --help
+show this help
 
 .SH EXAMPLE
 pngdetail sample.png
