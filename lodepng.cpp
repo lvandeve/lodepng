@@ -608,7 +608,7 @@ static void HuffmanTree_cleanup(HuffmanTree* tree) {
 /* make table for huffman decoding */
 static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
   static const unsigned headsize = 1u << FIRSTBITS; /*size of the first table*/
-  static const unsigned mask = headsize - 1u;
+  static const unsigned mask = (1u << FIRSTBITS) /*headsize*/ - 1u;
   size_t i, pointer, size; /*total table size*/
   unsigned* maxlens = (unsigned*)lodepng_malloc(headsize * sizeof(unsigned));
   if(!maxlens) return 83; /*alloc fail*/
