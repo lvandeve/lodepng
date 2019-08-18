@@ -26,6 +26,7 @@ freely, subject to the following restrictions:
 #include "lodepng_util.h"
 #include <iostream>  // TODO: remove, don't print stuff from here, return errors instead
 #include <cmath>
+#include <algorithm>
 
 namespace lodepng {
 
