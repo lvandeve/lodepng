@@ -1,0 +1,105 @@
+.TH LodePNG 1 "05 Aug 2019" "0.20190805" "User Manual"
+
+.SH NAME
+pngdetail
+
+.SH DESCRIPTION
+Shows detailed information about a PNG image and its compression.
+ Based of LodePNG library.
+
+.SH SYNOPSIS
+pngdetail [filename.png] [options]...
+
+.SH OPTIONS
+.TP
+-o
+show header summary on one line
+.TP
+-h
+show header info
+.TP
+-p
+show PNG file info
+.TP
+-e
+check the PNG for errors or warnings
+.TP
+-i
+show ICC profile details (if any)
+.TP
+-I
+show ICC profile in binary (hex)
+.TP
+--format=<format>
+hex display mode for -i:
+    mix: Use printable ASCII characters, hex for others
+    hex: Use only hex
+.TP
+--size=<width>
+render width (not used by hex, hex16 or palette):
+.TP
+-l
+show palette (if any)
+.TP
+-s
+show color statistics
+.TP
+-r
+render the PNG image in terminal (with --mode and --size)
+.TP
+--mode=<mode>
+render mode for -r:
+    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).
+    hex:     CSS hex notation for every pixel.
+    hex16:   Like hex but shows 16 bits values per channel.
+    palette: Shows palette index of each pixel, only for palette images.
+.TP
+--size=<width>
+render width (not used by hex, hex16 or palette):
+.TP
+-c
+show PNG chunks
+.TP
+-C
+show PNG chunks (alternate format)
+.TP
+-f
+show PNG filters
+.TP
+-z
+show Zlib info
+.TP
+-b
+show Zlib blocks
+.TP
+-B
+show Zlib block symbol counts
+.TP
+-7
+show all lz77 values (huge output)
+.TP
+-v
+be more verbose
+.TP
+-t
+expand long texts
+.TP
+-x
+print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)
+.TP
+-?, --help
+show this help
+
+.SH EXAMPLE
+pngdetail sample.png
+
+.SH COPYRIGHT
+Copyright 2005-2013 Lode Vandevenne.
+ All rights reserved.
+
+.SH SEE ALSO
+ pngreencode(1), pnglossy(1), pnginfo(1), pngcheck(1).
+
+.SH CONTACTS
+ Website: http://lodev.org/lodepng/
+ Autors: Lode Vandevenne <lode.vandevenne@gmail.com>
