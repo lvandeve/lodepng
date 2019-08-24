@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190814
+LodePNG version 20190824
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190814";
+const char* LODEPNG_VERSION_STRING = "20190824";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -317,10 +317,12 @@ static char* alloc_string(const char* in) {
 
 /* ////////////////////////////////////////////////////////////////////////// */
 
+#if defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_PNG)
 static unsigned lodepng_read32bitInt(const unsigned char* buffer) {
   return (((unsigned)buffer[0] << 24u) | ((unsigned)buffer[1] << 16u) |
          ((unsigned)buffer[2] << 8u) | (unsigned)buffer[3]);
 }
+#endif /*defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_PNG)*/
 
 #if defined(LODEPNG_COMPILE_PNG) || defined(LODEPNG_COMPILE_ENCODER)
 /*buffer must have at least 4 allocated bytes available*/
@@ -331,13 +333,6 @@ static void lodepng_set32bitInt(unsigned char* buffer, unsigned value) {
   buffer[3] = (unsigned char)((value      ) & 0xff);
 }
 #endif /*defined(LODEPNG_COMPILE_PNG) || defined(LODEPNG_COMPILE_ENCODER)*/
-
-#ifdef LODEPNG_COMPILE_ENCODER
-static void lodepng_add32bitInt(ucvector* buffer, unsigned value) {
-  ucvector_resize(buffer, buffer->size + 4); /*todo: give error if resize failed*/
-  lodepng_set32bitInt(&buffer->data[buffer->size - 4], value);
-}
-#endif /*LODEPNG_COMPILE_ENCODER*/
 
 /* ////////////////////////////////////////////////////////////////////////// */
 /* / File IO                                                                / */
@@ -2114,40 +2109,38 @@ static unsigned zlib_decompress(unsigned char** out, size_t* outsize, const unsi
 
 unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsigned char* in,
                                size_t insize, const LodePNGCompressSettings* settings) {
-  /*initially, *out must be NULL and outsize 0, if you just give some random *out
-  that's pointing to a non allocated buffer, this'll crash*/
-  ucvector outv;
   size_t i;
   unsigned error;
   unsigned char* deflatedata = 0;
   size_t deflatesize = 0;
 
-  /*zlib data: 1 byte CMF (CM+CINFO), 1 byte FLG, deflate data, 4 byte ADLER32 checksum of the Decompressed data*/
-  unsigned CMF = 120; /*0b01111000: CM 8, CINFO 7. With CINFO 7, any window size up to 32768 can be used.*/
-  unsigned FLEVEL = 0;
-  unsigned FDICT = 0;
-  unsigned CMFFLG = 256 * CMF + FDICT * 32 + FLEVEL * 64;
-  unsigned FCHECK = 31 - CMFFLG % 31;
-  CMFFLG += FCHECK;
-
-  /*ucvector-controlled version of the output buffer, for dynamic array*/
-  ucvector_init_buffer(&outv, *out, *outsize);
-
-  ucvector_push_back(&outv, (unsigned char)(CMFFLG >> 8));
-  ucvector_push_back(&outv, (unsigned char)(CMFFLG & 255));
-
   error = deflate(&deflatedata, &deflatesize, in, insize, settings);
+
+  *out = NULL;
+  *outsize = 0;
+  if(!error) {
+    *outsize = deflatesize + 6;
+    *out = (unsigned char*)lodepng_malloc(*outsize);
+    if(!out) error = 83; /*alloc fail*/
+  }
 
   if(!error) {
     unsigned ADLER32 = adler32(in, (unsigned)insize);
-    for(i = 0; i != deflatesize; ++i) ucvector_push_back(&outv, deflatedata[i]);
-    lodepng_free(deflatedata);
-    lodepng_add32bitInt(&outv, ADLER32);
+    /*zlib data: 1 byte CMF (CM+CINFO), 1 byte FLG, deflate data, 4 byte ADLER32 checksum of the Decompressed data*/
+    unsigned CMF = 120; /*0b01111000: CM 8, CINFO 7. With CINFO 7, any window size up to 32768 can be used.*/
+    unsigned FLEVEL = 0;
+    unsigned FDICT = 0;
+    unsigned CMFFLG = 256 * CMF + FDICT * 32 + FLEVEL * 64;
+    unsigned FCHECK = 31 - CMFFLG % 31;
+    CMFFLG += FCHECK;
+
+    (*out)[0] = (unsigned char)(CMFFLG >> 8);
+    (*out)[1] = (unsigned char)(CMFFLG & 255);
+    for(i = 0; i != deflatesize; ++i) (*out)[i + 2] = deflatedata[i];
+    lodepng_set32bitInt(&(*out)[*outsize - 4], ADLER32);
   }
 
-  *out = outv.data;
-  *outsize = outv.size;
-
+  lodepng_free(deflatedata);
   return error;
 }
 
@@ -4803,22 +4796,17 @@ static void writeSignature(ucvector* out) {
 
 static unsigned addChunk_IHDR(ucvector* out, unsigned w, unsigned h,
                               LodePNGColorType colortype, unsigned bitdepth, unsigned interlace_method) {
-  unsigned error = 0;
-  ucvector header;
-  ucvector_init(&header);
+  unsigned char data[13];
 
-  lodepng_add32bitInt(&header, w); /*width*/
-  lodepng_add32bitInt(&header, h); /*height*/
-  ucvector_push_back(&header, (unsigned char)bitdepth); /*bit depth*/
-  ucvector_push_back(&header, (unsigned char)colortype); /*color type*/
-  ucvector_push_back(&header, 0); /*compression method*/
-  ucvector_push_back(&header, 0); /*filter method*/
-  ucvector_push_back(&header, interlace_method); /*interlace method*/
+  lodepng_set32bitInt(data + 0, w); /*width*/
+  lodepng_set32bitInt(data + 4, h); /*height*/
+  data[8] = (unsigned char)bitdepth; /*bit depth*/
+  data[9] = (unsigned char)colortype; /*color type*/
+  data[10] = 0; /*compression method*/
+  data[11] = 0; /*filter method*/
+  data[12] = interlace_method; /*interlace method*/
 
-  error = addChunk(out, "IHDR", header.data, header.size);
-  ucvector_cleanup(&header);
-
-  return error;
+  return addChunk(out, "IHDR", data, sizeof(data));
 }
 
 static unsigned addChunk_PLTE(ucvector* out, const LodePNGColorMode* info) {
@@ -4971,33 +4959,29 @@ static unsigned addChunk_iTXt(ucvector* out, unsigned compressed, const char* ke
 }
 
 static unsigned addChunk_bKGD(ucvector* out, const LodePNGInfo* info) {
-  unsigned error = 0;
-  ucvector bKGD;
-  ucvector_init(&bKGD);
+  unsigned char data[6];
+  size_t size = 0;
   if(info->color.colortype == LCT_GREY || info->color.colortype == LCT_GREY_ALPHA) {
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_r >> 8));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_r & 255));
+    data[0] = (unsigned char)(info->background_r >> 8);
+    data[1] = (unsigned char)(info->background_r & 255);
+    size = 2;
   } else if(info->color.colortype == LCT_RGB || info->color.colortype == LCT_RGBA) {
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_r >> 8));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_r & 255));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_g >> 8));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_g & 255));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_b >> 8));
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_b & 255));
+    data[0] = (unsigned char)(info->background_r >> 8);
+    data[1] = (unsigned char)(info->background_r & 255);
+    data[2] = (unsigned char)(info->background_g >> 8);
+    data[3] = (unsigned char)(info->background_g & 255);
+    data[4] = (unsigned char)(info->background_b >> 8);
+    data[5] = (unsigned char)(info->background_b & 255);
+    size = 6;
   } else if(info->color.colortype == LCT_PALETTE) {
-    ucvector_push_back(&bKGD, (unsigned char)(info->background_r & 255)); /*palette index*/
+    data[0] =(unsigned char)(info->background_r & 255); /*palette index*/
+    size = 1;
   }
-
-  error = addChunk(out, "bKGD", bKGD.data, bKGD.size);
-  ucvector_cleanup(&bKGD);
-
-  return error;
+  return addChunk(out, "bKGD", data, size);
 }
 
 static unsigned addChunk_tIME(ucvector* out, const LodePNGTime* time) {
-  unsigned error = 0;
-  unsigned char* data = (unsigned char*)lodepng_malloc(7);
-  if(!data) return 83; /*alloc fail*/
+  unsigned char data[7];
   data[0] = (unsigned char)(time->year >> 8);
   data[1] = (unsigned char)(time->year & 255);
   data[2] = (unsigned char)time->month;
@@ -5005,57 +4989,33 @@ static unsigned addChunk_tIME(ucvector* out, const LodePNGTime* time) {
   data[4] = (unsigned char)time->hour;
   data[5] = (unsigned char)time->minute;
   data[6] = (unsigned char)time->second;
-  error = addChunk(out, "tIME", data, 7);
-  lodepng_free(data);
-  return error;
+  return addChunk(out, "tIME", data, sizeof(data));
 }
 
 static unsigned addChunk_pHYs(ucvector* out, const LodePNGInfo* info) {
-  unsigned error = 0;
-  ucvector data;
-  ucvector_init(&data);
-
-  lodepng_add32bitInt(&data, info->phys_x);
-  lodepng_add32bitInt(&data, info->phys_y);
-  ucvector_push_back(&data, info->phys_unit);
-
-  error = addChunk(out, "pHYs", data.data, data.size);
-  ucvector_cleanup(&data);
-
-  return error;
+  unsigned char data[9];
+  lodepng_set32bitInt(data + 0, info->phys_x);
+  lodepng_set32bitInt(data + 4, info->phys_y);  data[8] = info->phys_unit;
+  return addChunk(out, "pHYs", data, sizeof(data));
 }
 
 static unsigned addChunk_gAMA(ucvector* out, const LodePNGInfo* info) {
-  unsigned error = 0;
-  ucvector data;
-  ucvector_init(&data);
-
-  lodepng_add32bitInt(&data, info->gama_gamma);
-
-  error = addChunk(out, "gAMA", data.data, data.size);
-  ucvector_cleanup(&data);
-
-  return error;
+  unsigned char data[4];
+  lodepng_set32bitInt(data, info->gama_gamma);
+  return addChunk(out, "gAMA", data, sizeof(data));
 }
 
 static unsigned addChunk_cHRM(ucvector* out, const LodePNGInfo* info) {
-  unsigned error = 0;
-  ucvector data;
-  ucvector_init(&data);
-
-  lodepng_add32bitInt(&data, info->chrm_white_x);
-  lodepng_add32bitInt(&data, info->chrm_white_y);
-  lodepng_add32bitInt(&data, info->chrm_red_x);
-  lodepng_add32bitInt(&data, info->chrm_red_y);
-  lodepng_add32bitInt(&data, info->chrm_green_x);
-  lodepng_add32bitInt(&data, info->chrm_green_y);
-  lodepng_add32bitInt(&data, info->chrm_blue_x);
-  lodepng_add32bitInt(&data, info->chrm_blue_y);
-
-  error = addChunk(out, "cHRM", data.data, data.size);
-  ucvector_cleanup(&data);
-
-  return error;
+  unsigned char data[32];
+  lodepng_set32bitInt(data + 0, info->chrm_white_x);
+  lodepng_set32bitInt(data + 4, info->chrm_white_y);
+  lodepng_set32bitInt(data + 8, info->chrm_red_x);
+  lodepng_set32bitInt(data + 12, info->chrm_red_y);
+  lodepng_set32bitInt(data + 16, info->chrm_green_x);
+  lodepng_set32bitInt(data + 20, info->chrm_green_y);
+  lodepng_set32bitInt(data + 24, info->chrm_blue_x);
+  lodepng_set32bitInt(data + 28, info->chrm_blue_y);
+  return addChunk(out, "cHRM", data, sizeof(data));
 }
 
 static unsigned addChunk_sRGB(ucvector* out, const LodePNGInfo* info) {

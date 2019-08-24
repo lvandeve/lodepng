@@ -48,9 +48,9 @@ mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedant
 g++ lodepng.cpp lodepng_benchmark.cpp -Werror -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
 *) try the fuzzer
-clang++ -fsanitize=fuzzer lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
+clang++ -fsanitize=fuzzer -DLODEPNG_MAX_ALLOC=100000000 lodepng.cpp lodepng_fuzzer.cpp -O3 -o fuzzer && ./fuzzer
 
-clang++ -fsanitize=fuzzer,address,undefined lodepng.cpp lodepng_fuzzer.cpp -O3 && ./a.out
+clang++ -fsanitize=fuzzer,address,undefined -DLODEPNG_MAX_ALLOC=100000000 lodepng.cpp lodepng_fuzzer.cpp -O3 -o fuzzer && ./fuzzer
 
 *) Check if all C++ examples compile without warnings:
 g++ -I ./ lodepng.cpp examples/''*.cpp -Werror -W -Wall -ansi -pedantic -O3 -c
@@ -791,8 +791,8 @@ void testColor(int r, int g, int b, int a) {
 void testFewColors() {
   std::cout << "codec test few colors " << std::endl;
   Image image;
-  image.width = 20;
-  image.height = 20;
+  image.width = 4;
+  image.height = 4;
   image.colorType = LCT_RGBA;
   image.bitDepth = 8;
   image.data.resize(image.width * image.height * 4);
@@ -807,14 +807,29 @@ void testFewColors() {
   for(size_t j = 0; j < colors.size(); j += 4)
   for(size_t k = 0; k < colors.size(); k += 4)
   for(size_t l = 0; l < colors.size(); l += 4) {
-    //std::cout << (i/4) << " " << (j/4) << " " << (k/4) << " " << (l/4) << std::endl;
-    for(size_t c = 0; c < 4; c++) {
-      for(unsigned y = 0; y < image.height; y++)
-      for(unsigned x = 0; x < image.width; x++) {
-        image.data[y * image.width * 4 + x * 4 + c] = (x ^ y) ? colors[i + c] : colors[j + c];
+    for(unsigned y = 0; y < image.height; y++)
+    for(unsigned x = 0; x < image.width; x++) {
+      size_t a = (y * image.width + x) & 3;
+      size_t b = (a == 0) ? i : ((a == 1) ? j : ((a == 2) ? k : l));
+      for(size_t c = 0; c < 4; c++) {
+        image.data[y * image.width * 4 + x * 4 + c] = colors[b + c];
       }
-      image.data[c] = colors[k + c];
-      image.data[image.data.size() - 4 + c] = colors[l + c];
+    }
+    doCodecTest(image);
+  }
+  image.width = 20;
+  image.height = 20;
+  image.data.resize(image.width * image.height * 4);
+  for(size_t i = 0; i < colors.size(); i += 4)
+  for(size_t j = 0; j < colors.size(); j += 4)
+  for(size_t k = 0; k < colors.size(); k += 4) {
+    for(unsigned y = 0; y < image.height; y++)
+    for(unsigned x = 0; x < image.width; x++) {
+      size_t a = (y * image.width + x) % 3;
+      size_t b = (a == 0) ? i : ((a == 1) ? j : k);
+      for(size_t c = 0; c < 4; c++) {
+        image.data[y * image.width * 4 + x * 4 + c] = colors[b + c];
+      }
     }
     doCodecTest(image);
   }
@@ -847,7 +862,7 @@ void testPNGCodec() {
 #ifndef DISABLE_SLOW
   codecTest(127, 127);
   codecTest(127, 127, LCT_GREY, 1);
-  codecTest(500, 500);
+  codecTest(320, 320);
   codecTest(1, 10000);
   codecTest(10000, 1);
 
