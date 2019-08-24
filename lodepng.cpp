@@ -2824,6 +2824,8 @@ unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langt
 
 /* same as set but does not delete */
 static unsigned lodepng_assign_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
+  if(profile_size == 0) return 100; /*invalid ICC profile size*/
+
   info->iccp_name = alloc_string(name);
   info->iccp_profile = (unsigned char*)lodepng_malloc(profile_size);
 
@@ -4390,12 +4392,16 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSetting
                           &data[string2_begin],
                           length, zlibsettings);
   if(!error) {
-    info->iccp_profile_size = decoded.size;
-    info->iccp_profile = (unsigned char*)lodepng_malloc(decoded.size);
-    if(info->iccp_profile) {
-      lodepng_memcpy(info->iccp_profile, decoded.data, decoded.size);
+    if(decoded.size) {
+      info->iccp_profile_size = decoded.size;
+      info->iccp_profile = (unsigned char*)lodepng_malloc(decoded.size);
+      if(info->iccp_profile) {
+        lodepng_memcpy(info->iccp_profile, decoded.data, decoded.size);
+      } else {
+        error = 83; /* alloc fail */
+      }
     } else {
-      error = 83; /* alloc fail */
+      error = 100; /*invalid ICC profile size*/
     }
   }
   ucvector_cleanup(&decoded);
