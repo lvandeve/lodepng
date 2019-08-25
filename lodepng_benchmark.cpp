@@ -62,8 +62,6 @@ bool do_decode = false;
 bool do_encode = false;
 bool decode_encoded = false; // do the decoding benchmark on the encoded images rather than the original inputs
 
-bool color_convert = true;
-
 std::string dumpdir;
 
 ////////////////////////////////////////////////////////////////////////////////

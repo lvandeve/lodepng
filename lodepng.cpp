@@ -1879,7 +1879,7 @@ static unsigned deflateDynamic(LodePNGBitWriter* writer, Hash* hash,
     /*write the lenghts of the lit/len AND the dist alphabet*/
     for(i = 0; i != bitlen_lld_e.size; ++i) {
       writeBitsReversed(writer, HuffmanTree_getCode(&tree_cl, bitlen_lld_e.data[i]),
-                       HuffmanTree_getLength(&tree_cl, bitlen_lld_e.data[i]));
+                        HuffmanTree_getLength(&tree_cl, bitlen_lld_e.data[i]));
       /*extra bits of repeat codes*/
       if(bitlen_lld_e.data[i] == 16) writeBits(writer, bitlen_lld_e.data[++i], 2);
       else if(bitlen_lld_e.data[i] == 17) writeBits(writer, bitlen_lld_e.data[++i], 3);
@@ -4462,8 +4462,8 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   const unsigned char* chunk;
   size_t i;
   ucvector idat; /*the data from idat chunks*/
-  ucvector scanlines;
-  size_t predict;
+  unsigned char* scanlines = 0;
+  size_t scanlines_size = 0, expected_size = 0;
   size_t outsize = 0;
 
   /*for unknown chunk order*/
@@ -4606,28 +4606,35 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(!IEND) chunk = lodepng_chunk_next_const(chunk);
   }
 
-  ucvector_init(&scanlines);
   /*predict output size, to allocate exact size for output buffer to avoid more dynamic allocation.
   If the decompressed size does not match the prediction, the image must be corrupt.*/
   if(state->info_png.interlace_method == 0) {
-    predict = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color);
+    expected_size = lodepng_get_raw_size_idat(*w, *h, &state->info_png.color);
   } else {
-    /*Adam-7 interlaced: predicted size is the sum of the 7 sub-images sizes*/
+    /*Adam-7 interlaced: expected size is the sum of the 7 sub-images sizes*/
     const LodePNGColorMode* color = &state->info_png.color;
-    predict = 0;
-    predict += lodepng_get_raw_size_idat((*w + 7) >> 3, (*h + 7) >> 3, color);
-    if(*w > 4) predict += lodepng_get_raw_size_idat((*w + 3) >> 3, (*h + 7) >> 3, color);
-    predict += lodepng_get_raw_size_idat((*w + 3) >> 2, (*h + 3) >> 3, color);
-    if(*w > 2) predict += lodepng_get_raw_size_idat((*w + 1) >> 2, (*h + 3) >> 2, color);
-    predict += lodepng_get_raw_size_idat((*w + 1) >> 1, (*h + 1) >> 2, color);
-    if(*w > 1) predict += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, color);
-    predict += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, color);
+    expected_size = 0;
+    expected_size += lodepng_get_raw_size_idat((*w + 7) >> 3, (*h + 7) >> 3, color);
+    if(*w > 4) expected_size += lodepng_get_raw_size_idat((*w + 3) >> 3, (*h + 7) >> 3, color);
+    expected_size += lodepng_get_raw_size_idat((*w + 3) >> 2, (*h + 3) >> 3, color);
+    if(*w > 2) expected_size += lodepng_get_raw_size_idat((*w + 1) >> 2, (*h + 3) >> 2, color);
+    expected_size += lodepng_get_raw_size_idat((*w + 1) >> 1, (*h + 1) >> 2, color);
+    if(*w > 1) expected_size += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, color);
+    expected_size += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, color);
   }
-  if(!state->error && !ucvector_reserve(&scanlines, predict)) state->error = 83; /*alloc fail*/
   if(!state->error) {
-    state->error = zlib_decompress(&scanlines.data, &scanlines.size, idat.data,
+    /* This allocated data will be realloced by zlib_decompress, initially at
+    smaller size again. But the fact that it's already allocated at full size
+    here speeds the multiple reallocs up. TODO: make zlib_decompress support
+    receiving already allocated buffer with expected size instead. */
+    scanlines = (unsigned char*)lodepng_malloc(expected_size);
+    if(!scanlines) state->error = 83; /*alloc fail*/
+    scanlines_size = 0;
+  }
+  if(!state->error) {
+    state->error = zlib_decompress(&scanlines, &scanlines_size, idat.data,
                                    idat.size, &state->decoder.zlibsettings);
-    if(!state->error && scanlines.size != predict) state->error = 91; /*decompressed size doesn't match prediction*/
+    if(!state->error && scanlines_size != expected_size) state->error = 91; /*decompressed size doesn't match prediction*/
   }
   ucvector_cleanup(&idat);
 
@@ -4638,9 +4645,9 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   }
   if(!state->error) {
     for(i = 0; i < outsize; i++) (*out)[i] = 0;
-    state->error = postProcessScanlines(*out, scanlines.data, *w, *h, &state->info_png);
+    state->error = postProcessScanlines(*out, scanlines, *w, *h, &state->info_png);
   }
-  ucvector_cleanup(&scanlines);
+  lodepng_free(scanlines);
 }
 
 unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
