@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190824
+LodePNG version 20190901
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190824";
+const char* LODEPNG_VERSION_STRING = "20190901";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -568,20 +568,9 @@ typedef struct HuffmanTree {
   unsigned maxbitlen; /*maximum number of bits a single code can get*/
   unsigned numcodes; /*number of symbols in the alphabet = number of codes*/
   /* for reading only */
-  unsigned* table_len; /*length of symbol from lookup table, or max length if secondary lookup needed*/
-  unsigned* table_value; /*value of symbol from lookup table, or pointer to secondary table if needed*/
+  unsigned char* table_len; /*length of symbol from lookup table, or max length if secondary lookup needed*/
+  unsigned short* table_value; /*value of symbol from lookup table, or pointer to secondary table if needed*/
 } HuffmanTree;
-
-/*function used for debug purposes to draw the tree in ascii art with C++*/
-/*
-static void HuffmanTree_draw(HuffmanTree* tree) {
-  std::cout << "tree. length: " << tree->numcodes << " maxbitlen: " << tree->maxbitlen << std::endl;
-  for(size_t i = 0; i != tree->codes.size; ++i) {
-    if(tree->lengths.data[i])
-      std::cout << i << " " << tree->codes.data[i] << " " << tree->lengths.data[i] << std::endl;
-  }
-  std::cout << std::endl;
-}*/
 
 static void HuffmanTree_init(HuffmanTree* tree) {
   tree->codes = 0;
@@ -597,7 +586,7 @@ static void HuffmanTree_cleanup(HuffmanTree* tree) {
   lodepng_free(tree->table_value);
 }
 
-/* amount of bits for first huffman table lookup, see HuffmanTree_makeTable and huffmanDecodeSymbol.*/
+/* amount of bits for first huffman table lookup (aka root bits), see HuffmanTree_makeTable and huffmanDecodeSymbol.*/
 #define FIRSTBITS 8u
 
 /* make table for huffman decoding */
@@ -625,10 +614,11 @@ static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
     unsigned l = maxlens[i];
     if(l > FIRSTBITS) size += (1u << (l - FIRSTBITS));
   }
-  tree->table_len = (unsigned*)lodepng_malloc(size * sizeof(unsigned));
-  tree->table_value = (unsigned*)lodepng_malloc(size * sizeof(unsigned));
+  tree->table_len = (unsigned char*)lodepng_malloc(size * sizeof(*tree->table_len));
+  tree->table_value = (unsigned short*)lodepng_malloc(size * sizeof(*tree->table_value));
   if(!tree->table_len || !tree->table_value) {
     lodepng_free(maxlens);
+    /* freeing tree->table values is done at a higher scope */
     return 83; /*alloc fail*/
   }
   /*initialize with an invalid length to indicate unused entries*/
@@ -1000,7 +990,7 @@ static unsigned generateFixedDistanceTree(HuffmanTree* tree) {
 returns the code, or (unsigned)(-1) if error happened
 */
 static unsigned huffmanDecodeSymbol(LodePNGBitReader* reader, const HuffmanTree* codetree) {
-  unsigned code, l, value;
+  unsigned short code, l, value;
   if(ensureBits(reader, 15) > 1) return (unsigned)(-1);
   code = peekBits(reader, FIRSTBITS);
   l = codetree->table_len[code];
@@ -1193,8 +1183,11 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
 
       /*part 2: get extra bits and add the value of that to length*/
       numextrabits_l = LENGTHEXTRA[code_ll - FIRST_LENGTH_CODE_INDEX];
-      if(ensureBits(reader, numextrabits_l)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
-      length += readBits(reader, numextrabits_l);
+      if(numextrabits_l != 0) {
+        /* we need numextrabits_l bits, but using the constant 5 (max possible) in ensureBits is slightly faster */
+        if(ensureBits(reader, 5)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+        length += readBits(reader, numextrabits_l);
+      }
 
       /*part 3: get distance code*/
       code_d = huffmanDecodeSymbol(reader, &tree_d);
@@ -1202,17 +1195,20 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
         if(code_d == (unsigned)(-1)) /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/ {
           /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
           (10=no endcode, 11=wrong jump outside of tree)*/
-          error = (reader->bp > reader->bitsize) ? 10 : 11;
+          ERROR_BREAK((reader->bp > reader->bitsize) ? 10 : 11);
+        } else {
+          ERROR_BREAK(18); /*error: invalid distance code (30-31 are never used)*/
         }
-        else error = 18; /*error: invalid distance code (30-31 are never used)*/
-        break;
       }
       distance = DISTANCEBASE[code_d];
 
       /*part 4: get extra bits from distance*/
       numextrabits_d = DISTANCEEXTRA[code_d];
-      if(ensureBits(reader, numextrabits_d)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
-      distance += readBits(reader, numextrabits_d);
+      if(numextrabits_d != 0) {
+        /* we need numextrabits_d bits, but using the constant 13 (max possible) in ensureBits is slightly faster */
+        if(ensureBits(reader, 13)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+        distance += readBits(reader, numextrabits_d);
+      }
 
       /*part 5: fill in all the out[n] values based on the length and dist*/
       start = (*pos);
@@ -1222,7 +1218,9 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
       if(!ucvector_resize(out, (*pos) + length)) ERROR_BREAK(83 /*alloc fail*/);
       if (distance < length) {
         size_t forward;
-        for(forward = 0; forward < length; ++forward) {
+        lodepng_memcpy(out->data + *pos, out->data + backward, distance);
+        *pos += distance;
+        for(forward = distance; forward < length; ++forward) {
           out->data[(*pos)++] = out->data[backward++];
         }
       } else {
