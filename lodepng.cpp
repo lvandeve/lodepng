@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190901
+LodePNG version 20190908
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190901";
+const char* LODEPNG_VERSION_STRING = "20190908";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -95,6 +95,15 @@ void* lodepng_realloc(void* ptr, size_t new_size);
 void lodepng_free(void* ptr);
 #endif /*LODEPNG_COMPILE_ALLOCATORS*/
 
+/* convince the compiler to inline a function, for use when this measurably improves performance */
+/* inline is not available in C90, but use it when supported by the compiler */
+#if (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || (defined(__cplusplus) && (__cplusplus >= 199711L))
+#define LODEPNG_INLINE inline
+#else
+#define LODEPNG_INLINE /* not available */
+#endif
+
+/* restrict is not available in C90, but use it when supported by the compiler */
 #if (defined(__GNUC__) && defined(__GNUC_MINOR__) && (__GNUC__ >= 3) && (__GNUC_MINOR__ >= 1)) ||\
     (defined(_MSC_VER) && (_MSC_VER >= 1400)) || (defined(__WATCOMC__) && (__WATCOMC__ >= 1250))
 #define LODEPNG_RESTRICT __restrict
@@ -124,6 +133,33 @@ static size_t lodepng_strlen(const char* a) {
 #define LODEPNG_MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define LODEPNG_MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define LODEPNG_ABS(x) ((x) < 0 ? -(x) : (x))
+
+
+#ifdef LODEPNG_COMPILE_DECODER
+/* Safely check if multiplying two integers will overflow (no undefined
+behavior, compiler removing the code, etc...) and output result. */
+static int lodepng_mulofl(size_t a, size_t b, size_t* result) {
+  *result = a * b; /* Unsigned multiplication is well defined and safe in C90 */
+  return (a != 0 && *result / a != b);
+}
+
+/* Safely check if adding two integers will overflow (no undefined
+behavior, compiler removing the code, etc...) and output result. */
+static int lodepng_addofl(size_t a, size_t b, size_t* result) {
+  *result = a + b; /* Unsigned addition is well defined and safe in C90 */
+  return *result < a;
+}
+
+#ifdef LODEPNG_COMPILE_ZLIB
+/* Safely check if a + b > c, even if overflow could happen. */
+static int lodepng_gtofl(size_t a, size_t b, size_t c) {
+  size_t d;
+  if(lodepng_addofl(a, b, &d)) return 1;
+  return d > c;
+}
+#endif /*LODEPNG_COMPILE_ZLIB*/
+#endif /*LODEPNG_COMPILE_DECODER*/
+
 
 /*
 Often in case of an error a value is assigned to a variable and then it breaks
@@ -457,39 +493,106 @@ typedef struct {
   unsigned buffer; /*buffer for reading bits. NOTE: 'unsigned' must support at least 32 bits*/
 } LodePNGBitReader;
 
-/* data size argument is in bytes */
-void LodePNGBitReader_init(LodePNGBitReader* reader, const unsigned char* data, size_t size) {
+/* data size argument is in bytes. Returns error if size too large causing overflow */
+static unsigned LodePNGBitReader_init(LodePNGBitReader* reader, const unsigned char* data, size_t size) {
+  size_t temp;
   reader->data = data;
   reader->size = size;
-  reader->bitsize = size << 3u; /* size in bits */
+  /* size in bits, return error if overflow (if size_t is 32 bit this supports up to 500MB)  */
+  if(lodepng_mulofl(size, 8u, &reader->bitsize)) return 105;
+  /*ensure incremented bp can be compared to bitsize without overflow even when it would be incremented 32 too much and
+  trying to ensure 32 more bits*/
+  if(lodepng_addofl(reader->bitsize, 64u, &temp)) return 105;
   reader->bp = 0;
   reader->buffer = 0;
+  return 0; /*ok*/
 }
 
-/*Ensures the reader can at least read nbits bits in one or more readBits calls.
-Returns 0 if there are enough bits available, or amount of shortage of bits if not.
-The 'nbits' parameter must be <= 17. */
-static unsigned ensureBits(LodePNGBitReader* reader, size_t nbits) {
-  if(nbits == 1) { /*the compiler is intended to perform do this 'if' statically for efficiency*/
-    if(reader->bp >= reader->bitsize) return 1;
-    reader->buffer = (unsigned)reader->data[reader->bp >> 3u] >> (reader->bp & 7u);
-    return 0;
+/*
+ensureBits functions:
+Ensures the reader can at least read nbits bits in one or more readBits calls,
+safely even if not enough bits are available.
+Returns 1 if there are enough bits available, 0 if not.
+*/
+
+/*See ensureBits documentation above. This one ensures exactly 1 bit */
+/*static unsigned ensureBits1(LodePNGBitReader* reader) {
+  if(reader->bp >= reader->bitsize) return 0;
+  reader->buffer = (unsigned)reader->data[reader->bp >> 3u] >> (reader->bp & 7u);
+  return 1;
+}*/
+
+/*See ensureBits documentation above. This one ensures up to 9 bits */
+static unsigned ensureBits9(LodePNGBitReader* reader, size_t nbits) {
+  size_t start = reader->bp >> 3u;
+  size_t size = reader->size;
+  if(start + 1u < size) {
+    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u);
+    reader->buffer >>= (reader->bp & 7u);
+    return 1;
   } else {
-    size_t start = reader->bp >> 3u;
-    unsigned rem = reader->bitsize - reader->bp;
-    if(rem >= 24) {
-      reader->buffer = (unsigned)(reader->data[start + 0] | (unsigned)((reader->data[start + 1] << 8u)) |
-                       (unsigned)(reader->data[start + 2] << 16u)) >> (reader->bp & 7u);
-      return 0;
-    } else {
-      size_t size = reader->size;
-      reader->buffer = 0;
-      if(start + 0 < size) reader->buffer |= reader->data[start + 0];
-      if(start + 1 < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
-      if(start + 2 < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
-      reader->buffer >>= (reader->bp & 7u);
-      return (rem >= nbits) ? 0 : (nbits - rem);
-    }
+    reader->buffer = 0;
+    if(start + 0u < size) reader->buffer |= reader->data[start + 0];
+    reader->buffer >>= (reader->bp & 7u);
+    return reader->bp + nbits < reader->bitsize;
+  }
+}
+
+/*See ensureBits documentation above. This one ensures up to 17 bits */
+static unsigned ensureBits17(LodePNGBitReader* reader, size_t nbits) {
+  size_t start = reader->bp >> 3u;
+  size_t size = reader->size;
+  if(start + 2u < size) {
+    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
+                     (unsigned)(reader->data[start + 2] << 16u);
+    reader->buffer >>= (reader->bp & 7u);
+    return 1;
+  } else {
+    reader->buffer = 0;
+    if(start + 0u < size) reader->buffer |= reader->data[start + 0];
+    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
+    reader->buffer >>= (reader->bp & 7u);
+    return reader->bp + nbits < reader->bitsize;
+  }
+}
+
+/*See ensureBits documentation above. This one ensures up to 25 bits */
+static LODEPNG_INLINE unsigned ensureBits25(LodePNGBitReader* reader, size_t nbits) {
+  size_t start = reader->bp >> 3u;
+  size_t size = reader->size;
+  if(start + 3u < size) {
+    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
+                     (unsigned)(reader->data[start + 2] << 16u) | (unsigned)(reader->data[start + 3] << 24u);
+    reader->buffer >>= (reader->bp & 7u);
+    return 1;
+  } else {
+    reader->buffer = 0;
+    if(start + 0u < size) reader->buffer |= reader->data[start + 0];
+    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
+    if(start + 2u < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
+    reader->buffer >>= (reader->bp & 7u);
+    return reader->bp + nbits < reader->bitsize;
+  }
+}
+
+/*See ensureBits documentation above. This one ensures up to 32 bits */
+static LODEPNG_INLINE unsigned ensureBits32(LodePNGBitReader* reader, size_t nbits) {
+  size_t start = reader->bp >> 3u;
+  size_t size = reader->size;
+  if(start + 4u < size) {
+    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
+                     (unsigned)(reader->data[start + 2] << 16u) | (unsigned)(reader->data[start + 3] << 24u);
+    reader->buffer >>= (reader->bp & 7u);
+    reader->buffer |= ((unsigned)(reader->data[start + 4] << 24u) << (7u - (reader->bp & 7u)));
+    return 1;
+  } else {
+    reader->buffer = 0;
+    if(start + 0u < size) reader->buffer |= reader->data[start + 0];
+    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
+    if(start + 2u < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
+    if(start + 3u < size) reader->buffer |= (unsigned)(reader->data[start + 3] << 24u);
+    reader->buffer >>= (reader->bp & 7u);
+    return reader->bp + nbits < reader->bitsize;
   }
 }
 
@@ -587,7 +690,8 @@ static void HuffmanTree_cleanup(HuffmanTree* tree) {
 }
 
 /* amount of bits for first huffman table lookup (aka root bits), see HuffmanTree_makeTable and huffmanDecodeSymbol.*/
-#define FIRSTBITS 8u
+/* values 8u and 9u work the fastest */
+#define FIRSTBITS 9u
 
 /* make table for huffman decoding */
 static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
@@ -987,14 +1091,12 @@ static unsigned generateFixedDistanceTree(HuffmanTree* tree) {
 #ifdef LODEPNG_COMPILE_DECODER
 
 /*
-returns the code, or (unsigned)(-1) if error happened
+returns the code. The bit reader must already have been ensured at least 15 bits
 */
 static unsigned huffmanDecodeSymbol(LodePNGBitReader* reader, const HuffmanTree* codetree) {
-  unsigned short code, l, value;
-  if(ensureBits(reader, 15) > 1) return (unsigned)(-1);
-  code = peekBits(reader, FIRSTBITS);
-  l = codetree->table_len[code];
-  value = codetree->table_value[code];
+  unsigned short code = peekBits(reader, FIRSTBITS);
+  unsigned short l = codetree->table_len[code];
+  unsigned short value = codetree->table_value[code];
   if(l <= FIRSTBITS) {
     advanceBits(reader, l);
     return value;
@@ -1035,7 +1137,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
   unsigned* bitlen_cl = 0;
   HuffmanTree tree_cl; /*the code tree for code length codes (the huffman tree for compressed huffman trees)*/
 
-  if(ensureBits(reader, 14)) return 49; /*error: the bit pointer is or will go past the memory*/
+  if(!ensureBits17(reader, 14)) return 49; /*error: the bit pointer is or will go past the memory*/
 
   /*number of literal/length codes + 257. Unlike the spec, the value 257 is added to it here already*/
   HLIT =  readBits(reader, 5) + 257;
@@ -1051,9 +1153,11 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
 
   while(!error) {
     /*read the code length codes out of 3 * (amount of code length codes) bits*/
-    if((reader->bp) + HCLEN * 3 > reader->bitsize) ERROR_BREAK(50); /*error: the bit pointer is or will go past the memory*/
+    if(lodepng_gtofl(reader->bp, HCLEN * 3, reader->bitsize)) {
+      ERROR_BREAK(50); /*error: the bit pointer is or will go past the memory*/
+    }
     for(i = 0; i != HCLEN; ++i) {
-      ensureBits(reader, 3);
+      ensureBits9(reader, 3); /*out of bounds already checked above */
       bitlen_cl[CLCL_ORDER[i]] = readBits(reader, 3);
     }
     for(i = HCLEN; i != NUM_CODE_LENGTH_CODES; ++i) {
@@ -1073,7 +1177,9 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
     /*i is the current symbol we're reading in the part that contains the code lengths of lit/len and dist codes*/
     i = 0;
     while(i < HLIT + HDIST) {
-      unsigned code = huffmanDecodeSymbol(reader, &tree_cl);
+      unsigned code;
+      ensureBits25(reader, 22); /* up to 15 bits for huffman code, up to 7 extra bits below*/
+      code = huffmanDecodeSymbol(reader, &tree_cl);
       if(code <= 15) /*a length code*/ {
         if(i < HLIT) bitlen_ll[i] = code;
         else bitlen_d[i - HLIT] = code;
@@ -1084,7 +1190,6 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
 
         if(i == 0) ERROR_BREAK(54); /*can't repeat previous if i is 0*/
 
-        if(ensureBits(reader, 2)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 2);
 
         if(i < HLIT + 1) value = bitlen_ll[i - 1];
@@ -1098,7 +1203,6 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         }
       } else if(code == 17) /*repeat "0" 3-10 times*/ {
         unsigned replength = 3; /*read in the bits that indicate repeat length*/
-        if(ensureBits(reader, 3)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 3);
 
         /*repeat this value in the next lengths*/
@@ -1111,7 +1215,6 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
         }
       } else if(code == 18) /*repeat "0" 11-138 times*/ {
         unsigned replength = 11; /*read in the bits that indicate repeat length*/
-        if(ensureBits(reader, 7)) ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
         replength += readBits(reader, 7);
 
         /*repeat this value in the next lengths*/
@@ -1123,13 +1226,14 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
           ++i;
         }
       } else /*if(code == (unsigned)(-1))*/ /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/ {
-        if(code == (unsigned)(-1)) {
-          /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
-          (10=no endcode, 11=wrong jump outside of tree)*/
-          error = (reader->bp) > reader->bitsize ? 10 : 11;
-        }
-        else error = 16; /*unexisting code, this can never happen*/
-        break;
+        ERROR_BREAK(16); /*unexisting code, this can never happen*/
+      }
+      /*check if any of the ensureBits above went out of bounds*/
+      if(reader->bp > reader->bitsize) {
+        /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
+        (10=no endcode, 11=wrong jump outside of tree)*/
+        /* TODO: revise error codes 10,11,50: the above comment is no longer valid */
+        ERROR_BREAK(50); /*error, bit pointer jumps past memory*/
       }
     }
     if(error) break;
@@ -1167,7 +1271,9 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
 
   while(!error) /*decode all symbols until end reached, breaks at end code*/ {
     /*code_ll is literal, length or end code*/
-    unsigned code_ll = huffmanDecodeSymbol(reader, &tree_ll);
+    unsigned code_ll;
+    ensureBits25(reader, 20); /* up to 15 for the huffman symbol, up to 5 for the length extra bits */
+    code_ll = huffmanDecodeSymbol(reader, &tree_ll);
     if(code_ll <= 255) /*literal symbol*/ {
       /*ucvector_push_back would do the same, but for some reason the two lines below run 10% faster*/
       if(!ucvector_resize(out, (*pos) + 1)) ERROR_BREAK(83 /*alloc fail*/);
@@ -1184,12 +1290,12 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
       /*part 2: get extra bits and add the value of that to length*/
       numextrabits_l = LENGTHEXTRA[code_ll - FIRST_LENGTH_CODE_INDEX];
       if(numextrabits_l != 0) {
-        /* we need numextrabits_l bits, but using the constant 5 (max possible) in ensureBits is slightly faster */
-        if(ensureBits(reader, 5)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+        /* bits already ensured above */
         length += readBits(reader, numextrabits_l);
       }
 
       /*part 3: get distance code*/
+      ensureBits32(reader, 28); /* up to 15 for the huffman symbol, up to 13 for the extra bits */
       code_d = huffmanDecodeSymbol(reader, &tree_d);
       if(code_d > 29) {
         if(code_d == (unsigned)(-1)) /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/ {
@@ -1205,8 +1311,7 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
       /*part 4: get extra bits from distance*/
       numextrabits_d = DISTANCEEXTRA[code_d];
       if(numextrabits_d != 0) {
-        /* we need numextrabits_d bits, but using the constant 13 (max possible) in ensureBits is slightly faster */
-        if(ensureBits(reader, 13)) ERROR_BREAK(51); /*error, bit pointer will jump past memory*/
+        /* bits already ensured above */
         distance += readBits(reader, numextrabits_d);
       }
 
@@ -1230,10 +1335,14 @@ static unsigned inflateHuffmanBlock(ucvector* out, size_t* pos, LodePNGBitReader
     } else if(code_ll == 256) {
       break; /*end code, break the loop*/
     } else /*if(code == (unsigned)(-1))*/ /*huffmanDecodeSymbol returns (unsigned)(-1) in case of error*/ {
+      ERROR_BREAK(16) /* impossible */
+    }
+    /*check if any of the ensureBits above went out of bounds*/
+    if(reader->bp > reader->bitsize) {
       /*return error code 10 or 11 depending on the situation that happened in huffmanDecodeSymbol
       (10=no endcode, 11=wrong jump outside of tree)*/
-      error = (reader->bp > reader->bitsize) ? 10 : 11;
-      break;
+      /* TODO: revise error codes 10,11,50: the above comment is no longer valid */
+      ERROR_BREAK(51); /*error, bit pointer jumps past memory*/
     }
   }
 
@@ -1281,13 +1390,14 @@ static unsigned lodepng_inflatev(ucvector* out,
                                  const LodePNGDecompressSettings* settings) {
   unsigned BFINAL = 0;
   size_t pos = 0; /*byte position in the out buffer*/
-  unsigned error = 0;
   LodePNGBitReader reader;
-  LodePNGBitReader_init(&reader, in, insize);
+  unsigned error = LodePNGBitReader_init(&reader, in, insize);
+
+  if(error) return error;
 
   while(!BFINAL) {
     unsigned BTYPE;
-    if(ensureBits(&reader, 3)) return 52; /*error, bit pointer will jump past memory*/
+    if(!ensureBits9(&reader, 3)) return 52; /*error, bit pointer will jump past memory*/
     BFINAL = readBits(&reader, 1);
     BTYPE = readBits(&reader, 2);
 
@@ -2615,20 +2725,6 @@ static size_t lodepng_get_raw_size_idat(unsigned w, unsigned h, const LodePNGCol
   /* + 1 for the filter byte, and possibly plus padding bits per line */
   size_t line = ((size_t)(w / 8u) * bpp) + 1u + ((w & 7u) * bpp + 7u) / 8u;
   return (size_t)h * line;
-}
-
-/* Safely check if multiplying two integers will overflow (no undefined
-behavior, compiler removing the code, etc...) and output result. */
-static int lodepng_mulofl(size_t a, size_t b, size_t* result) {
-  *result = a * b; /* Unsigned multiplication is well defined and safe in C90 */
-  return (a != 0 && *result / a != b);
-}
-
-/* Safely check if adding two integers will overflow (no undefined
-behavior, compiler removing the code, etc...) and output result. */
-static int lodepng_addofl(size_t a, size_t b, size_t* result) {
-  *result = a + b; /* Unsigned addition is well defined and safe in C90 */
-  return *result < a;
 }
 
 /*Safely checks whether size_t overflow can be caused due to amount of pixels.
@@ -5899,6 +5995,7 @@ const char* lodepng_error_text(unsigned code) {
     case 102: return "not allowed to set grayscale ICC profile with colored pixels by PNG specification";
     case 103: return "invalid palette index in bKGD chunk. Maybe it came before PLTE chunk?";
     case 104: return "invalid bKGD color while encoding (e.g. palette index out of range)";
+    case 105: return "integer overflow of bitsize";
   }
   return "unknown error code";
 }

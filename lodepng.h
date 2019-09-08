@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190901
+LodePNG version 20190908
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -1784,6 +1784,9 @@ yyyymmdd.
 Some changes aren't backwards compatible. Those are indicated with a (!)
 symbol.
 
+Not all changes are listed here, the commit history in github lists more:
+https://github.com/lvandeve/lodepng
+
 *) 14 aug 2019: around 25% faster decoding thanks to huffman lookup tables.
 *) 15 jun 2019 (!): auto_choose_color API changed (for bugfix: don't use palette
    if gray ICC profile) and non-ICC LodePNGColorProfile renamed to LodePNGColorStats.
@@ -1803,6 +1806,7 @@ symbol.
 *) 08 dec 2015: Made load_file function return error if file can't be opened.
 *) 24 okt 2015: Bugfix with decoding to palette output.
 *) 18 apr 2015: Boundary PM instead of just package-merge for faster encoding.
+*) 24 aug 2014: Moved to github
 *) 23 aug 2014: Reduced needless memory usage of decoder.
 *) 28 jun 2014: Removed fix_png setting, always support palette OOB for
     simplicity. Made ColorProfile public.
