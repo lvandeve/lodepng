@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190908
+LodePNG version 20190909
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190908";
+const char* LODEPNG_VERSION_STRING = "20190909";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -2132,28 +2132,28 @@ static unsigned deflate(unsigned char** out, size_t* outsize,
 /* ////////////////////////////////////////////////////////////////////////// */
 
 static unsigned update_adler32(unsigned adler, const unsigned char* data, unsigned len) {
-  unsigned s1 = adler & 0xffff;
-  unsigned s2 = (adler >> 16) & 0xffff;
+  unsigned s1 = adler & 0xffffu;
+  unsigned s2 = (adler >> 16u) & 0xffffu;
 
-  while(len > 0) {
+  while(len != 0u) {
+    unsigned i;
     /*at least 5552 sums can be done before the sums overflow, saving a lot of module divisions*/
-    unsigned amount = len > 5552 ? 5552 : len;
+    unsigned amount = len > 5552u ? 5552u : len;
     len -= amount;
-    while(amount > 0) {
+    for(i = 0; i != amount; ++i) {
       s1 += (*data++);
       s2 += s1;
-      --amount;
     }
-    s1 %= 65521;
-    s2 %= 65521;
+    s1 %= 65521u;
+    s2 %= 65521u;
   }
 
-  return (s2 << 16) | s1;
+  return (s2 << 16u) | s1;
 }
 
 /*Return the adler32 of the bytes data[0..len-1]*/
 static unsigned adler32(const unsigned char* data, unsigned len) {
-  return update_adler32(1L, data, len);
+  return update_adler32(1u, data, len);
 }
 
 /* ////////////////////////////////////////////////////////////////////////// */
@@ -2400,6 +2400,7 @@ static unsigned char readBitFromReversedStream(size_t* bitpointer, const unsigne
   return result;
 }
 
+/* TODO: make this faster */
 static unsigned readBitsFromReversedStream(size_t* bitpointer, const unsigned char* bitstream, size_t nbits) {
   unsigned result = 0;
   size_t i;
@@ -2602,6 +2603,22 @@ void lodepng_color_mode_init(LodePNGColorMode* info) {
   info->palettesize = 0;
 }
 
+void lodepng_color_mode_alloc_palette(LodePNGColorMode* info) {
+  size_t i;
+  /*room for 256 colors with 4 bytes each. Using realloc to avoid leak if it is being overwritten*/
+  info->palette = (unsigned char*)lodepng_realloc(info->palette, 1024);
+  if(!info->palette) return; /*alloc fail*/
+  for(i = 0; i != 256; ++i) {
+    /*Initialize all unused colors with black, the value used for invalid palette indices.
+    This is an error according to the PNG spec, but common PNG decoders make it black instead.
+    That makes color conversion slightly faster due to no error handling needed.*/
+    info->palette[i * 4 + 0] = 0;
+    info->palette[i * 4 + 1] = 0;
+    info->palette[i * 4 + 2] = 0;
+    info->palette[i * 4 + 3] = 255;
+  }
+}
+
 void lodepng_color_mode_cleanup(LodePNGColorMode* info) {
   lodepng_palette_clear(info);
 }
@@ -2651,14 +2668,9 @@ void lodepng_palette_clear(LodePNGColorMode* info) {
 
 unsigned lodepng_palette_add(LodePNGColorMode* info,
                              unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
-  unsigned char* data;
-  /*the same resize technique as C++ std::vectors is used, and here it's made so that for a palette with
-  the max of 256 colors, it'll have the exact alloc size*/
   if(!info->palette) /*allocate palette if empty*/ {
-    /*room for 256 colors with 4 bytes each*/
-    data = (unsigned char*)lodepng_realloc(info->palette, 1024);
-    if(!data) return 83; /*alloc fail*/
-    else info->palette = data;
+    lodepng_color_mode_alloc_palette(info);
+    if(!info->palette) return 83; /*alloc fail*/
   }
   info->palette[4 * info->palettesize + 0] = r;
   info->palette[4 * info->palettesize + 1] = g;
@@ -3202,18 +3214,11 @@ static void getPixelColorRGBA8(unsigned char* r, unsigned char* g,
       size_t j = i * mode->bitdepth;
       index = readBitsFromReversedStream(&j, in, mode->bitdepth);
     }
-
-    if(index >= mode->palettesize) {
-      /*This is an error according to the PNG spec, but common PNG decoders make it black instead.
-      Done here too, slightly faster due to no error handling needed.*/
-      *r = *g = *b = 0;
-      *a = 255;
-    } else {
-      *r = mode->palette[index * 4 + 0];
-      *g = mode->palette[index * 4 + 1];
-      *b = mode->palette[index * 4 + 2];
-      *a = mode->palette[index * 4 + 3];
-    }
+    /*out of bounds of palette not checked: see lodepng_color_mode_alloc_palette.*/
+    *r = mode->palette[index * 4 + 0];
+    *g = mode->palette[index * 4 + 1];
+    *b = mode->palette[index * 4 + 2];
+    *a = mode->palette[index * 4 + 3];
   } else if(mode->colortype == LCT_GREY_ALPHA) {
     if(mode->bitdepth == 8) {
       *r = *g = *b = in[i * 2 + 0];
@@ -3239,24 +3244,29 @@ static void getPixelColorRGBA8(unsigned char* r, unsigned char* g,
 
 /*Similar to getPixelColorRGBA8, but with all the for loops inside of the color
 mode test cases, optimized to convert the colors much faster, when converting
-to RGBA or RGB with 8 bit per cannel. buffer must be RGBA or RGB output with
-enough memory, if has_alpha is true the output is RGBA. mode has the color mode
-of the input buffer.*/
-static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
-                                unsigned has_alpha, const unsigned char* in,
+to the common case of RGBA with 8 bit per cannel. buffer must be RGBA with
+enough memory.*/
+static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t numpixels,
+                                const unsigned char* LODEPNG_RESTRICT in,
                                 const LodePNGColorMode* mode) {
-  unsigned num_channels = has_alpha ? 4 : 3;
+  unsigned num_channels = 4;
   size_t i;
   if(mode->colortype == LCT_GREY) {
     if(mode->bitdepth == 8) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = buffer[1] = buffer[2] = in[i];
-        if(has_alpha) buffer[3] = mode->key_defined && in[i] == mode->key_r ? 0 : 255;
+        buffer[3] = 255;
+      }
+      if(mode->key_defined) {
+        buffer -= numpixels * num_channels;
+        for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+          if(buffer[0] == mode->key_r) buffer[3] = 0;
+        }
       }
     } else if(mode->bitdepth == 16) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = buffer[1] = buffer[2] = in[i * 2];
-        if(has_alpha) buffer[3] = mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r ? 0 : 255;
+        buffer[3] = mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r ? 0 : 255;
       }
     } else {
       unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
@@ -3264,74 +3274,141 @@ static void getPixelColorsRGBA8(unsigned char* buffer, size_t numpixels,
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
         buffer[0] = buffer[1] = buffer[2] = (value * 255) / highest;
-        if(has_alpha) buffer[3] = mode->key_defined && value == mode->key_r ? 0 : 255;
+        buffer[3] = mode->key_defined && value == mode->key_r ? 0 : 255;
       }
     }
   } else if(mode->colortype == LCT_RGB) {
     if(mode->bitdepth == 8) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-        buffer[0] = in[i * 3 + 0];
-        buffer[1] = in[i * 3 + 1];
-        buffer[2] = in[i * 3 + 2];
-        if(has_alpha) buffer[3] = mode->key_defined && buffer[0] == mode->key_r
-           && buffer[1]== mode->key_g && buffer[2] == mode->key_b ? 0 : 255;
+        lodepng_memcpy(buffer, &in[i * 3], 3);
+        buffer[3] = 255;
+      }
+      if(mode->key_defined) {
+        buffer -= numpixels * num_channels;
+        for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+          if(buffer[0] == mode->key_r && buffer[1]== mode->key_g && buffer[2] == mode->key_b) buffer[3] = 0;
+        }
       }
     } else {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = in[i * 6 + 0];
         buffer[1] = in[i * 6 + 2];
         buffer[2] = in[i * 6 + 4];
-        if(has_alpha) buffer[3] = mode->key_defined
+        buffer[3] = mode->key_defined
            && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
            && 256U * in[i * 6 + 2] + in[i * 6 + 3] == mode->key_g
            && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b ? 0 : 255;
       }
     }
   } else if(mode->colortype == LCT_PALETTE) {
-    unsigned index;
-    size_t j = 0;
-    for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-      if(mode->bitdepth == 8) index = in[i];
-      else index = readBitsFromReversedStream(&j, in, mode->bitdepth);
-
-      if(index >= mode->palettesize) {
-        /*This is an error according to the PNG spec, but most PNG decoders make it black instead.
-        Done here too, slightly faster due to no error handling needed.*/
-        buffer[0] = buffer[1] = buffer[2] = 0;
-        if(has_alpha) buffer[3] = 255;
-      } else {
-        buffer[0] = mode->palette[index * 4 + 0];
-        buffer[1] = mode->palette[index * 4 + 1];
-        buffer[2] = mode->palette[index * 4 + 2];
-        if(has_alpha) buffer[3] = mode->palette[index * 4 + 3];
+    if(mode->bitdepth == 8) {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        unsigned index = in[i];
+        /*out of bounds of palette not checked: see lodepng_color_mode_alloc_palette.*/
+        lodepng_memcpy(buffer, &mode->palette[index * 4], 4);
+      }
+    } else {
+      size_t j = 0;
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        unsigned index = readBitsFromReversedStream(&j, in, mode->bitdepth);
+        /*out of bounds of palette not checked: see lodepng_color_mode_alloc_palette.*/
+        lodepng_memcpy(buffer, &mode->palette[index * 4], 4);
       }
     }
   } else if(mode->colortype == LCT_GREY_ALPHA) {
     if(mode->bitdepth == 8) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = buffer[1] = buffer[2] = in[i * 2 + 0];
-        if(has_alpha) buffer[3] = in[i * 2 + 1];
+        buffer[3] = in[i * 2 + 1];
       }
     } else {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = buffer[1] = buffer[2] = in[i * 4 + 0];
-        if(has_alpha) buffer[3] = in[i * 4 + 2];
+        buffer[3] = in[i * 4 + 2];
+      }
+    }
+  } else if(mode->colortype == LCT_RGBA) {
+    if(mode->bitdepth == 8) {
+      lodepng_memcpy(buffer, in, numpixels * 4);
+    } else {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = in[i * 8 + 0];
+        buffer[1] = in[i * 8 + 2];
+        buffer[2] = in[i * 8 + 4];
+        buffer[3] = in[i * 8 + 6];
+      }
+    }
+  }
+}
+
+/*Similar to getPixelColorsRGBA8, but with 3-channel RGB output.*/
+static void getPixelColorsRGB8(unsigned char* LODEPNG_RESTRICT buffer, size_t numpixels,
+                               const unsigned char* LODEPNG_RESTRICT in,
+                               const LodePNGColorMode* mode) {
+  const unsigned num_channels = 3;
+  size_t i;
+  if(mode->colortype == LCT_GREY) {
+    if(mode->bitdepth == 8) {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = buffer[1] = buffer[2] = in[i];
+      }
+    } else if(mode->bitdepth == 16) {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = buffer[1] = buffer[2] = in[i * 2];
+      }
+    } else {
+      unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
+      size_t j = 0;
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
+        buffer[0] = buffer[1] = buffer[2] = (value * 255) / highest;
+      }
+    }
+  } else if(mode->colortype == LCT_RGB) {
+    if(mode->bitdepth == 8) {
+      lodepng_memcpy(buffer, in, numpixels * 3);
+    } else {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = in[i * 6 + 0];
+        buffer[1] = in[i * 6 + 2];
+        buffer[2] = in[i * 6 + 4];
+      }
+    }
+  } else if(mode->colortype == LCT_PALETTE) {
+    if(mode->bitdepth == 8) {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        unsigned index = in[i];
+        /*out of bounds of palette not checked: see lodepng_color_mode_alloc_palette.*/
+        lodepng_memcpy(buffer, &mode->palette[index * 4], 3);
+      }
+    } else {
+      size_t j = 0;
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        unsigned index = readBitsFromReversedStream(&j, in, mode->bitdepth);
+        /*out of bounds of palette not checked: see lodepng_color_mode_alloc_palette.*/
+        lodepng_memcpy(buffer, &mode->palette[index * 4], 3);
+      }
+    }
+  } else if(mode->colortype == LCT_GREY_ALPHA) {
+    if(mode->bitdepth == 8) {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = buffer[1] = buffer[2] = in[i * 2 + 0];
+      }
+    } else {
+      for(i = 0; i != numpixels; ++i, buffer += num_channels) {
+        buffer[0] = buffer[1] = buffer[2] = in[i * 4 + 0];
       }
     }
   } else if(mode->colortype == LCT_RGBA) {
     if(mode->bitdepth == 8) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-        buffer[0] = in[i * 4 + 0];
-        buffer[1] = in[i * 4 + 1];
-        buffer[2] = in[i * 4 + 2];
-        if(has_alpha) buffer[3] = in[i * 4 + 3];
+        lodepng_memcpy(buffer, &in[i * 4], 3);
       }
     } else {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = in[i * 8 + 0];
         buffer[1] = in[i * 8 + 2];
         buffer[2] = in[i * 8 + 4];
-        if(has_alpha) buffer[3] = in[i * 8 + 6];
       }
     }
   }
@@ -3413,9 +3490,9 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
       rgba16ToPixel(out, i, mode_out, r, g, b, a);
     }
   } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGBA) {
-    getPixelColorsRGBA8(out, numpixels, 1, in, mode_in);
+    getPixelColorsRGBA8(out, numpixels, in, mode_in);
   } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGB) {
-    getPixelColorsRGBA8(out, numpixels, 0, in, mode_in);
+    getPixelColorsRGB8(out, numpixels, in, mode_in);
   } else {
     unsigned char r = 0, g = 0, b = 0, a = 0;
     for(i = 0; i != numpixels; ++i) {
@@ -3962,7 +4039,45 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
         for(i = 0; i != bytewidth; ++i) {
           recon[i] = (scanline[i] + precon[i]); /*paethPredictor(0, precon[i], 0) is always precon[i]*/
         }
-        for(i = bytewidth; i < length; ++i) {
+
+        /* Unroll independent paths of the paeth predictor. A 6x and 8x version would also be possible but that
+        adds too much code. Whether this actually speeds anything up at all depends on compiler and settings. */
+        if(bytewidth >= 4) {
+          for(; i + 3 < length; i += 4) {
+            size_t j = i - bytewidth;
+            unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1], s2 = scanline[i + 2], s3 = scanline[i + 3];
+            unsigned char r0 = recon[j + 0], r1 = recon[j + 1], r2 = recon[j + 2], r3 = recon[j + 3];
+            unsigned char p0 = precon[i + 0], p1 = precon[i + 1], p2 = precon[i + 2], p3 = precon[i + 3];
+            unsigned char q0 = precon[j + 0], q1 = precon[j + 1], q2 = precon[j + 2], q3 = precon[j + 3];
+            recon[i + 0] = s0 + paethPredictor(r0, p0, q0);
+            recon[i + 1] = s1 + paethPredictor(r1, p1, q1);
+            recon[i + 2] = s2 + paethPredictor(r2, p2, q2);
+            recon[i + 3] = s3 + paethPredictor(r3, p3, q3);
+          }
+        } else if(bytewidth >= 3) {
+          for(; i + 2 < length; i += 3) {
+            size_t j = i - bytewidth;
+            unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1], s2 = scanline[i + 2];
+            unsigned char r0 = recon[j + 0], r1 = recon[j + 1], r2 = recon[j + 2];
+            unsigned char p0 = precon[i + 0], p1 = precon[i + 1], p2 = precon[i + 2];
+            unsigned char q0 = precon[j + 0], q1 = precon[j + 1], q2 = precon[j + 2];
+            recon[i + 0] = s0 + paethPredictor(r0, p0, q0);
+            recon[i + 1] = s1 + paethPredictor(r1, p1, q1);
+            recon[i + 2] = s2 + paethPredictor(r2, p2, q2);
+          }
+        } else if(bytewidth >= 2) {
+          for(; i + 1 < length; i += 2) {
+            size_t j = i - bytewidth;
+            unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1];
+            unsigned char r0 = recon[j + 0], r1 = recon[j + 1];
+            unsigned char p0 = precon[i + 0], p1 = precon[i + 1];
+            unsigned char q0 = precon[j + 0], q1 = precon[j + 1];
+            recon[i + 0] = s0 + paethPredictor(r0, p0, q0);
+            recon[i + 1] = s1 + paethPredictor(r1, p1, q1);
+          }
+        }
+
+        for(; i != length; ++i) {
           recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth]));
         }
       } else {
@@ -4131,14 +4246,13 @@ static unsigned postProcessScanlines(unsigned char* out, unsigned char* in,
 
 static unsigned readChunk_PLTE(LodePNGColorMode* color, const unsigned char* data, size_t chunkLength) {
   unsigned pos = 0, i;
-  if(color->palette) lodepng_free(color->palette);
   color->palettesize = chunkLength / 3u;
-  color->palette = (unsigned char*)lodepng_malloc(4 * color->palettesize);
+  if(color->palettesize == 0 || color->palettesize > 256) return 38; /*error: palette too small or big*/
+  lodepng_color_mode_alloc_palette(color);
   if(!color->palette && color->palettesize) {
     color->palettesize = 0;
     return 83; /*alloc fail*/
   }
-  if(color->palettesize > 256) return 38; /*error: palette too big*/
 
   for(i = 0; i != color->palettesize; ++i) {
     color->palette[4 * i + 0] = data[pos++]; /*R*/
@@ -5925,7 +6039,7 @@ const char* lodepng_error_text(unsigned code) {
     case 35: return "chunk length of a chunk is too large or the chunk too small";
     case 36: return "illegal PNG filter type encountered";
     case 37: return "illegal bit depth for this color type given";
-    case 38: return "the palette is too big"; /*more than 256 colors*/
+    case 38: return "the palette is too small or too big"; /*0, or more than 256 colors*/
     case 39: return "tRNS chunk before PLTE or has more entries than palette size";
     case 40: return "tRNS chunk has wrong size for grayscale image";
     case 41: return "tRNS chunk has wrong size for RGB image";

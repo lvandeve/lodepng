@@ -3061,8 +3061,63 @@ void testPngSuiteImage(const std::string& png64, const std::string& name, bool e
   assertNoError(error);
   ASSERT_EQUALS(expect_w, w);
   ASSERT_EQUALS(expect_h, h);
-  // TODO: also test decoding to 16-bit (with separate md5 for the 16-bit pixels)
   ASSERT_EQUALS(expect_md5, md5sum(decoded));
+
+  // test decoding without alpha channel
+  {
+    size_t numpixels = w * h;
+    std::vector<unsigned char> expected_rgb(numpixels * 3);
+    for(size_t i = 0; i < numpixels; i++) {
+      expected_rgb[i * 3 + 0] = decoded[i * 4 + 0];
+      expected_rgb[i * 3 + 1] = decoded[i * 4 + 1];
+      expected_rgb[i * 3 + 2] = decoded[i * 4 + 2];
+    }
+    std::vector<unsigned char> rgb;
+    ASSERT_NO_PNG_ERROR(lodepng::decode(rgb, w, h, png, LCT_RGB));
+    ASSERT_EQUALS(expect_w, w);
+    ASSERT_EQUALS(expect_h, h);
+    ASSERT_EQUALS(expected_rgb, rgb);
+  }
+
+  // test decoding 16-bit RGBA
+  // TODO: get an additional md5sum for 16-bit pixels instead to compare with
+  {
+    size_t numpixels = w * h;
+    std::vector<unsigned char> rgba16;
+    ASSERT_NO_PNG_ERROR(lodepng::decode(rgba16, w, h, png, LCT_RGBA, 16));
+    ASSERT_EQUALS(expect_w, w);
+    ASSERT_EQUALS(expect_h, h);
+    std::vector<unsigned char> rgba8(numpixels * 4);
+    for(size_t i = 0; i < numpixels; i++) {
+      rgba8[i * 4 + 0] = rgba16[i * 8 + 0];
+      rgba8[i * 4 + 1] = rgba16[i * 8 + 2];
+      rgba8[i * 4 + 2] = rgba16[i * 8 + 4];
+      rgba8[i * 4 + 3] = rgba16[i * 8 + 6];
+    }
+    ASSERT_EQUALS(decoded, rgba8);
+  }
+
+  // test decoding 16-bit RGB
+  {
+    size_t numpixels = w * h;
+    std::vector<unsigned char> expected_rgb(numpixels * 3);
+    for(size_t i = 0; i < numpixels; i++) {
+      expected_rgb[i * 3 + 0] = decoded[i * 4 + 0];
+      expected_rgb[i * 3 + 1] = decoded[i * 4 + 1];
+      expected_rgb[i * 3 + 2] = decoded[i * 4 + 2];
+    }
+    std::vector<unsigned char> rgb16;
+    ASSERT_NO_PNG_ERROR(lodepng::decode(rgb16, w, h, png, LCT_RGB, 16));
+    ASSERT_EQUALS(expect_w, w);
+    ASSERT_EQUALS(expect_h, h);
+    std::vector<unsigned char> rgb8(numpixels * 3);
+    for(size_t i = 0; i < numpixels; i++) {
+      rgb8[i * 3 + 0] = rgb16[i * 6 + 0];
+      rgb8[i * 3 + 1] = rgb16[i * 6 + 2];
+      rgb8[i * 3 + 2] = rgb16[i * 6 + 4];
+    }
+    ASSERT_EQUALS(expected_rgb, rgb8);
+  }
 }
 
 
