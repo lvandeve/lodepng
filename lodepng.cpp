@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190909
+LodePNG version 20190914
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190909";
+const char* LODEPNG_VERSION_STRING = "20190914";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -5308,13 +5308,14 @@ static void filterScanline(unsigned char* out, const unsigned char* scanline, co
   }
 }
 
-/* TODO: remove the usage of float */
-/* log2 approximation. A slight bit faster than std::log. */
-static float flog2(float f) {
-  float result = 0;
-  while(f > 32) { result += 4; f /= 16; }
-  while(f > 2) { ++result; f /= 2; }
-  return result + 1.442695f * (f * f * f / 3 - 3 * f * f / 2 + 3 * f - 1.83333f);
+/* integer binary logarithm */
+static size_t ilog2(size_t i) {
+  size_t result = 0;
+  while(i >= 65536) { result += 16; i >>= 16; }
+  while(i >= 256) { result += 8; i >>= 8; }
+  while(i >= 16) { result += 4; i >>= 4; }
+  while(i >= 2) { result += 1; i >>= 1; }
+  return result;
 }
 
 static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, unsigned h,
@@ -5411,9 +5412,9 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
     for(type = 0; type != 5; ++type) lodepng_free(attempt[type]);
   } else if(strategy == LFS_ENTROPY) {
-    float sum[5];
+    size_t sum[5];
     unsigned char* attempt[5]; /*five filtering attempts, one for each filter type*/
-    float smallest = 0;
+    size_t bestSum = 0;
     unsigned type, bestType = 0;
     unsigned count[256];
 
@@ -5431,13 +5432,12 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
         ++count[type]; /*the filter type itself is part of the scanline*/
         sum[type] = 0;
         for(x = 0; x != 256; ++x) {
-          float p = count[x] / (float)(linebytes + 1);
-          sum[type] += count[x] == 0 ? 0 : flog2(1 / p) * p;
+          sum[type] += count[x] == 0 ? 0 : ilog2(count[x]) * count[x];
         }
         /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
-        if(type == 0 || sum[type] < smallest) {
+        if(type == 0 || sum[type] > bestSum) {
           bestType = type;
-          smallest = sum[type];
+          bestSum = sum[type];
         }
       }
 

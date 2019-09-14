@@ -125,8 +125,9 @@ std::vector<unsigned char> testEncode(Image& image) {
 
   // Try custom compression settings
   if(apply_mods) {
-    state.encoder.filter_strategy = LFS_ZERO;
-    state.encoder.zlibsettings.btype = 0;
+    //state.encoder.filter_strategy = LFS_ZERO;
+    state.encoder.filter_strategy = LFS_ENTROPY;
+    //state.encoder.zlibsettings.btype = 0;
     //state.encoder.zlibsettings.btype = 1;
     //state.encoder.auto_convert = 0;
     //state.encoder.zlibsettings.use_lz77 = 0;
