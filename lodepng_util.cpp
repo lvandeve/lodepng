@@ -25,7 +25,7 @@ freely, subject to the following restrictions:
 
 #include "lodepng_util.h"
 #include <iostream>  // TODO: remove, don't print stuff from here, return errors instead
-#include <cmath>
+#include <stdlib.h> /* allocations */
 
 namespace lodepng {
 
@@ -277,8 +277,58 @@ void* lodepng_malloc(size_t size);
 void lodepng_free(void* ptr);
 #endif /*LODEPNG_COMPILE_ALLOCATORS*/
 
+/* avoid needing <float.h> for FLT_MAX */
+static const float lodepng_flt_max = 3.40282346638528859811704183484516925e38f;
 
+/* powf polyfill, 5-6 digits accurate, 33% slower than powf, assumes IEEE
+32-bit float, but other than that multiplatform and no math lib needed
+(note: powf also isn't in ISO C90, and pow is slower). */
+static float lodepng_powf(float x, float y) {
+  float j, t0, t1;
+  int i = 0;
+  /* handle all the special floating point rules */
+  if(x == 1 || y == 0) return 1;
+  if(!(x > 0 && x <= lodepng_flt_max && y == y && y <= lodepng_flt_max && y >= -lodepng_flt_max)) {
+    if(y == 1) return x; /* preserves negative-0 */
+    if(x != x || y != y) return x + y; /* nan */
+    if(x > 0) {
+      if(x > lodepng_flt_max) return y <= 0 ? (y == 0 ? 1 : 0) : x; /* x = +infinity */
+    } else {
+      if(!(y < -1073741824.0f || y > 1073741824.0f)) { /* large y always even integer, but cast would overflow */
+        i = (int)y;
+        if(i != y) return (x < -lodepng_flt_max) ? (y < 0 ? 0 : (1 / 0.0f)) : (x == 0 ? (y < 0 ? 1 / 0.0f : 0) : (0 / 0.0f));
+        if(i & 1) return x == 0 ? (y < 0 ? (1 / x) : x) : -lodepng_powf(-x, y);
+      }
+      if(x == 0) return y <= 0 ? (1 / 0.0f) : 0;
+      if(x < -lodepng_flt_max) return y <= 0 ? (y == 0 ? 1 : 0) : ((i & 1) ? (-1 / 0.0f) : (1 / 0.0f)); /* x = -infinity */
+      x = -x;
+      if(x == 1) return 1;
+    }
+    if(y < -lodepng_flt_max || y > lodepng_flt_max) return ((x < 1) != (y > 0)) ? (y < 0 ? -y : y) : 0;
+  }
 
+  j = 0;
+  while(x < (1.0f / 65536)) { j -= 16; x *= 65536.0f; }
+  while(x > 65536) { j += 16; x *= (1.0f / 65536); }
+  while(x < 1) { j--; x *= 2.0f; }
+  while(x > 2) { j++; x *= 0.5f; }
+  /* polynomial to approximate log2(x) with x in range 1..2 */
+  t0 = -0.393118410458557f + x * (-0.0883639468229365f + x * (0.466142650227994f + x * 0.0153397331014276f));
+  t1 = 0.0907447971403586f + x * (0.388892024755479f + x * 0.137228280305862f);
+  x = t0 / t1 + j;
+
+  x *= y; /* using the formula exp2(y * log2(x)) */
+
+  if(!(x > -128.0f && x < 128.0f)) return x > 0 ? (1 / 0.0f) : 0; /* prevent int overflow */
+  i = (int)x;
+  x -= i;
+  /* polynomial to approximate exp2(x) with x in range -1..1 */
+  t0 = 1.0f + x * (0.41777833582744256f + x * (0.0728482595347711f + x * 0.005635023478609625f));
+  t1 = 1.0f + x * (-0.27537016151408167f + x * 0.023501446055084033f);
+  while(i <= -31) { t0 *= (1.0f / 2147483648.0f); i += 31; }
+  while(i >= 31) { t0 *= 2147483648.0f; i -= 31; }
+  return (i < 0) ? (t0 / (t1 * (1 << -i))) : ((t0 * (1 << i)) / t1);
+}
 
 /* Parameters of a tone reproduction curve, either with a power law formula or with a lookup table. */
 typedef struct {
@@ -375,22 +425,22 @@ static float iccForwardTRC(const LodePNGICCCurve* curve, float x) {
   }
   if(curve->type == 2) {
     /* Gamma expansion */
-    return (x > 0) ? powf(x, curve->gamma) : x;
+    return (x > 0) ? lodepng_powf(x, curve->gamma) : x;
   }
   /* TODO: all the ones below are untested */
   if(curve->type == 3) {
     if(x < 0) return x;
-    return x >= (-curve->b / curve->a) ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : 0;
+    return x >= (-curve->b / curve->a) ? (lodepng_powf(curve->a * x + curve->b, curve->gamma) + curve->c) : 0;
   }
   if(curve->type == 4) {
     if(x < 0) return x;
-    return x >= (-curve->b / curve->a) ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : curve->c;
+    return x >= (-curve->b / curve->a) ? (lodepng_powf(curve->a * x + curve->b, curve->gamma) + curve->c) : curve->c;
   }
   if(curve->type == 5) {
-    return x >= curve->d ? (powf(curve->a * x + curve->b, curve->gamma)) : (curve->c * x);
+    return x >= curve->d ? (lodepng_powf(curve->a * x + curve->b, curve->gamma)) : (curve->c * x);
   }
   if(curve->type == 6) {
-    return x >= curve->d ? (powf(curve->a * x + curve->b, curve->gamma) + curve->c) : (curve->c * x + curve->f);
+    return x >= curve->d ? (lodepng_powf(curve->a * x + curve->b, curve->gamma) + curve->c) : (curve->c * x + curve->f);
   }
   return 0;
 }
@@ -435,27 +485,27 @@ static float iccBackwardTRC(const LodePNGICCCurve* curve, float x) {
   }
   if(curve->type == 2) {
     /* Gamma compression */
-    return (x > 0) ? powf(x, 1.0f / curve->gamma) : x;
+    return (x > 0) ? lodepng_powf(x, 1.0f / curve->gamma) : x;
   }
   /* TODO: all the ones below are untested  */
   if(curve->type == 3) {
     if(x < 0) return x;
-    return x > 0 ? ((powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) : (-curve->b / curve->a);
+    return x > 0 ? ((lodepng_powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) : (-curve->b / curve->a);
   }
   if(curve->type == 4) {
     if(x < 0) return x;
     return x > curve->c ?
-        ((powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        ((lodepng_powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
         (-curve->b / curve->a);
   }
   if(curve->type == 5) {
     return x > (curve->c * curve->d) ?
-        ((powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        ((lodepng_powf(x, 1.0f / curve->gamma) - curve->b) / curve->a) :
         (x / curve->c);
   }
   if(curve->type == 6) {
     return x > (curve->c * curve->d + curve->f) ?
-        ((powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
+        ((lodepng_powf(x - curve->c, 1.0f / curve->gamma) - curve->b) / curve->a) :
         ((x - curve->f) / curve->c);
   }
   return 0;
@@ -684,7 +734,7 @@ static unsigned invMatrix(float* m) {
   /* inverse determinant */
   double d = 1.0 / (m[0] * e0 + m[1] * e3 + m[2] * e6);
   float result[9];
-  if(fabs(d) > 1e15) return 1; /* error, likely not invertible */
+  if((d > 0 ? d : -d) > 1e15) return 1; /* error, likely not invertible */
   result[0] = e0 * d;
   result[1] = ((double)m[2] * m[7] - (double)m[1] * m[8]) * d;
   result[2] = ((double)m[1] * m[5] - (double)m[2] * m[4]) * d;
@@ -990,7 +1040,7 @@ static void convertToXYZ_gamma(float* out, const float* in, unsigned w, unsigned
       for(i = 0; i < n; i++) {
         for(c = 0; c < 3; c++) {
           float v = in[i * 4 + c];
-          out[i * 4 + c] = (v <= 0) ? v : powf(v, gamma);
+          out[i * 4 + c] = (v <= 0) ? v : lodepng_powf(v, gamma);
         }
       }
     }
@@ -999,7 +1049,7 @@ static void convertToXYZ_gamma(float* out, const float* in, unsigned w, unsigned
       for(c = 0; c < 3; c++) {
         /* sRGB gamma expand */
         float v = in[i * 4 + c];
-        out[i * 4 + c] = (v < 0.04045f) ? (v / 12.92f) : powf((v + 0.055f) / 1.055f, 2.4f);
+        out[i * 4 + c] = (v < 0.04045f) ? (v / 12.92f) : lodepng_powf((v + 0.055f) / 1.055f, 2.4f);
       }
     }
   }
@@ -1025,14 +1075,14 @@ static void convertToXYZ_gamma_table(float* out, size_t n, size_t c,
       float gamma = 100000.0f / info->gama_gamma;
       for(i = 0; i < n; i++) {
         float v = i * mul;
-        out[i] = powf(v, gamma);
+        out[i] = lodepng_powf(v, gamma);
       }
     }
   } else {
     for(i = 0; i < n; i++) {
       /* sRGB gamma expand */
       float v = i * mul;
-      out[i] = (v < 0.04045f) ? (v / 12.92f) : powf((v + 0.055f) / 1.055f, 2.4f);
+      out[i] = (v < 0.04045f) ? (v / 12.92f) : lodepng_powf((v + 0.055f) / 1.055f, 2.4f);
     }
   }
 }
@@ -1230,7 +1280,7 @@ static void convertFromXYZ_gamma(float* im, unsigned w, unsigned h,
       float gamma = info->gama_gamma / 100000.0f;
       for(i = 0; i < n; i++) {
         for(c = 0; c < 3; c++) {
-          if(im[i * 4 + c] > 0) im[i * 4 + c] = powf(im[i * 4 + c], gamma);
+          if(im[i * 4 + c] > 0) im[i * 4 + c] = lodepng_powf(im[i * 4 + c], gamma);
         }
       }
     }
@@ -1239,7 +1289,7 @@ static void convertFromXYZ_gamma(float* im, unsigned w, unsigned h,
       for(c = 0; c < 3; c++) {
         /* sRGB gamma compress */
         float* v = &im[i * 4 + c];
-        *v = (*v < 0.0031308f) ? (*v * 12.92f) : (1.055f * powf(*v, 1 / 2.4f) - 0.055f);
+        *v = (*v < 0.0031308f) ? (*v * 12.92f) : (1.055f * lodepng_powf(*v, 1 / 2.4f) - 0.055f);
       }
     }
   }
