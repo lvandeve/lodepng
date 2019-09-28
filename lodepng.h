@@ -298,7 +298,7 @@ struct LodePNGCompressSettings /*deflate = compress*/ {
   unsigned btype; /*the block type for LZ (0, 1, 2 or 3, see zlib standard). Should be 2 for proper compression.*/
   unsigned use_lz77; /*whether or not to use LZ77. Should be 1 for proper compression.*/
   unsigned windowsize; /*must be a power of two <= 32768. higher compresses more but is slower. Default value: 2048.*/
-  unsigned minmatch; /*mininum lz77 length. 3 is normally best, 6 can be better for some PNGs. Default: 0*/
+  unsigned minmatch; /*minimum lz77 length. 3 is normally best, 6 can be better for some PNGs. Default: 0*/
   unsigned nicematch; /*stop searching if >= this length found. Set to 258 for best compression. Default: 128*/
   unsigned lazymatching; /*use lazy matching: better compression but a bit slower. Default: true*/
 
@@ -1372,7 +1372,7 @@ It can convert from almost any color type to any other color type, except the
 following conversions: RGB to grayscale is not supported, and converting to a
 palette when the palette doesn't have a required color is not supported. This is
 not supported on purpose: this is information loss which requires a color
-reduction algorithm that is beyong the scope of a PNG encoder (yes, RGB to gray
+reduction algorithm that is beyond the scope of a PNG encoder (yes, RGB to gray
 is easy, but there are multiple ways if you want to give some channels more
 weight).
 
@@ -1481,7 +1481,7 @@ have a bit amount that isn't a multiple of 8, then padding bits are used so that
 scanline starts at a fresh byte. But that is NOT true for the LodePNG raw input and output.
 The raw input image you give to the encoder, and the raw output image you get from the decoder
 will NOT have these padding bits, e.g. in the case of a 1-bit image with a width
-of 7 pixels, the first pixel of the second scanline will the the 8th bit of the first byte,
+of 7 pixels, the first pixel of the second scanline will the 8th bit of the first byte,
 not the first bit of a new byte.
 
 6.4. A note about 16-bits per channel and endianness
@@ -1598,7 +1598,7 @@ The LodePNGInfo struct contains fields with the unknown chunk in it. It has 3
 buffers (each with size) to contain 3 types of unknown chunks:
 the ones that come before the PLTE chunk, the ones that come between the PLTE
 and the IDAT chunks, and the ones that come after the IDAT chunks.
-It's necessary to make the distionction between these 3 cases because the PNG
+It's necessary to make the distinction between these 3 cases because the PNG
 standard forces to keep the ordering of unknown chunks compared to the critical
 chunks, but does not force any other ordering rules.
 
@@ -1681,7 +1681,7 @@ C and C++.
 *) Other Compilers
 
 If you encounter problems on any compilers, feel free to let me know and I may
-try to fix it if the compiler is modern and standards complient.
+try to fix it if the compiler is modern and standards compliant.
 
 
 10. examples
