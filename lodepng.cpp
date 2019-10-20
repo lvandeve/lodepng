@@ -1,5 +1,5 @@
 /*
-LodePNG version 20190914
+LodePNG version 20191020
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20190914";
+const char* LODEPNG_VERSION_STRING = "20191020";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -4873,14 +4873,14 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) return state->error;
     }
   } else {
+    unsigned char* data = *out;
+    size_t outsize;
+
     /*color conversion needed; sort of copy of the data*/
     if (state->info_png.color.colortype == LCT_PALETTE
         && !state->info_png.color.palette) {
-      return 106; /* error: Missing palette */
+      return 106; /* error: missing palette chunk in PNG file */
     }
-
-    unsigned char* data = *out;
-    size_t outsize;
 
     /*TODO: check if this works according to the statement in the documentation: "The converter can convert
     from grayscale input color type, to 8-bit grayscale or grayscale with alpha"*/
@@ -6115,6 +6115,7 @@ const char* lodepng_error_text(unsigned code) {
     case 103: return "invalid palette index in bKGD chunk. Maybe it came before PLTE chunk?";
     case 104: return "invalid bKGD color while encoding (e.g. palette index out of range)";
     case 105: return "integer overflow of bitsize";
+    case 106: return "missing palette chunk in PNG file";
   }
   return "unknown error code";
 }

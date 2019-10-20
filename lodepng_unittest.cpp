@@ -3045,9 +3045,7 @@ void testICCGray() {
 }
 
 // input is base64-encoded png image and base64-encoded RGBA pixels (8 bit per channel)
-void testPngSuiteImage(const std::string& png64, const std::string& name, bool expect_error, unsigned expect_w, unsigned expect_h, const std::string& expect_md5) {
-  std::cout << "testPngSuiteImage: " << name << std::endl;
-
+void testBase64Image(const std::string& png64, bool expect_error, unsigned expect_w, unsigned expect_h, const std::string& expect_md5) {
   std::vector<unsigned char> png, pixels;
   fromBase64(png, png64);
 
@@ -3118,6 +3116,12 @@ void testPngSuiteImage(const std::string& png64, const std::string& name, bool e
     }
     ASSERT_EQUALS(expected_rgb, rgb8);
   }
+}
+// input is base64-encoded png image and base64-encoded RGBA pixels (8 bit per channel)
+void testPngSuiteImage(const std::string& png64, const std::string& name, bool expect_error, unsigned expect_w, unsigned expect_h, const std::string& expect_md5) {
+  std::cout << "testPngSuiteImage: " << name << std::endl;
+
+  testBase64Image(png64, expect_error, expect_w, expect_h, expect_md5);
 }
 
 
@@ -3491,9 +3495,17 @@ void testPngSuite() {
       "z09n2c08.png", false, 32, 32, "6284c288d49534c897da4e50a9d05002");
 }
 
+
+void testErrorImages() {
+  std::cout << "testErrorImages" << std::endl;
+  // Image with color type palette but missing PLTE chunk
+  testBase64Image("iVBORw0KGgoAAAANSUhEUgAAAQAAAAEAAgMAAAAhHED1AAAAU0lEQVR4Ae3MwQAAAAxFoXnM3/NDvGsBdB8JBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEEQDHGPAW1eyhK0AAAAASUVORK5CYII=", true, 256, 256, "");
+}
+
 void doMain() {
   //PNG
   testPngSuite();
+  testErrorImages();
   testPNGCodec();
   testPaletteFilterTypesZero();
   testComplexPNG();
