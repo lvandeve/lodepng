@@ -4874,6 +4874,11 @@ unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
     }
   } else {
     /*color conversion needed; sort of copy of the data*/
+    if (state->info_png.color.colortype == LCT_PALETTE
+        && !state->info_png.color.palette) {
+      return 106; /* error: Missing palette */
+    }
+
     unsigned char* data = *out;
     size_t outsize;
 
