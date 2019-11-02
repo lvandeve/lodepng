@@ -86,10 +86,10 @@ unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, 
       image[newpos + 2] = bmp[bmpos + 0]; //B
       image[newpos + 3] = 255;            //A
     } else {
-      image[newpos + 0] = bmp[bmpos + 3]; //R
-      image[newpos + 1] = bmp[bmpos + 2]; //G
-      image[newpos + 2] = bmp[bmpos + 1]; //B
-      image[newpos + 3] = bmp[bmpos + 0]; //A
+      image[newpos + 0] = bmp[bmpos + 2]; //R
+      image[newpos + 1] = bmp[bmpos + 1]; //G
+      image[newpos + 2] = bmp[bmpos + 0]; //B
+      image[newpos + 3] = bmp[bmpos + 3]; //A
     }
   }
   return 0;
