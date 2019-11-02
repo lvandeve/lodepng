@@ -1,0 +1,20 @@
+{
+  "authors": {
+    "name": "Lode Vandevenne",
+    "url": "https://github.com/lvandeve"
+  },
+  "description": "PNG encoder and decoder in C and C++.",
+  "frameworks": "*",
+  "keywords": [
+    "BMP",
+    "Image Conversion",
+    "PNG"
+  ],
+  "name": "LodePNG",
+  "platforms": "*",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lvandeve/lodepng.git"
+  },
+  "version": "0.0.0"
+}
