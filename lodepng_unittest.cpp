@@ -3544,6 +3544,7 @@ void doMain() {
   testCustomDeflate();
   testCustomZlibDecompress();
   testCustomInflate();
+  // TODO: add test for huffman code with exactly 0 and 1 symbols present
 
   //lodepng_util
   testChunkUtil();
