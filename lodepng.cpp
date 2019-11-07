@@ -1,5 +1,5 @@
 /*
-LodePNG version 20191105
+LodePNG version 20191106
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20191105";
+const char* LODEPNG_VERSION_STRING = "20191106";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -793,7 +793,10 @@ static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
     huffmanDecodeSymbol will cause error. */
     for(i = 0; i < size; ++i) {
       if(tree->table_len[i] == 16) {
-        tree->table_len[i] = 1;
+        /* As length, use a value smaller than FIRSTBITS for the head table,
+        and a value larger than FIRSTBITS for the secondary table, to ensure
+        valid behavior for advanceBits when reading this symbol. */
+        tree->table_len[i] = (i < headsize) ? 1 : (FIRSTBITS + 1);
         tree->table_value[i] = INVALIDSYMBOL;
       }
     }
