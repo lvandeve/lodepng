@@ -2007,6 +2007,9 @@ void testAutoColorModels() {
   // 8-bit gray+alpha
   std::vector<unsigned char> gray8a;
   for(size_t i = 0; i < 17; i++) addColor(gray8a, i, i, i, i);
+  testAutoColorModel(gray8a, 8, LCT_PALETTE, 8, false);
+  // palette not possible, becomes gray alpha
+  for(size_t i = 0; i < 256; i++) addColor(gray8a, i, i, i, i ^ 1);
   testAutoColorModel(gray8a, 8, LCT_GREY_ALPHA, 8, false);
 
   // 16-bit gray+alpha
