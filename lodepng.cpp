@@ -5351,6 +5351,16 @@ static size_t ilog2(size_t i) {
   return result;
 }
 
+/* integer approximation for i * log2(i), helper function for LFS_ENTROPY */
+static size_t ilog2i(size_t i) {
+  size_t l;
+  if(i == 0) return 0;
+  l = ilog2(i);
+  /* approximate i*log2(i): l is integer logarithm, ((i - (1u << l)) << 1u)
+  linearly approximates the missing fractional part multiplied by i */
+  return i * l + ((i - (1u << l)) << 1u);
+}
+
 static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, unsigned h,
                        const LodePNGColorMode* info, const LodePNGEncoderSettings* settings) {
   /*
@@ -5465,7 +5475,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
         ++count[type]; /*the filter type itself is part of the scanline*/
         sum[type] = 0;
         for(x = 0; x != 256; ++x) {
-          sum[type] += count[x] == 0 ? 0 : ilog2(count[x]) * count[x];
+          sum[type] += ilog2i(count[x]);
         }
         /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
         if(type == 0 || sum[type] > bestSum) {
