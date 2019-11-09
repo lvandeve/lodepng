@@ -91,12 +91,9 @@ clang++ --analyze -Xanalyzer -analyzer-output=html lodepng.cpp
 g++ -DDISABLE_SLOW lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Wall -Wextra -pedantic -ansi -O3 -DLODEPNG_MAX_ALLOC=100000000 && valgrind --leak-check=full --track-origins=yes ./a.out
 
 *) Try with clang++ and address sanitizer (to get line numbers, make sure 'llvm' is also installed to get 'llvm-symbolizer'
-clang++ -O3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -O3 -fsanitize=address,undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
-clang++ -g3 -fsanitize=address lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
-
-*) Idem for undefined behavior
-clang++ -O3 -fsanitize=undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
+clang++ -g3 -fsanitize=address,undefined lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wshadow -pedantic -ansi && ASAN_OPTIONS=allocator_may_return_null=1 ./a.out
 
 *) remove "#include <iostream>" from lodepng.cpp if it's still in there (some are legit)
 cat lodepng.cpp lodepng_util.cpp | grep iostream
@@ -3548,6 +3545,7 @@ void doMain() {
   testCustomZlibDecompress();
   testCustomInflate();
   // TODO: add test for huffman code with exactly 0 and 1 symbols present
+  // TODO: add case where ensureBits25 and ensureBits32 do left shift of 24 with value >= 128
 
   //lodepng_util
   testChunkUtil();

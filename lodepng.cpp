@@ -1,5 +1,5 @@
 /*
-LodePNG version 20191107
+LodePNG version 20191109
 
 Copyright (c) 2005-2019 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20191107";
+const char* LODEPNG_VERSION_STRING = "20191109";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -527,7 +527,7 @@ static unsigned ensureBits9(LodePNGBitReader* reader, size_t nbits) {
   size_t start = reader->bp >> 3u;
   size_t size = reader->size;
   if(start + 1u < size) {
-    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u);
+    reader->buffer = (unsigned)reader->data[start + 0] | ((unsigned)reader->data[start + 1] << 8u);
     reader->buffer >>= (reader->bp & 7u);
     return 1;
   } else {
@@ -543,14 +543,14 @@ static unsigned ensureBits17(LodePNGBitReader* reader, size_t nbits) {
   size_t start = reader->bp >> 3u;
   size_t size = reader->size;
   if(start + 2u < size) {
-    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
-                     (unsigned)(reader->data[start + 2] << 16u);
+    reader->buffer = (unsigned)reader->data[start + 0] | ((unsigned)reader->data[start + 1] << 8u) |
+                     ((unsigned)reader->data[start + 2] << 16u);
     reader->buffer >>= (reader->bp & 7u);
     return 1;
   } else {
     reader->buffer = 0;
     if(start + 0u < size) reader->buffer |= reader->data[start + 0];
-    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
+    if(start + 1u < size) reader->buffer |= ((unsigned)reader->data[start + 1] << 8u);
     reader->buffer >>= (reader->bp & 7u);
     return reader->bp + nbits < reader->bitsize;
   }
@@ -561,15 +561,15 @@ static LODEPNG_INLINE unsigned ensureBits25(LodePNGBitReader* reader, size_t nbi
   size_t start = reader->bp >> 3u;
   size_t size = reader->size;
   if(start + 3u < size) {
-    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
-                     (unsigned)(reader->data[start + 2] << 16u) | (unsigned)(reader->data[start + 3] << 24u);
+    reader->buffer = (unsigned)reader->data[start + 0] | ((unsigned)reader->data[start + 1] << 8u) |
+                     ((unsigned)reader->data[start + 2] << 16u) | ((unsigned)reader->data[start + 3] << 24u);
     reader->buffer >>= (reader->bp & 7u);
     return 1;
   } else {
     reader->buffer = 0;
     if(start + 0u < size) reader->buffer |= reader->data[start + 0];
-    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
-    if(start + 2u < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
+    if(start + 1u < size) reader->buffer |= ((unsigned)reader->data[start + 1] << 8u);
+    if(start + 2u < size) reader->buffer |= ((unsigned)reader->data[start + 2] << 16u);
     reader->buffer >>= (reader->bp & 7u);
     return reader->bp + nbits < reader->bitsize;
   }
@@ -580,17 +580,17 @@ static LODEPNG_INLINE unsigned ensureBits32(LodePNGBitReader* reader, size_t nbi
   size_t start = reader->bp >> 3u;
   size_t size = reader->size;
   if(start + 4u < size) {
-    reader->buffer = (unsigned)(reader->data[start + 0]) | (unsigned)(reader->data[start + 1] << 8u) |
-                     (unsigned)(reader->data[start + 2] << 16u) | (unsigned)(reader->data[start + 3] << 24u);
+    reader->buffer = (unsigned)reader->data[start + 0] | ((unsigned)reader->data[start + 1] << 8u) |
+                     ((unsigned)reader->data[start + 2] << 16u) | ((unsigned)reader->data[start + 3] << 24u);
     reader->buffer >>= (reader->bp & 7u);
-    reader->buffer |= ((unsigned)(reader->data[start + 4] << 24u) << (7u - (reader->bp & 7u)));
+    reader->buffer |= (((unsigned)reader->data[start + 4] << 24u) << (7u - (reader->bp & 7u)));
     return 1;
   } else {
     reader->buffer = 0;
     if(start + 0u < size) reader->buffer |= reader->data[start + 0];
-    if(start + 1u < size) reader->buffer |= (unsigned)(reader->data[start + 1] << 8u);
-    if(start + 2u < size) reader->buffer |= (unsigned)(reader->data[start + 2] << 16u);
-    if(start + 3u < size) reader->buffer |= (unsigned)(reader->data[start + 3] << 24u);
+    if(start + 1u < size) reader->buffer |= ((unsigned)reader->data[start + 1] << 8u);
+    if(start + 2u < size) reader->buffer |= ((unsigned)reader->data[start + 2] << 16u);
+    if(start + 3u < size) reader->buffer |= ((unsigned)reader->data[start + 3] << 24u);
     reader->buffer >>= (reader->bp & 7u);
     return reader->bp + nbits < reader->bitsize;
   }
@@ -835,7 +835,7 @@ static unsigned HuffmanTree_makeFromLengths2(HuffmanTree* tree) {
     for(bits = 0; bits != tree->numcodes; ++bits) ++blcount[tree->lengths[bits]];
     /*step 2: generate the nextcode values*/
     for(bits = 1; bits <= tree->maxbitlen; ++bits) {
-      nextcode[bits] = (nextcode[bits - 1] + blcount[bits - 1]) << 1;
+      nextcode[bits] = (nextcode[bits - 1] + blcount[bits - 1]) << 1u;
     }
     /*step 3: generate all the codes*/
     for(n = 0; n != tree->numcodes; ++n) {
@@ -1385,8 +1385,8 @@ static unsigned inflateNoCompression(ucvector* out, size_t* pos,
 
   /*read LEN (2 bytes) and NLEN (2 bytes)*/
   if(bytepos + 4 >= size) return 52; /*error, bit pointer will jump past memory*/
-  LEN = (unsigned)reader->data[bytepos] + (unsigned)(reader->data[bytepos + 1] << 8u); bytepos += 2;
-  NLEN = (unsigned)reader->data[bytepos] + (unsigned)(reader->data[bytepos + 1] << 8u); bytepos += 2;
+  LEN = (unsigned)reader->data[bytepos] + ((unsigned)reader->data[bytepos + 1] << 8u); bytepos += 2;
+  NLEN = (unsigned)reader->data[bytepos] + ((unsigned)reader->data[bytepos + 1] << 8u); bytepos += 2;
 
   /*check if 16-bit NLEN is really the one's complement of LEN*/
   if(!settings->ignore_nlen && LEN + NLEN != 65535) {
@@ -1561,14 +1561,14 @@ static unsigned getHash(const unsigned char* data, size_t size, size_t pos) {
     by zeroes due to the filters, a better hash does not have a significant
     effect on speed in traversing the chain, and causes more time spend on
     calculating the hash.*/
-    result ^= (unsigned)(data[pos + 0] << 0u);
-    result ^= (unsigned)(data[pos + 1] << 4u);
-    result ^= (unsigned)(data[pos + 2] << 8u);
+    result ^= ((unsigned)data[pos + 0] << 0u);
+    result ^= ((unsigned)data[pos + 1] << 4u);
+    result ^= ((unsigned)data[pos + 2] << 8u);
   } else {
     size_t amount, i;
     if(pos >= size) return 0;
     amount = size - pos;
-    for(i = 0; i != amount; ++i) result ^= (unsigned)(data[pos + i] << (i * 8u));
+    for(i = 0; i != amount; ++i) result ^= ((unsigned)data[pos + i] << (i * 8u));
   }
   return result & HASH_BIT_MASK;
 }
@@ -1767,7 +1767,7 @@ static unsigned deflateNoCompression(ucvector* out, const unsigned char* data, s
     BFINAL = (i == numdeflateblocks - 1);
     BTYPE = 0;
 
-    firstbyte = (unsigned char)(BFINAL + ((BTYPE & 1) << 1) + ((BTYPE & 2) << 1));
+    firstbyte = (unsigned char)(BFINAL + ((BTYPE & 1u) << 1u) + ((BTYPE & 2u) << 1u));
     ucvector_push_back(out, firstbyte);
 
     LEN = 65535;
@@ -2427,7 +2427,7 @@ static unsigned readBitsFromReversedStream(size_t* bitpointer, const unsigned ch
   unsigned result = 0;
   size_t i;
   for(i = 0 ; i < nbits; ++i) {
-    result <<= 1;
+    result <<= 1u;
     result |= (unsigned)readBitFromReversedStream(bitpointer, bitstream);
   }
   return result;
@@ -2435,8 +2435,8 @@ static unsigned readBitsFromReversedStream(size_t* bitpointer, const unsigned ch
 
 static void setBitOfReversedStream(size_t* bitpointer, unsigned char* bitstream, unsigned char bit) {
   /*the current bit in bitstream may be 0 or 1 for this to work*/
-  if(bit == 0) bitstream[(*bitpointer) >> 3] &=  (unsigned char)(~(1 << (7 - ((*bitpointer) & 0x7))));
-  else         bitstream[(*bitpointer) >> 3] |=  (1 << (7 - ((*bitpointer) & 0x7)));
+  if(bit == 0) bitstream[(*bitpointer) >> 3u] &=  (unsigned char)(~(1u << (7u - ((*bitpointer) & 7u))));
+  else         bitstream[(*bitpointer) >> 3u] |=  (1u << (7u - ((*bitpointer) & 7u)));
   ++(*bitpointer);
 }
 
@@ -3119,7 +3119,7 @@ static unsigned rgba8ToPixel(unsigned char* out, size_t i,
     else if(mode->bitdepth == 16) out[i * 2 + 0] = out[i * 2 + 1] = gray;
     else {
       /*take the most significant bits of gray*/
-      gray = (gray >> (8 - mode->bitdepth)) & ((1 << mode->bitdepth) - 1);
+      gray = ((unsigned)gray >> (8u - mode->bitdepth)) & ((1u << mode->bitdepth) - 1u);
       addColorBits(out, i, mode->bitdepth, gray);
     }
   } else if(mode->colortype == LCT_RGB) {
