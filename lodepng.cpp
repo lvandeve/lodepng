@@ -2251,7 +2251,7 @@ unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsig
   if(!error) {
     *outsize = deflatesize + 6;
     *out = (unsigned char*)lodepng_malloc(*outsize);
-    if(!out) error = 83; /*alloc fail*/
+    if(!*out) error = 83; /*alloc fail*/
   }
 
   if(!error) {
