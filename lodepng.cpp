@@ -104,7 +104,7 @@ void lodepng_free(void* ptr);
 #endif
 
 /* restrict is not available in C90, but use it when supported by the compiler */
-#if (defined(__GNUC__) && defined(__GNUC_MINOR__) && (__GNUC__ >= 3) && (__GNUC_MINOR__ >= 1)) ||\
+#if (defined(__GNUC__) && (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1))) ||\
     (defined(_MSC_VER) && (_MSC_VER >= 1400)) || \
     (defined(__WATCOMC__) && (__WATCOMC__ >= 1250) && !defined(__cplusplus))
 #define LODEPNG_RESTRICT __restrict
