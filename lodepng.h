@@ -697,6 +697,7 @@ void lodepng_color_stats_init(LodePNGColorStats* stats);
 void lodepng_compute_color_stats(LodePNGColorStats* stats,
                                  const unsigned char* image, unsigned w, unsigned h,
                                  const LodePNGColorMode* mode_in);
+
 /*Settings for the encoder.*/
 typedef struct LodePNGEncoderSettings {
   LodePNGCompressSettings zlibsettings; /*settings for the zlib encoder, such as window size, ...*/

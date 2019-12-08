@@ -3829,9 +3829,16 @@ static void lodepng_color_stats_add(LodePNGColorStats* stats,
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
-unsigned auto_choose_color(LodePNGColorMode* mode_out,
-                           const LodePNGColorMode* mode_in,
-                           const LodePNGColorStats* stats) {
+/*Computes a minimal PNG color model that can contain all colors as indicated by the stats.
+The stats should be computed with lodepng_compute_color_stats.
+mode_in is raw color profile of the image the stats were computed on, to copy palette order from when relevant.
+Minimal PNG color model means the color type and bit depth that gives smallest amount of bits in the output image,
+e.g. gray if only grayscale pixels, palette if less than 256 colors, color key if only single transparent color, ...
+This is used if auto_convert is enabled (it is by default).
+*/
+static unsigned auto_choose_color(LodePNGColorMode* mode_out,
+                                  const LodePNGColorMode* mode_in,
+                                  const LodePNGColorStats* stats) {
   unsigned error = 0;
   unsigned palettebits;
   size_t i, n;
