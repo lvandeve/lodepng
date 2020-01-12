@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2019 Lode Vandevenne
+Copyright (c) 2005-2020 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -39,11 +39,11 @@ LodePNGInfo getPNGHeaderInfo(const std::vector<unsigned char>& png) {
 unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& sizes,
                       const std::vector<unsigned char>& png) {
   // Listing chunks is based on the original file, not the decoded png info.
-  const unsigned char *chunk, *begin, *end, *next;
+  const unsigned char *chunk, *end;
   end = &png.back() + 1;
-  begin = chunk = &png.front() + 8;
+  chunk = &png.front() + 8;
 
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     if(std::string(type).size() != 4) return 1;
@@ -51,11 +51,7 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
     unsigned length = lodepng_chunk_length(chunk);
     names.push_back(type);
     sizes.push_back(length);
-    if(chunk + length + 12 > end) return 1;
-
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) return 1; // integer overflow
-    chunk = next;
+    chunk = lodepng_chunk_next_const(chunk, end);
   }
   return 0;
 }
@@ -63,20 +59,19 @@ unsigned getChunkInfo(std::vector<std::string>& names, std::vector<size_t>& size
 unsigned getChunks(std::vector<std::string> names[3],
                    std::vector<std::vector<unsigned char> > chunks[3],
                    const std::vector<unsigned char>& png) {
-  const unsigned char *chunk, *next, *begin, *end;
+  const unsigned char *chunk, *next, *end;
   end = &png.back() + 1;
-  begin = chunk = &png.front() + 8;
+  chunk = &png.front() + 8;
 
   int location = 0;
 
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     std::string name(type);
     if(name.size() != 4) return 1;
 
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) return 1; // integer overflow
+    next = lodepng_chunk_next_const(chunk, end);
 
     if(name == "IHDR") {
       location = 0;
@@ -87,7 +82,7 @@ unsigned getChunks(std::vector<std::string> names[3],
     } else if(name == "IEND") {
       break; // anything after IEND is not part of the PNG or the 3 groups here.
     } else {
-      if(next > end) return 1; // invalid chunk, content too far
+      if(next >= end) return 1; // invalid chunk, content too far
       names[location].push_back(name);
       chunks[location].push_back(std::vector<unsigned char>(chunk, next));
     }
@@ -100,7 +95,7 @@ unsigned getChunks(std::vector<std::string> names[3],
 
 unsigned insertChunks(std::vector<unsigned char>& png,
                       const std::vector<std::vector<unsigned char> > chunks[3]) {
-  const unsigned char *chunk, *next, *begin, *end;
+  const unsigned char *chunk, *begin, *end;
   end = &png.back() + 1;
   begin = chunk = &png.front() + 8;
 
@@ -108,14 +103,11 @@ unsigned insertChunks(std::vector<unsigned char>& png,
   long l1 = 0; //location 1: PLTE-l1-IDAT (or IHDR-l0-l1-IDAT)
   long l2 = 0; //location 2: IDAT-l2-IEND
 
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     std::string name(type);
     if(name.size() != 4) return 1;
-
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) return 1; // integer overflow
 
     if(name == "PLTE") {
       if(l0 == 0) l0 = chunk - begin + 8;
@@ -126,7 +118,7 @@ unsigned insertChunks(std::vector<unsigned char>& png,
       if(l2 == 0) l2 = chunk - begin + 8;
     }
 
-    chunk = next;
+    chunk = lodepng_chunk_next_const(chunk, end);
   }
 
   std::vector<unsigned char> result;
@@ -153,13 +145,13 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
   if(error) return 1;
 
   //Read literal data from all IDAT chunks
-  const unsigned char *chunk, *begin, *end, *next;
+  const unsigned char *chunk, *begin, *end;
   end = &png.back() + 1;
   begin = chunk = &png.front() + 8;
 
   std::vector<unsigned char> zdata;
 
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     if(std::string(type).size() != 4) break; //Probably not a PNG file
@@ -177,9 +169,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
       }
     }
 
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) break; // integer overflow
-    chunk = next;
+    chunk = lodepng_chunk_next_const(chunk, end);
   }
 
   //Decompress all IDAT data (if the while loop ended early, this might fail)

@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2019 Lode Vandevenne
+Copyright (c) 2005-2020 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -1290,13 +1290,14 @@ void createComplexPNG(std::vector<unsigned char>& png) {
 
 std::string extractChunkNames(const std::vector<unsigned char>& png) {
   const unsigned char* chunk = &png[8];
+  const unsigned char* end = &png.back() + 1;
   char name[5];
   std::string result = "";
   for(;;) {
     lodepng_chunk_type(name, chunk);
     result += (std::string(" ") + name);
     if(std::string(name) == "IEND") break;
-    chunk = lodepng_chunk_next_const(chunk);
+    chunk = lodepng_chunk_next_const(chunk, end);
     assertTrue(chunk < &png.back(), "jumped out of chunks");
   }
   return result;
@@ -3671,7 +3672,9 @@ int main() {
     doMain();
   }
   catch(...) {
-    std::cout << "error!" << std::endl;
+    std::cout << std::endl;
+    std::cout << "caught error!" << std::endl;
+    std::cout << "*** TEST FAILED ***" << std::endl;
   }
 
   return 0;

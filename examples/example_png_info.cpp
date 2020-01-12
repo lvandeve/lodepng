@@ -93,14 +93,14 @@ Display the names and sizes of all chunks in the PNG file.
 */
 void displayChunkNames(const std::vector<unsigned char>& buffer) {
   // Listing chunks is based on the original file, not the decoded png info.
-  const unsigned char *chunk, *begin, *end, *next;
+  const unsigned char *chunk, *end;
   end = &buffer.back() + 1;
-  begin = chunk = &buffer.front() + 8;
+  chunk = &buffer.front() + 8;
 
   std::cout << std::endl << "Chunks:" << std::endl;
   std::cout << " type: length(s)";
   std::string last_type;
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     if(std::string(type).size() != 4) {
@@ -116,9 +116,7 @@ void displayChunkNames(const std::vector<unsigned char>& buffer) {
 
     std::cout << lodepng_chunk_length(chunk) << ", ";
 
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) break; // integer overflow
-    chunk = next;
+    chunk = lodepng_chunk_next_const(chunk, end);
   }
   std::cout << std::endl;
 }
@@ -200,13 +198,13 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
   }
 
   //Read literal data from all IDAT chunks
-  const unsigned char *chunk, *begin, *end, *next;
+  const unsigned char *chunk, *begin, *end;
   end = &buffer.back() + 1;
   begin = chunk = &buffer.front() + 8;
 
   std::vector<unsigned char> zdata;
 
-  while(chunk + 8 < end && chunk >= begin) {
+  while(chunk < end && end - chunk >= 8) {
     char type[5];
     lodepng_chunk_type(type, chunk);
     if(std::string(type).size() != 4) {
@@ -227,9 +225,7 @@ void displayFilterTypes(const std::vector<unsigned char>& buffer, bool ignore_ch
       }
     }
 
-    next = lodepng_chunk_next_const(chunk);
-    if (next <= chunk) break; // integer overflow
-    chunk = next;
+    chunk = lodepng_chunk_next_const(chunk, end);
   }
 
   //Decompress all IDAT data

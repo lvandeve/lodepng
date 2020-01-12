@@ -1,7 +1,7 @@
 /*
-LodePNG version 20191219
+LodePNG version 20200112
 
-Copyright (c) 2005-2019 Lode Vandevenne
+Copyright (c) 2005-2020 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -856,16 +856,16 @@ Input must be at the beginning of a chunk (result of a previous lodepng_chunk_ne
 or the 8th byte of a PNG file which always has the first chunk), or alternatively may
 point to the first byte of the PNG file (which is not a chunk but the magic header, the
 function will then skip over it and return the first real chunk).
-Expects at least 8 readable bytes of memory in the input pointer.
-Will output pointer to the start of the next chunk or the end of the file if there
-is no more chunk after this. Start this process at the 8th byte of the PNG file.
+Will output pointer to the start of the next chunk, or at or beyond end of the file if there
+is no more chunk after this or possibly if the chunk is corrupt.
+Start this process at the 8th byte of the PNG file.
 In a non-corrupt PNG file, the last chunk should have name "IEND".
 */
-unsigned char* lodepng_chunk_next(unsigned char* chunk);
-const unsigned char* lodepng_chunk_next_const(const unsigned char* chunk);
+unsigned char* lodepng_chunk_next(unsigned char* chunk, unsigned char* end);
+const unsigned char* lodepng_chunk_next_const(const unsigned char* chunk, const unsigned char* end);
 
 /*Finds the first chunk with the given type in the range [chunk, end), or returns NULL if not found.*/
-unsigned char* lodepng_chunk_find(unsigned char* chunk, const unsigned char* end, const char type[5]);
+unsigned char* lodepng_chunk_find(unsigned char* chunk, unsigned char* end, const char type[5]);
 const unsigned char* lodepng_chunk_find_const(const unsigned char* chunk, const unsigned char* end, const char type[5]);
 
 /*
@@ -1775,14 +1775,17 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 12 jan 2020: (!) added 'end' argument to lodepng_chunk_next to allow correct
+   overflow checks.
 *) 14 aug 2019: around 25% faster decoding thanks to huffman lookup tables.
-*) 15 jun 2019 (!): auto_choose_color API changed (for bugfix: don't use palette
-   if gray ICC profile) and non-ICC LodePNGColorProfile renamed to LodePNGColorStats.
+*) 15 jun 2019: (!) auto_choose_color API changed (for bugfix: don't use palette
+   if gray ICC profile) and non-ICC LodePNGColorProfile renamed to
+   LodePNGColorStats.
 *) 30 dec 2018: code style changes only: removed newlines before opening braces.
 *) 10 sep 2018: added way to inspect metadata chunks without full decoding.
-*) 19 aug 2018 (!): fixed color mode bKGD is encoded with and made it use
+*) 19 aug 2018: (!) fixed color mode bKGD is encoded with and made it use
    palette index in case of palette.
-*) 10 aug 2018 (!): added support for gAMA, cHRM, sRGB and iCCP chunks. This
+*) 10 aug 2018: (!) added support for gAMA, cHRM, sRGB and iCCP chunks. This
    change is backwards compatible unless you relied on unknown_chunks for those.
 *) 11 jun 2018: less restrictive check for pixel size integer overflow
 *) 14 jan 2018: allow optionally ignoring a few more recoverable errors
@@ -1802,25 +1805,25 @@ https://github.com/lvandeve/lodepng
 *) 22 dec 2013: Power of two windowsize required for optimization.
 *) 15 apr 2013: Fixed bug with LAC_ALPHA and color key.
 *) 25 mar 2013: Added an optional feature to ignore some PNG errors (fix_png).
-*) 11 mar 2013 (!): Bugfix with custom free. Changed from "my" to "lodepng_"
+*) 11 mar 2013: (!) Bugfix with custom free. Changed from "my" to "lodepng_"
     prefix for the custom allocators and made it possible with a new #define to
     use custom ones in your project without needing to change lodepng's code.
 *) 28 jan 2013: Bugfix with color key.
 *) 27 okt 2012: Tweaks in text chunk keyword length error handling.
-*) 8 okt 2012 (!): Added new filter strategy (entropy) and new auto color mode.
+*) 8 okt 2012: (!) Added new filter strategy (entropy) and new auto color mode.
     (no palette). Better deflate tree encoding. New compression tweak settings.
     Faster color conversions while decoding. Some internal cleanups.
 *) 23 sep 2012: Reduced warnings in Visual Studio a little bit.
-*) 1 sep 2012 (!): Removed #define's for giving custom (de)compression functions
+*) 1 sep 2012: (!) Removed #define's for giving custom (de)compression functions
     and made it work with function pointers instead.
 *) 23 jun 2012: Added more filter strategies. Made it easier to use custom alloc
     and free functions and toggle #defines from compiler flags. Small fixes.
-*) 6 may 2012 (!): Made plugging in custom zlib/deflate functions more flexible.
-*) 22 apr 2012 (!): Made interface more consistent, renaming a lot. Removed
+*) 6 may 2012: (!) Made plugging in custom zlib/deflate functions more flexible.
+*) 22 apr 2012: (!) Made interface more consistent, renaming a lot. Removed
     redundant C++ codec classes. Reduced amount of structs. Everything changed,
     but it is cleaner now imho and functionality remains the same. Also fixed
     several bugs and shrunk the implementation code. Made new samples.
-*) 6 nov 2011 (!): By default, the encoder now automatically chooses the best
+*) 6 nov 2011: (!) By default, the encoder now automatically chooses the best
     PNG color model and bit depth, based on the amount and type of colors of the
     raw image. For this, autoLeaveOutAlphaChannel replaced by auto_choose_color.
 *) 9 okt 2011: simpler hash chain implementation for the encoder.
@@ -1829,7 +1832,7 @@ https://github.com/lvandeve/lodepng
     A bug with the PNG filtertype heuristic was fixed, so that it chooses much
     better ones (it's quite significant). A setting to do an experimental, slow,
     brute force search for PNG filter types is added.
-*) 17 aug 2011 (!): changed some C zlib related function names.
+*) 17 aug 2011: (!) changed some C zlib related function names.
 *) 16 aug 2011: made the code less wide (max 120 characters per line).
 *) 17 apr 2011: code cleanup. Bugfixes. Convert low to 16-bit per sample colors.
 *) 21 feb 2011: fixed compiling for C90. Fixed compiling with sections disabled.
@@ -1937,5 +1940,5 @@ Domain: gmail dot com.
 Account: lode dot vandevenne.
 
 
-Copyright (c) 2005-2019 Lode Vandevenne
+Copyright (c) 2005-2020 Lode Vandevenne
 */
