@@ -679,6 +679,24 @@ void doCodecTestNoLZ77(Image& image) {
   doCodecTestWithEncState(image, state);
 }
 
+void testGetFilterTypes() {
+  std::cout << "testGetFilterTypes" << std::endl;
+  // Test that getFilterTypes works on the special case of 1-pixel wide interlaced image
+  std::string png64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAHCAIAAAExKYBVAAAAHUlEQVR4ASXHAQoAAAjCwPX/R9tK4ZBN4EHKcPcLXCgGAQa0TV8AAAAASUVORK5CYII=";
+  std::vector<unsigned char> png;
+  fromBase64(png, png64);
+  std::vector<unsigned char> types;
+  lodepng::getFilterTypes(types, png);
+  ASSERT_EQUALS(7, types.size());
+  ASSERT_EQUALS(1, types[0]);
+  ASSERT_EQUALS(1, types[1]);
+  ASSERT_EQUALS(1, types[2]);
+  ASSERT_EQUALS(0, types[3]);
+  ASSERT_EQUALS(1, types[4]);
+  ASSERT_EQUALS(1, types[5]);
+  ASSERT_EQUALS(1, types[6]);
+}
+
 //Test LodePNG encoding and decoding the encoded result, using the C++ interface, with interlace
 void doCodecTestInterlaced(Image& image) {
   std::vector<unsigned char> encoded;
@@ -3663,6 +3681,7 @@ void doMain() {
 
   //lodepng_util
   testChunkUtil();
+  testGetFilterTypes();
 
   std::cout << "\ntest successful" << std::endl;
 }

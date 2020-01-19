@@ -198,8 +198,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
     for(size_t j = 0; j < 7; j++) {
       unsigned w2 = (w - ADAM7_IX[j] + ADAM7_DX[j] - 1) / ADAM7_DX[j];
       unsigned h2 = (h - ADAM7_IY[j] + ADAM7_DY[j] - 1) / ADAM7_DY[j];
-      if(ADAM7_IX[j] >= w) w2 = 0;
-      if(ADAM7_IY[j] >= h) h2 = 0;
+      if(ADAM7_IX[j] >= w || ADAM7_IY[j] >= h) continue;
       size_t linebytes = 1 + lodepng_get_raw_size(w2, 1, &state.info_png.color);
       for(size_t i = 0; i < h2; i++) {
         filterTypes[j].push_back(data[pos]);
@@ -219,17 +218,24 @@ unsigned getFilterTypes(std::vector<unsigned char>& filterTypes, const std::vect
   if(passes.size() == 1) {
     filterTypes.swap(passes[0]);
   } else {
+    // Simplify interlaced filter types to get a single filter value per scanline:
+    // put pass 6 and 7 alternating in the one vector, these filters
+    // correspond to the closest to what it would be for non-interlaced
+    // image. If the image is only 1 pixel wide, pass 6 doesn't exist so the
+    // alternative values column0 are used. The shift values are to match
+    // the y position in the interlaced sub-images.
+    // NOTE: the values 0-6 match Adam7's passes 1-7.
+    const unsigned column0[8] = {0, 6, 4, 6, 2, 6, 4, 6};
+    const unsigned column1[8] = {5, 6, 5, 6, 5, 6, 5, 6};
+    const unsigned shift0[8] = {3, 1, 2, 1, 3, 1, 2, 1};
+    const unsigned shift1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
     lodepng::State state;
     unsigned w, h;
     lodepng_inspect(&w, &h, &state, &png[0], png.size());
-    /*
-    Interlaced. Simplify it: put pass 6 and 7 alternating in the one vector so
-    that one filter per scanline of the uninterlaced image is given, with that
-    filter corresponding the closest to what it would be for non-interlaced
-    image.
-    */
+    const unsigned* column = w > 1 ? column1 : column0;
+    const unsigned* shift = w > 1 ? shift1 : shift0;
     for(size_t i = 0; i < h; i++) {
-      filterTypes.push_back(i % 2 == 0 ? passes[5][i / 2] : passes[6][i / 2]);
+      filterTypes.push_back(passes[column[i & 7u]][i >> shift[i & 7u]]);
     }
   }
   return 0; /* OK */
