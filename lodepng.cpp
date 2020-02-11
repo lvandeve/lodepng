@@ -1,5 +1,5 @@
 /*
-LodePNG version 20200112
+LodePNG version 20200211
 
 Copyright (c) 2005-2020 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20200112";
+const char* LODEPNG_VERSION_STRING = "20200211";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -78,6 +78,7 @@ static void* lodepng_malloc(size_t size) {
   return malloc(size);
 }
 
+/* NOTE: when realloc returns NULL, it leaves the original memory untouched */
 static void* lodepng_realloc(void* ptr, size_t new_size) {
 #ifdef LODEPNG_MAX_ALLOC
   if(new_size > LODEPNG_MAX_ALLOC) return 0;
@@ -1080,11 +1081,13 @@ static unsigned HuffmanTree_makeFromFrequencies(HuffmanTree* tree, const unsigne
                                                 size_t mincodes, size_t numcodes, unsigned maxbitlen) {
   size_t i;
   unsigned error = 0;
+  unsigned* lengths;
   while(!frequencies[numcodes - 1] && numcodes > mincodes) --numcodes; /*trim zeroes*/
+  lengths = (unsigned*)lodepng_realloc(tree->lengths, numcodes * sizeof(unsigned));
+  if(!lengths) return 83; /*alloc fail*/
+  tree->lengths = lengths;
   tree->maxbitlen = maxbitlen;
   tree->numcodes = (unsigned)numcodes; /*number of symbols*/
-  tree->lengths = (unsigned*)lodepng_realloc(tree->lengths, numcodes * sizeof(unsigned));
-  if(!tree->lengths) return 83; /*alloc fail*/
   /*initialize all lengths to 0*/
   for(i = 0; i < numcodes; i++) tree->lengths[i] = 0;
 
@@ -2130,16 +2133,17 @@ static unsigned lodepng_deflatev(ucvector* out, const unsigned char* in, size_t 
   if(numdeflateblocks == 0) numdeflateblocks = 1;
 
   error = hash_init(&hash, settings->windowsize);
-  if(error) return error;
 
-  for(i = 0; i != numdeflateblocks && !error; ++i) {
-    unsigned final = (i == numdeflateblocks - 1);
-    size_t start = i * blocksize;
-    size_t end = start + blocksize;
-    if(end > insize) end = insize;
+  if(!error) {
+    for(i = 0; i != numdeflateblocks && !error; ++i) {
+      unsigned final = (i == numdeflateblocks - 1);
+      size_t start = i * blocksize;
+      size_t end = start + blocksize;
+      if(end > insize) end = insize;
 
-    if(settings->btype == 1) error = deflateFixed(&writer, &hash, in, start, end, settings, final);
-    else if(settings->btype == 2) error = deflateDynamic(&writer, &hash, in, start, end, settings, final);
+      if(settings->btype == 1) error = deflateFixed(&writer, &hash, in, start, end, settings, final);
+      else if(settings->btype == 2) error = deflateDynamic(&writer, &hash, in, start, end, settings, final);
+    }
   }
 
   hash_cleanup(&hash);
@@ -2662,8 +2666,9 @@ void lodepng_color_mode_init(LodePNGColorMode* info) {
 void lodepng_color_mode_alloc_palette(LodePNGColorMode* info) {
   size_t i;
   /*room for 256 colors with 4 bytes each. Using realloc to avoid leak if it is being overwritten*/
-  info->palette = (unsigned char*)lodepng_realloc(info->palette, 1024);
-  if(!info->palette) return; /*alloc fail*/
+  unsigned char* palette = (unsigned char*)lodepng_realloc(info->palette, 1024);
+  if(!palette) return; /*alloc fail*/
+  info->palette = palette;
   for(i = 0; i != 256; ++i) {
     /*Initialize all unused colors with black, the value used for invalid palette indices.
     This is an error according to the PNG spec, but common PNG decoders make it black instead.
@@ -5455,7 +5460,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
     for(type = 0; type != 5; ++type) {
       attempt[type] = (unsigned char*)lodepng_malloc(linebytes);
-      if(!attempt[type]) return 83; /*alloc fail*/
+      if(!attempt[type]) error = 83; /*alloc fail*/
     }
 
     if(!error) {
@@ -5502,32 +5507,34 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
     for(type = 0; type != 5; ++type) {
       attempt[type] = (unsigned char*)lodepng_malloc(linebytes);
-      if(!attempt[type]) return 83; /*alloc fail*/
+      if(!attempt[type]) error = 83; /*alloc fail*/
     }
 
-    for(y = 0; y != h; ++y) {
-      /*try the 5 filter types*/
-      for(type = 0; type != 5; ++type) {
-        size_t sum = 0;
-        filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
-        for(x = 0; x != 256; ++x) count[x] = 0;
-        for(x = 0; x != linebytes; ++x) ++count[attempt[type][x]];
-        ++count[type]; /*the filter type itself is part of the scanline*/
-        for(x = 0; x != 256; ++x) {
-          sum += ilog2i(count[x]);
+    if(!error) {
+      for(y = 0; y != h; ++y) {
+        /*try the 5 filter types*/
+        for(type = 0; type != 5; ++type) {
+          size_t sum = 0;
+          filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
+          for(x = 0; x != 256; ++x) count[x] = 0;
+          for(x = 0; x != linebytes; ++x) ++count[attempt[type][x]];
+          ++count[type]; /*the filter type itself is part of the scanline*/
+          for(x = 0; x != 256; ++x) {
+            sum += ilog2i(count[x]);
+          }
+          /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
+          if(type == 0 || sum > bestSum) {
+            bestType = type;
+            bestSum = sum;
+          }
         }
-        /*check if this is smallest sum (or if type == 0 it's the first case so always store the values)*/
-        if(type == 0 || sum > bestSum) {
-          bestType = type;
-          bestSum = sum;
-        }
+
+        prevline = &in[y * linebytes];
+
+        /*now fill the out values*/
+        out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
+        for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
       }
-
-      prevline = &in[y * linebytes];
-
-      /*now fill the out values*/
-      out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
     }
 
     for(type = 0; type != 5; ++type) lodepng_free(attempt[type]);
@@ -5561,27 +5568,29 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
     zlibsettings.custom_deflate = 0;
     for(type = 0; type != 5; ++type) {
       attempt[type] = (unsigned char*)lodepng_malloc(linebytes);
-      if(!attempt[type]) return 83; /*alloc fail*/
+      if(!attempt[type]) error = 83; /*alloc fail*/
     }
-    for(y = 0; y != h; ++y) /*try the 5 filter types*/ {
-      for(type = 0; type != 5; ++type) {
-        unsigned testsize = (unsigned)linebytes;
-        /*if(testsize > 8) testsize /= 8;*/ /*it already works good enough by testing a part of the row*/
+    if(!error) {
+      for(y = 0; y != h; ++y) /*try the 5 filter types*/ {
+        for(type = 0; type != 5; ++type) {
+          unsigned testsize = (unsigned)linebytes;
+          /*if(testsize > 8) testsize /= 8;*/ /*it already works good enough by testing a part of the row*/
 
-        filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
-        size[type] = 0;
-        dummy = 0;
-        zlib_compress(&dummy, &size[type], attempt[type], testsize, &zlibsettings);
-        lodepng_free(dummy);
-        /*check if this is smallest size (or if type == 0 it's the first case so always store the values)*/
-        if(type == 0 || size[type] < smallest) {
-          bestType = type;
-          smallest = size[type];
+          filterScanline(attempt[type], &in[y * linebytes], prevline, linebytes, bytewidth, type);
+          size[type] = 0;
+          dummy = 0;
+          zlib_compress(&dummy, &size[type], attempt[type], testsize, &zlibsettings);
+          lodepng_free(dummy);
+          /*check if this is smallest size (or if type == 0 it's the first case so always store the values)*/
+          if(type == 0 || size[type] < smallest) {
+            bestType = type;
+            smallest = size[type];
+          }
         }
+        prevline = &in[y * linebytes];
+        out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
+        for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
       }
-      prevline = &in[y * linebytes];
-      out[y * (linebytes + 1)] = bestType; /*the first byte of a scanline will be the filter type*/
-      for(x = 0; x != linebytes; ++x) out[y * (linebytes + 1) + 1 + x] = attempt[bestType][x];
     }
     for(type = 0; type != 5; ++type) lodepng_free(attempt[type]);
   }
