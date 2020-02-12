@@ -2663,12 +2663,13 @@ void lodepng_color_mode_init(LodePNGColorMode* info) {
   info->palettesize = 0;
 }
 
-void lodepng_color_mode_alloc_palette(LodePNGColorMode* info) {
+/*allocates palette memory if needed, and initializes all colors to black*/
+static void lodepng_color_mode_alloc_palette(LodePNGColorMode* info) {
   size_t i;
-  /*room for 256 colors with 4 bytes each. Using realloc to avoid leak if it is being overwritten*/
-  unsigned char* palette = (unsigned char*)lodepng_realloc(info->palette, 1024);
-  if(!palette) return; /*alloc fail*/
-  info->palette = palette;
+  /*if the palette is already allocated, it will have size 1024 so no reallocation needed in that case*/
+  /*the palette must have room for up to 256 colors with 4 bytes each.*/
+  if(!info->palette) info->palette = (unsigned char*)lodepng_malloc(1024);
+  if(!info->palette) return; /*alloc fail*/
   for(i = 0; i != 256; ++i) {
     /*Initialize all unused colors with black, the value used for invalid palette indices.
     This is an error according to the PNG spec, but common PNG decoders make it black instead.
@@ -3133,19 +3134,22 @@ static int color_tree_has(ColorTree* tree, unsigned char r, unsigned char g, uns
 #endif /*LODEPNG_COMPILE_ENCODER*/
 
 /*color is not allowed to already exist.
-Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")*/
-static void color_tree_add(ColorTree* tree,
-                           unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index) {
+Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")
+Returns error code, or 0 if ok*/
+static unsigned color_tree_add(ColorTree* tree,
+                               unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index) {
   int bit;
   for(bit = 0; bit < 8; ++bit) {
     int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
     if(!tree->children[i]) {
       tree->children[i] = (ColorTree*)lodepng_malloc(sizeof(ColorTree));
+      if(!tree->children[i]) return 83; /*alloc fail*/
       color_tree_init(tree->children[i]);
     }
     tree = tree->children[i];
   }
   tree->index = (int)index;
+  return 0;
 }
 
 /*put a pixel, given its RGBA color, into image of any color type*/
@@ -3547,26 +3551,29 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     color_tree_init(&tree);
     for(i = 0; i != palsize; ++i) {
       const unsigned char* p = &palette[i * 4];
-      color_tree_add(&tree, p[0], p[1], p[2], p[3], (unsigned)i);
+      error = color_tree_add(&tree, p[0], p[1], p[2], p[3], (unsigned)i);
+      if(error) break;
     }
   }
 
-  if(mode_in->bitdepth == 16 && mode_out->bitdepth == 16) {
-    for(i = 0; i != numpixels; ++i) {
-      unsigned short r = 0, g = 0, b = 0, a = 0;
-      getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode_in);
-      rgba16ToPixel(out, i, mode_out, r, g, b, a);
-    }
-  } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGBA) {
-    getPixelColorsRGBA8(out, numpixels, in, mode_in);
-  } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGB) {
-    getPixelColorsRGB8(out, numpixels, in, mode_in);
-  } else {
-    unsigned char r = 0, g = 0, b = 0, a = 0;
-    for(i = 0; i != numpixels; ++i) {
-      getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
-      error = rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a);
-      if (error) break;
+  if(!error) {
+    if(mode_in->bitdepth == 16 && mode_out->bitdepth == 16) {
+      for(i = 0; i != numpixels; ++i) {
+        unsigned short r = 0, g = 0, b = 0, a = 0;
+        getPixelColorRGBA16(&r, &g, &b, &a, in, i, mode_in);
+        rgba16ToPixel(out, i, mode_out, r, g, b, a);
+      }
+    } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGBA) {
+      getPixelColorsRGBA8(out, numpixels, in, mode_in);
+    } else if(mode_out->bitdepth == 8 && mode_out->colortype == LCT_RGB) {
+      getPixelColorsRGB8(out, numpixels, in, mode_in);
+    } else {
+      unsigned char r = 0, g = 0, b = 0, a = 0;
+      for(i = 0; i != numpixels; ++i) {
+        getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
+        error = rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a);
+        if(error) break;
+      }
     }
   }
 
@@ -3671,12 +3678,13 @@ static unsigned getValueRequiredBits(unsigned char value) {
 }
 
 /*stats must already have been inited. */
-void lodepng_compute_color_stats(LodePNGColorStats* stats,
-                                 const unsigned char* in, unsigned w, unsigned h,
-                                 const LodePNGColorMode* mode_in) {
+unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
+                                     const unsigned char* in, unsigned w, unsigned h,
+                                     const LodePNGColorMode* mode_in) {
   size_t i;
   ColorTree tree;
   size_t numpixels = (size_t)w * (size_t)h;
+  unsigned error = 0;
 
   /* mark things as done already if it would be impossible to have a more expensive case */
   unsigned colored_done = lodepng_is_greyscale_type(mode_in) ? 1 : 0;
@@ -3706,7 +3714,8 @@ void lodepng_compute_color_stats(LodePNGColorStats* stats,
   if(!numcolors_done) {
     for(i = 0; i < stats->numcolors; i++) {
       const unsigned char* color = &stats->palette[i * 4];
-      color_tree_add(&tree, color[0], color[1], color[2], color[3], i);
+      error = color_tree_add(&tree, color[0], color[1], color[2], color[3], i);
+      if(error) goto cleanup;
     }
   }
 
@@ -3810,7 +3819,8 @@ void lodepng_compute_color_stats(LodePNGColorStats* stats,
 
       if(!numcolors_done) {
         if(!color_tree_has(&tree, r, g, b, a)) {
-          color_tree_add(&tree, r, g, b, a, stats->numcolors);
+          error = color_tree_add(&tree, r, g, b, a, stats->numcolors);
+          if(error) goto cleanup;
           if(stats->numcolors < 256) {
             unsigned char* p = stats->palette;
             unsigned n = stats->numcolors;
@@ -3846,15 +3856,18 @@ void lodepng_compute_color_stats(LodePNGColorStats* stats,
     stats->key_b += (stats->key_b << 8);
   }
 
+cleanup:
   color_tree_cleanup(&tree);
+  return error;
 }
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 /*Adds a single color to the color stats. The stats must already have been inited. The color must be given as 16-bit
 (with 2 bytes repeating for 8-bit and 65535 for opaque alpha channel). This function is expensive, do not call it for
 all pixels of an image but only for a few additional values. */
-static void lodepng_color_stats_add(LodePNGColorStats* stats,
-                                    unsigned r, unsigned g, unsigned b, unsigned a) {
+static unsigned lodepng_color_stats_add(LodePNGColorStats* stats,
+                                        unsigned r, unsigned g, unsigned b, unsigned a) {
+  unsigned error = 0;
   unsigned char image[8];
   LodePNGColorMode mode;
   lodepng_color_mode_init(&mode);
@@ -3862,8 +3875,9 @@ static void lodepng_color_stats_add(LodePNGColorStats* stats,
   image[4] = b >> 8; image[5] = b; image[6] = a >> 8; image[7] = a;
   mode.bitdepth = 16;
   mode.colortype = LCT_RGBA;
-  lodepng_compute_color_stats(stats, image, 1, 1, &mode);
+  error = lodepng_compute_color_stats(stats, image, 1, 1, &mode);
   lodepng_color_mode_cleanup(&mode);
+  return error;
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
@@ -5852,14 +5866,16 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       stats.allow_greyscale = 0;
     }
 #endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
-    lodepng_compute_color_stats(&stats, image, w, h, &state->info_raw);
+    state->error = lodepng_compute_color_stats(&stats, image, w, h, &state->info_raw);
+    if(state->error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     if(info_png->background_defined) {
       /*the background chunk's color must be taken into account as well*/
       unsigned r = 0, g = 0, b = 0;
       LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGB, 16);
       lodepng_convert_rgb(&r, &g, &b, info_png->background_r, info_png->background_g, info_png->background_b, &mode16, &info_png->color);
-      lodepng_color_stats_add(&stats, r, g, b, 65535);
+      state->error = lodepng_color_stats_add(&stats, r, g, b, 65535);
+      if(state->error) goto cleanup;
     }
 #endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
     state->error = auto_choose_color(&info.color, &state->info_raw, &stats);

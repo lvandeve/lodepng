@@ -346,8 +346,8 @@ typedef struct LodePNGColorMode {
 
   The palette is only supported for color type 3.
   */
-  unsigned char* palette; /*palette in RGBARGBA... order. When allocated, must be either 0, or have size 1024*/
-  size_t palettesize; /*palette size in number of colors (amount of bytes is 4 * palettesize)*/
+  unsigned char* palette; /*palette in RGBARGBA... order. Must be either 0, or when allocated must have 1024 bytes*/
+  size_t palettesize; /*palette size in number of colors (amount of used bytes is 4 * palettesize)*/
 
   /*
   transparent color key (tRNS)
@@ -693,10 +693,11 @@ typedef struct LodePNGColorStats {
 
 void lodepng_color_stats_init(LodePNGColorStats* stats);
 
-/*Get a LodePNGColorStats of the image. The stats must already have been inited.*/
-void lodepng_compute_color_stats(LodePNGColorStats* stats,
-                                 const unsigned char* image, unsigned w, unsigned h,
-                                 const LodePNGColorMode* mode_in);
+/*Get a LodePNGColorStats of the image. The stats must already have been inited.
+Returns error code (e.g. alloc fail) or 0 if ok.*/
+unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
+                                     const unsigned char* image, unsigned w, unsigned h,
+                                     const LodePNGColorMode* mode_in);
 
 /*Settings for the encoder.*/
 typedef struct LodePNGEncoderSettings {
