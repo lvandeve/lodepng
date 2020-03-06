@@ -44,6 +44,8 @@ mv lodepng.cpp lodepng.c ; clang -I ./ lodepng.c examples/example_decode.c -ansi
 *) Compile with C with -pedantic but not -ansi flag so it warns about // style comments in C++-only ifdefs
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
 
+*) test other compilers
+
 *) try lodepng_benchmark.cpp
 g++ lodepng.cpp lodepng_benchmark.cpp -Werror -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
 
@@ -105,7 +107,7 @@ cat lodepng.cpp lodepng_util.cpp | grep "#include"
 *) try the Makefile
 make clean && make -j
 
-*) check that no plain "free", "malloc", "realloc", "strlen", "memcpy", ... used, but the lodepng_* versions instead
+*) check that no plain free, malloc, realloc, strlen, memcpy, memset, ... used, but the lodepng_* versions instead
 
 *) check version dates in copyright message and LODEPNG_VERSION_STRING
 
@@ -3136,6 +3138,20 @@ void testBase64Image(const std::string& png64, bool expect_error, unsigned expec
       rgb8[i * 3 + 2] = rgb16[i * 6 + 4];
     }
     ASSERT_EQUALS(expected_rgb, rgb8);
+  }
+
+  // test encode/decode
+  // TODO: also test state, for text chunks, ...
+  {
+    std::vector<unsigned char> rgba16;
+    ASSERT_NO_PNG_ERROR(lodepng::decode(rgba16, w, h, png, LCT_RGBA, 16));
+
+    std::vector<unsigned char> png_b;
+    ASSERT_NO_PNG_ERROR(lodepng::encode(png_b, rgba16, w, h, LCT_RGBA, 16));
+
+    std::vector<unsigned char> rgba16_b;
+    ASSERT_NO_PNG_ERROR(lodepng::decode(rgba16_b, w, h, png_b, LCT_RGBA, 16));
+    ASSERT_EQUALS(rgba16, rgba16_b);
   }
 }
 // input is base64-encoded png image and base64-encoded RGBA pixels (8 bit per channel)
