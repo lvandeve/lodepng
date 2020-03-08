@@ -12,7 +12,13 @@ CXX ?= g++
 override CFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 -Wno-unused-function $(CFLAGS)
 override CXXFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 $(CXXFLAGS)
 
-all: unittest benchmark pngdetail showpng
+BIN       = unittest benchmark pngdetail pngshow
+STATICLIB = $(PREFIX)liblodepng.a
+SHAREDLIB = $(PREFIX)liblodepng.so.0
+SHAREDBIN  = pngdetail-shared pngreencode-shared pnglossy-shared pngshow-shared
+LIBOBJS = lodepng.o lodepng_util.o
+
+all: $(BIN)
 
 %.o: %.cpp
 	@mkdir -p `dirname $@`
@@ -27,8 +33,29 @@ benchmark: lodepng.o lodepng_benchmark.o
 pngdetail: lodepng.o lodepng_util.o pngdetail.o
 	$(CXX) $^ $(CXXFLAGS) -o $@
 
-showpng: lodepng.o examples/example_sdl.o
+pngshow: lodepng.o examples/example_sdl.o
+	$(CXX) -I ./ $^ $(CXXFLAGS) -lSDL -o $@
+
+shared: $(STATICLIB) $(SHAREDLIB) $(SHAREDBIN)
+
+$(STATICLIB): $(LIBOBJS)
+	$(AR) rcs $@ $^
+	$(if $(RANLIB), $(RANLIB) $@)
+
+$(SHAREDLIB): $(LIBOBJS)
+	$(CXX) -shared -Wl,-soname,$@ -o $@ $^ $(CFLAGS) $(LDFLAGS)
+
+pngdetail-shared: $(SHAREDLIB) pngdetail.o
+	$(CXX) $^ $(CXXFLAGS) -o $@
+
+pngreencode-shared: $(SHAREDLIB) examples/example_reencode.o
+	$(CXX) -I ./ $^ $(CXXFLAGS) -o $@
+
+pnglossy-shared: $(SHAREDLIB) examples/example_lossy.o
+	$(CXX) -I ./ $^ $(CXXFLAGS) -o $@
+
+pngshow-shared: $(SHAREDLIB) examples/example_sdl.o
 	$(CXX) -I ./ $^ $(CXXFLAGS) -lSDL -o $@
 
 clean:
-	rm -f unittest benchmark pngdetail showpng lodepng_unittest.o lodepng_benchmark.o lodepng.o lodepng_util.o pngdetail.o examples/example_sdl.o
+	rm -f $(BIN) $(STATICLIB) $(SHAREDLIB) $(SHAREDBIN) *.o examples/*.o

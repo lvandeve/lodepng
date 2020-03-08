@@ -55,11 +55,11 @@ everything except huge output:
 #include <stdio.h>
 #include <inttypes.h>
 
-void showHelp() {
+void showHelp(char * pname) {
   std::cout << "pngdetail by Lode Vandevenne" << std::endl;
   std::cout << "version: " << LODEPNG_VERSION_STRING << std::endl;
   std::cout << "Shows detailed information about a PNG image, its compression and possible corruptions.\n"
-               "Usage: pngdetail [filename] [options]...\n"
+               "Usage: " << pname << " [filename] [options]...\n"
                "Without options shows a default set of stats. With options, shows only selected options.\n"
                "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
@@ -1308,7 +1308,7 @@ int main(int argc, char *argv[]) {
       for(size_t j = 1; j < s.size(); j++) {
         char c = s[j];
         if(c == '?') {
-          showHelp();
+          showHelp(argv[0]);
           return 0;
         }
         else if(c == 'o') options.show_one_line_summary = true;
@@ -1342,12 +1342,12 @@ int main(int argc, char *argv[]) {
         }
         else if(c == '-') {
           if(s != "--help") std::cout << "Unknown flag: " << s << ". Use -h for help" << std::endl;
-          showHelp();
+          showHelp(argv[0]);
           return 0;
         }
         else {
           std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
-          showHelp();
+          showHelp(argv[0]);
           return 0;
         }
 
@@ -1358,7 +1358,7 @@ int main(int argc, char *argv[]) {
       std::string key = s.substr(2, eqpos - 2);
       std::string value = (eqpos + 1) < s.size() ? s.substr(eqpos + 1) : "";
       if(key == "help") {
-        showHelp();
+        showHelp(argv[0]);
         return 0;
       }
       if(key == "mode") {
@@ -1381,7 +1381,7 @@ int main(int argc, char *argv[]) {
 
   if(filenames.empty()) {
     std::cout << "Please provide a filename to preview" << std::endl;
-    showHelp();
+    showHelp(argv[0]);
     return 0;
   }
 

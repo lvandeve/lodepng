@@ -73,3 +73,7 @@ way to use that one is to include its source files in your program. The Makefile
 only builds development and testing utilities. It can be used as follows:
 
 `make -j`
+
+For build shared library type:
+
+`make shared`
