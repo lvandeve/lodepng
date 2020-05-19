@@ -5872,7 +5872,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       state->error = lodepng_convert(converted, image, &info.color, &state->info_raw, w, h);
     }
     if(!state->error) {
-      state->error = preProcessS1canlines(&data, &datasize, converted, w, h, &info, &state->encoder);
+      state->error = preProcessScanlines(&data, &datasize, converted, w, h, &info, &state->encoder);
     }
     lodepng_free(converted);
     if(state->error) goto cleanup;
