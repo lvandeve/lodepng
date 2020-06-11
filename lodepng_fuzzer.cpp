@@ -59,8 +59,6 @@ unsigned testDecode(lodepng::State& state, const uint8_t* data, size_t size) {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if(size == 0) return 0;
   size_t random_color_type = data[0] % num_combinations;
-  data++;
-  size--;
 
   lodepng::State state;
 
