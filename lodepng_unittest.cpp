@@ -3539,9 +3539,6 @@ void testErrorImages() {
   testBase64Image("iVBORw0KGgoAAAANSUhEUgAAAQAAAAEAAgMAAAAhHED1AAAAU0lEQVR4Ae3MwQAAAAxFoXnM3/NDvGsBdB8JBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEEQDHGPAW1eyhK0AAAAASUVORK5CYII=", true, 256, 256, "");
 }
 
-// defined in lodepng.cpp
-unsigned lode_png_test_bitreader(const unsigned char* data, size_t size, size_t numsteps, const size_t* steps, unsigned* result);
-
 void testBitReaderCase(const std::string& bits, const std::vector<size_t>& steps, bool expect_error, bool silent = false) {
   if(!silent) std::cout << "testBitReaderCase: " << bits << ", #steps: " << steps.size() << std::endl;
   std::vector<unsigned char> data;

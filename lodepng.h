@@ -913,6 +913,9 @@ buffer and *outsize its size in bytes. out must be freed by user after usage.
 unsigned lodepng_zlib_decompress(unsigned char** out, size_t* outsize,
                                  const unsigned char* in, size_t insize,
                                  const LodePNGDecompressSettings* settings);
+
+unsigned lode_png_test_bitreader(const unsigned char* data, size_t size,
+                        size_t numsteps, const size_t* steps, unsigned* result);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
