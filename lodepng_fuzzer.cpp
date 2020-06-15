@@ -58,9 +58,11 @@ unsigned testDecode(lodepng::State& state, const uint8_t* data, size_t size) {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if(size == 0) return 0;
-  size_t random_color_type = data[0] % num_combinations;
-  data++;
-  size--;
+  
+  // Setting last byte of input as random_color_type
+  // Fuzzer will still be able to mutate the data accordingly as
+  // last byte of png file can be changed and file will still remain valid.
+  size_t random_color_type = data[size-1] % num_combinations;
 
   lodepng::State state;
 
