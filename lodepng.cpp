@@ -31,13 +31,13 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #include "lodepng.h"
 
 #ifdef LODEPNG_COMPILE_DISK
-#include <limits.h> /* LONG_MAX */
+#include <limits.h> /*LONG_MAX*/
 #include <stdio.h> /* file handling */
-#endif /* LODEPNG_COMPILE_DISK */
+#endif /*LODEPNG_COMPILE_DISK*/
 
 #ifdef LODEPNG_COMPILE_ALLOCATORS
-#include <stdlib.h> /* allocations */
-#endif /* LODEPNG_COMPILE_ALLOCATORS */
+#include <stdlib.h> /*allocations*/
+#endif /*LODEPNG_COMPILE_ALLOCATORS*/
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
@@ -5819,7 +5819,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       /*the PNG specification does not allow to use grayscale color with RGB ICC profile, so disallow gray.*/
       stats.allow_greyscale = 0;
     }
-#endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     state->error = lodepng_compute_color_stats(&stats, image, w, h, &state->info_raw);
     if(state->error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
@@ -5831,7 +5831,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       state->error = lodepng_color_stats_add(&stats, r, g, b, 65535);
       if(state->error) goto cleanup;
     }
-#endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     state->error = auto_choose_color(&info.color, &state->info_raw, &stats);
     if(state->error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
@@ -5843,7 +5843,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
         goto cleanup;
       }
     }
-#endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   }
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   if(info_png->iccp_defined) {
@@ -6230,7 +6230,7 @@ unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filena
 unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename) {
   return lodepng_save_file(buffer.empty() ? 0 : &buffer[0], buffer.size(), filename.c_str());
 }
-#endif /* LODEPNG_COMPILE_DISK */
+#endif /*LODEPNG_COMPILE_DISK*/
 
 #ifdef LODEPNG_COMPILE_ZLIB
 #ifdef LODEPNG_COMPILE_DECODER
@@ -6250,7 +6250,7 @@ unsigned decompress(std::vector<unsigned char>& out, const std::vector<unsigned 
                     const LodePNGDecompressSettings& settings) {
   return decompress(out, in.empty() ? 0 : &in[0], in.size(), settings);
 }
-#endif /* LODEPNG_COMPILE_DECODER */
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 unsigned compress(std::vector<unsigned char>& out, const unsigned char* in, size_t insize,
@@ -6269,8 +6269,8 @@ unsigned compress(std::vector<unsigned char>& out, const std::vector<unsigned ch
                   const LodePNGCompressSettings& settings) {
   return compress(out, in.empty() ? 0 : &in[0], in.size(), settings);
 }
-#endif /* LODEPNG_COMPILE_ENCODER */
-#endif /* LODEPNG_COMPILE_ZLIB */
+#endif /*LODEPNG_COMPILE_ENCODER*/
+#endif /*LODEPNG_COMPILE_ZLIB*/
 
 
 #ifdef LODEPNG_COMPILE_PNG
@@ -6344,8 +6344,8 @@ unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h, const
   if(error) return error;
   return decode(out, w, h, buffer, colortype, bitdepth);
 }
-#endif /* LODEPNG_COMPILE_DECODER */
-#endif /* LODEPNG_COMPILE_DISK */
+#endif /*LODEPNG_COMPILE_DECODER*/
+#endif /*LODEPNG_COMPILE_DISK*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 unsigned encode(std::vector<unsigned char>& out, const unsigned char* in, unsigned w, unsigned h,
@@ -6403,8 +6403,8 @@ unsigned encode(const std::string& filename,
   if(lodepng_get_raw_size_lct(w, h, colortype, bitdepth) > in.size()) return 84;
   return encode(filename, in.empty() ? 0 : &in[0], w, h, colortype, bitdepth);
 }
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_ENCODER */
-#endif /* LODEPNG_COMPILE_PNG */
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_ENCODER*/
+#endif /*LODEPNG_COMPILE_PNG*/
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/

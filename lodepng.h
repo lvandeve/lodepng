@@ -227,8 +227,8 @@ Same as the other decode functions, but instead takes a filename as input.
 unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h,
                 const std::string& filename,
                 LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_DECODER */
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /*Same as lodepng_encode_memory, but encodes to an std::vector. colortype
@@ -251,8 +251,8 @@ unsigned encode(const std::string& filename,
 unsigned encode(const std::string& filename,
                 const std::vector<unsigned char>& in, unsigned w, unsigned h,
                 LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_ENCODER */
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_ENCODER*/
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/
 #endif /*LODEPNG_COMPILE_PNG*/
@@ -1008,8 +1008,8 @@ Save the binary data in an std::vector to a file on disk. The file is overwritte
 without warning.
 */
 unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_PNG */
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_PNG*/
 
 #ifdef LODEPNG_COMPILE_ZLIB
 #ifdef LODEPNG_COMPILE_DECODER
@@ -1020,7 +1020,7 @@ unsigned decompress(std::vector<unsigned char>& out, const unsigned char* in, si
 /* Zlib-decompress an std::vector */
 unsigned decompress(std::vector<unsigned char>& out, const std::vector<unsigned char>& in,
                     const LodePNGDecompressSettings& settings = lodepng_default_decompress_settings);
-#endif /* LODEPNG_COMPILE_DECODER */
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /* Zlib-compress an unsigned char buffer */
@@ -1030,8 +1030,8 @@ unsigned compress(std::vector<unsigned char>& out, const unsigned char* in, size
 /* Zlib-compress an std::vector */
 unsigned compress(std::vector<unsigned char>& out, const std::vector<unsigned char>& in,
                   const LodePNGCompressSettings& settings = lodepng_default_compress_settings);
-#endif /* LODEPNG_COMPILE_ENCODER */
-#endif /* LODEPNG_COMPILE_ZLIB */
+#endif /*LODEPNG_COMPILE_ENCODER*/
+#endif /*LODEPNG_COMPILE_ZLIB*/
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/
 
