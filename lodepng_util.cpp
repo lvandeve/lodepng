@@ -282,14 +282,16 @@ float lodepng_flt_zero_ = 0.0f;
 static const float lodepng_flt_inf = 1.0f / lodepng_flt_zero_; /* infinity */
 static const float lodepng_flt_nan = 0.0f / lodepng_flt_zero_; /* not a number */
 
-/* powf polyfill, 5-6 digits accurate, 33% slower than powf, assumes IEEE
+
+/* powf polyfill, 5-6 digits accurate, 33-80% slower than powf, assumes IEEE
 32-bit float, but other than that multiplatform and no math lib needed
 (note: powf also isn't in ISO C90, and pow is slower). */
 static float lodepng_powf(float x, float y) {
-  float j, t0, t1;
+  float j, t0, t1, l;
   int i = 0;
   /* handle all the special floating point rules */
-  if(x == 1 || y == 0) return 1;
+  if(x == 1 || y == 0) return 1; /*these cases return 1 even if the other value is NaN, as specified*/
+  if(y == 1) return x;
   if(!(x > 0 && x <= lodepng_flt_max && y == y && y <= lodepng_flt_max && y >= -lodepng_flt_max)) {
     if(y == 1) return x; /* preserves negative-0 */
     if(x != x || y != y) return x + y; /* nan */
@@ -315,24 +317,26 @@ static float lodepng_powf(float x, float y) {
     if(y < -lodepng_flt_max || y > lodepng_flt_max) return ((x < 1) != (y > 0)) ? (y < 0 ? -y : y) : 0;
   }
 
+  l = x;
   j = 0;
-  while(x < (1.0f / 65536)) { j -= 16; x *= 65536.0f; }
-  while(x > 65536) { j += 16; x *= (1.0f / 65536); }
-  while(x < 1) { j--; x *= 2.0f; }
-  while(x > 2) { j++; x *= 0.5f; }
+  while(l < (1.0f / 65536)) { j -= 16; l *= 65536.0f; }
+  while(l > 65536) { j += 16; l *= (1.0f / 65536); }
+  while(l < 1) { j--; l *= 2.0f; }
+  while(l > 2) { j++; l *= 0.5f; }
   /* polynomial to approximate log2(x) with x in range 1..2 */
-  t0 = -0.393118410458557f + x * (-0.0883639468229365f + x * (0.466142650227994f + x * 0.0153397331014276f));
-  t1 = 0.0907447971403586f + x * (0.388892024755479f + x * 0.137228280305862f);
-  x = t0 / t1 + j;
+  t0 = -0.393118410458557f + l * (-0.0883639468229365f + l * (0.466142650227994f + l * 0.0153397331014276f));
+  t1 = 0.0907447971403586f + l * (0.388892024755479f + l * 0.137228280305862f);
+  l = t0 / t1 + j;
 
-  x *= y; /* using the formula exp2(y * log2(x)) */
+  l *= y; /* using the formula exp2(y * log2(x)) */
 
-  if(!(x > -128.0f && x < 128.0f)) return x > 0 ? lodepng_flt_inf : 0; /* prevent int overflow */
-  i = (int)x;
-  x -= i;
+  /* prevent int shift overflow, 0 or inf result are ok to return since exp will be taken, 127 is max float exponent */
+  if(l <= -128.0f || l >= 128.0f) return ((x > 1) == (y > 0)) ? lodepng_flt_inf : 0;
+  i = (int)l;
+  l -= i;
   /* polynomial to approximate exp2(x) with x in range -1..1 */
-  t0 = 1.0f + x * (0.41777833582744256f + x * (0.0728482595347711f + x * 0.005635023478609625f));
-  t1 = 1.0f + x * (-0.27537016151408167f + x * 0.023501446055084033f);
+  t0 = 1.0f + l * (0.41777833582744256f + l * (0.0728482595347711f + l * 0.005635023478609625f));
+  t1 = 1.0f + l * (-0.27537016151408167f + l * 0.023501446055084033f);
   while(i <= -31) { t0 *= (1.0f / 2147483648.0f); i += 31; }
   while(i >= 31) { t0 *= 2147483648.0f; i -= 31; }
   return (i < 0) ? (t0 / (t1 * (1 << -i))) : ((t0 * (1 << i)) / t1);
@@ -799,24 +803,24 @@ static unsigned getAdaptationMatrix(float* m, int type,
                                     float wx1, float wy1, float wz1) {
   int i;
   static const float bradford[9] = {
-    0.8951, 0.2664, -0.1614,
-    -0.7502, 1.7135, 0.0367,
-    0.0389, -0.0685, 1.0296
+    0.8951f, 0.2664f, -0.1614f,
+    -0.7502f, 1.7135f, 0.0367f,
+    0.0389f, -0.0685f, 1.0296f
   };
   static const float bradfordinv[9] = {
-    0.9869929, -0.1470543, 0.1599627,
-    0.4323053, 0.5183603, 0.0492912,
-   -0.0085287, 0.0400428, 0.9684867
+    0.9869929f, -0.1470543f, 0.1599627f,
+    0.4323053f, 0.5183603f, 0.0492912f,
+   -0.0085287f, 0.0400428f, 0.9684867f
   };
   static const float vonkries[9] = {
-    0.40024, 0.70760, -0.08081,
-    -0.22630, 1.16532, 0.04570,
-    0.00000, 0.00000, 0.91822,
+    0.40024f, 0.70760f, -0.08081f,
+    -0.22630f, 1.16532f, 0.04570f,
+    0.00000f, 0.00000f, 0.91822f,
   };
   static const float vonkriesinv[9] = {
-    1.8599364, -1.1293816, 0.2198974,
-    0.3611914, 0.6388125, -0.0000064,
-   0.0000000, 0.0000000, 1.0890636
+    1.8599364f, -1.1293816f, 0.2198974f,
+    0.3611914f, 0.6388125f, -0.0000064f,
+   0.0000000f, 0.0000000f, 1.0890636f
   };
   if(type == 0) {
     for(i = 0; i < 9; i++) m[i] = 0;

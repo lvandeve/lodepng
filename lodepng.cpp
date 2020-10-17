@@ -1,5 +1,5 @@
 /*
-LodePNG version 20200306
+LodePNG version 20201017
 
 Copyright (c) 2005-2020 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20200306";
+const char* LODEPNG_VERSION_STRING = "20201017";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -299,6 +299,7 @@ static void string_cleanup(char** out) {
   *out = NULL;
 }
 
+/*also appends null termination character*/
 static char* alloc_string_sized(const char* in, size_t insize) {
   char* out = (char*)lodepng_malloc(insize + 1);
   if(out) {
@@ -1260,7 +1261,7 @@ static unsigned getTreeInflateDynamic(HuffmanTree* tree_ll, HuffmanTree* tree_d,
 
 /*inflate a block with dynamic of fixed Huffman tree. btype must be 1 or 2.*/
 static unsigned inflateHuffmanBlock(ucvector* out, LodePNGBitReader* reader,
-                                    unsigned btype) {
+                                    unsigned btype, size_t max_output_size) {
   unsigned error = 0;
   HuffmanTree tree_ll; /*the huffman tree for literal and length codes*/
   HuffmanTree tree_d; /*the huffman tree for distance codes*/
@@ -1341,6 +1342,9 @@ static unsigned inflateHuffmanBlock(ucvector* out, LodePNGBitReader* reader,
       /* TODO: revise error codes 10,11,50: the above comment is no longer valid */
       ERROR_BREAK(51); /*error, bit pointer jumps past memory*/
     }
+    if(max_output_size && out->size > max_output_size) {
+      ERROR_BREAK(109); /*error, larger than max size*/
+    }
   }
 
   HuffmanTree_cleanup(&tree_ll);
@@ -1398,9 +1402,9 @@ static unsigned lodepng_inflatev(ucvector* out,
 
     if(BTYPE == 3) return 20; /*error: invalid BTYPE*/
     else if(BTYPE == 0) error = inflateNoCompression(out, &reader, settings); /*no compression*/
-    else error = inflateHuffmanBlock(out, &reader, BTYPE); /*compression, BTYPE 01 or 10*/
-
-    if(error) return error;
+    else error = inflateHuffmanBlock(out, &reader, BTYPE, settings->max_output_size); /*compression, BTYPE 01 or 10*/
+    if(!error && settings->max_output_size && out->size > settings->max_output_size) error = 109;
+    if(error) break;
   }
 
   return error;
@@ -1421,6 +1425,12 @@ static unsigned inflatev(ucvector* out, const unsigned char* in, size_t insize,
   if(settings->custom_inflate) {
     unsigned error = settings->custom_inflate(&out->data, &out->size, in, insize, settings);
     out->allocsize = out->size;
+    if(error) {
+      /*the custom inflate is allowed to have its own error codes, however, we translate it to code 110*/
+      error = 110;
+      /*if there's a max output size, and the custom zlib returned error, then indicate that error instead*/
+      if(settings->max_output_size && out->size > settings->max_output_size) error = 109;
+    }
     return error;
   } else {
     return lodepng_inflatev(out, in, insize, settings);
@@ -2116,7 +2126,9 @@ static unsigned deflate(unsigned char** out, size_t* outsize,
                         const unsigned char* in, size_t insize,
                         const LodePNGCompressSettings* settings) {
   if(settings->custom_deflate) {
-    return settings->custom_deflate(out, outsize, in, insize, settings);
+    unsigned error = settings->custom_deflate(out, outsize, in, insize, settings);
+    /*the custom deflate is allowed to have its own error codes, however, we translate it to code 111*/
+    return error ? 111 : 0;
   } else {
     return lodepng_deflate(out, outsize, in, insize, settings);
   }
@@ -2213,10 +2225,16 @@ unsigned lodepng_zlib_decompress(unsigned char** out, size_t* outsize, const uns
 /*expected_size is expected output size, to avoid intermediate allocations. Set to 0 if not known. */
 static unsigned zlib_decompress(unsigned char** out, size_t* outsize, size_t expected_size,
                                 const unsigned char* in, size_t insize, const LodePNGDecompressSettings* settings) {
+  unsigned error;
   if(settings->custom_zlib) {
-    return settings->custom_zlib(out, outsize, in, insize, settings);
+    error = settings->custom_zlib(out, outsize, in, insize, settings);
+    if(error) {
+      /*the custom zlib is allowed to have its own error codes, however, we translate it to code 110*/
+      error = 110;
+      /*if there's a max output size, and the custom zlib returned error, then indicate that error instead*/
+      if(settings->max_output_size && *outsize > settings->max_output_size) error = 109;
+    }
   } else {
-    unsigned error;
     ucvector v = ucvector_init(*out, *outsize);
     if(expected_size) {
       /*reserve the memory to avoid intermediate reallocations*/
@@ -2226,8 +2244,8 @@ static unsigned zlib_decompress(unsigned char** out, size_t* outsize, size_t exp
     error = lodepng_zlib_decompressv(&v, in, insize, settings);
     *out = v.data;
     *outsize = v.size;
-    return error;
   }
+  return error;
 }
 
 #endif /*LODEPNG_COMPILE_DECODER*/
@@ -2275,7 +2293,9 @@ unsigned lodepng_zlib_compress(unsigned char** out, size_t* outsize, const unsig
 static unsigned zlib_compress(unsigned char** out, size_t* outsize, const unsigned char* in,
                               size_t insize, const LodePNGCompressSettings* settings) {
   if(settings->custom_zlib) {
-    return settings->custom_zlib(out, outsize, in, insize, settings);
+    unsigned error = settings->custom_zlib(out, outsize, in, insize, settings);
+    /*the custom zlib is allowed to have its own error codes, however, we translate it to code 111*/
+    return error ? 111 : 0;
   } else {
     return lodepng_zlib_compress(out, outsize, in, insize, settings);
   }
@@ -2334,13 +2354,14 @@ const LodePNGCompressSettings lodepng_default_compress_settings = {2, 1, DEFAULT
 void lodepng_decompress_settings_init(LodePNGDecompressSettings* settings) {
   settings->ignore_adler32 = 0;
   settings->ignore_nlen = 0;
+  settings->max_output_size = 0;
 
   settings->custom_zlib = 0;
   settings->custom_inflate = 0;
   settings->custom_context = 0;
 }
 
-const LodePNGDecompressSettings lodepng_default_decompress_settings = {0, 0, 0, 0, 0};
+const LodePNGDecompressSettings lodepng_default_decompress_settings = {0, 0, 0, 0, 0, 0};
 
 #endif /*LODEPNG_COMPILE_DECODER*/
 
@@ -2872,8 +2893,8 @@ static void LodePNGText_cleanup(LodePNGInfo* info) {
 
 static unsigned LodePNGText_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
   size_t i = 0;
-  dest->text_keys = 0;
-  dest->text_strings = 0;
+  dest->text_keys = NULL;
+  dest->text_strings = NULL;
   dest->text_num = 0;
   for(i = 0; i != source->text_num; ++i) {
     CERROR_TRY_RETURN(lodepng_add_text(dest, source->text_keys[i], source->text_strings[i]));
@@ -2932,10 +2953,10 @@ static void LodePNGIText_cleanup(LodePNGInfo* info) {
 
 static unsigned LodePNGIText_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
   size_t i = 0;
-  dest->itext_keys = 0;
-  dest->itext_langtags = 0;
-  dest->itext_transkeys = 0;
-  dest->itext_strings = 0;
+  dest->itext_keys = NULL;
+  dest->itext_langtags = NULL;
+  dest->itext_transkeys = NULL;
+  dest->itext_strings = NULL;
   dest->itext_num = 0;
   for(i = 0; i != source->itext_num; ++i) {
     CERROR_TRY_RETURN(lodepng_add_itext(dest, source->itext_keys[i], source->itext_langtags[i],
@@ -4447,9 +4468,12 @@ static unsigned readChunk_tEXt(LodePNGInfo* info, const unsigned char* data, siz
 }
 
 /*compressed text chunk (zTXt)*/
-static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSettings* zlibsettings,
+static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecoderSettings* decoder,
                                const unsigned char* data, size_t chunkLength) {
   unsigned error = 0;
+
+  /*copy the object to change parameters in it*/
+  LodePNGDecompressSettings zlibsettings = decoder->zlibsettings;
 
   unsigned length, string2_begin;
   char *key = 0;
@@ -4473,12 +4497,14 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     if(string2_begin > chunkLength) CERROR_BREAK(error, 75); /*no null termination, corrupt?*/
 
     length = (unsigned)chunkLength - string2_begin;
+    zlibsettings.max_output_size = decoder->max_text_size;
     /*will fail if zlib error, e.g. if length is too small*/
     error = zlib_decompress(&str, &size, 0, &data[string2_begin],
-                            length, zlibsettings);
+                            length, &zlibsettings);
+    /*error: compressed text larger than  decoder->max_text_size*/
+    if(error && size > zlibsettings.max_output_size) error = 112;
     if(error) break;
     error = lodepng_add_text_sized(info, key, (char*)str, size);
-
     break;
   }
 
@@ -4489,10 +4515,13 @@ static unsigned readChunk_zTXt(LodePNGInfo* info, const LodePNGDecompressSetting
 }
 
 /*international text chunk (iTXt)*/
-static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSettings* zlibsettings,
+static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecoderSettings* decoder,
                                const unsigned char* data, size_t chunkLength) {
   unsigned error = 0;
   unsigned i;
+
+  /*copy the object to change parameters in it*/
+  LodePNGDecompressSettings zlibsettings = decoder->zlibsettings;
 
   unsigned length, begin, compressed;
   char *key = 0, *langtag = 0, *transkey = 0;
@@ -4550,9 +4579,12 @@ static unsigned readChunk_iTXt(LodePNGInfo* info, const LodePNGDecompressSetting
     if(compressed) {
       unsigned char* str = 0;
       size_t size = 0;
+      zlibsettings.max_output_size = decoder->max_text_size;
       /*will fail if zlib error, e.g. if length is too small*/
       error = zlib_decompress(&str, &size, 0, &data[begin],
-                              length, zlibsettings);
+                              length, &zlibsettings);
+      /*error: compressed text larger than  decoder->max_text_size*/
+      if(error && size > zlibsettings.max_output_size) error = 112;
       if(!error) error = lodepng_add_itext_sized(info, key, langtag, transkey, (char*)str, size);
       lodepng_free(str);
     } else {
@@ -4628,11 +4660,13 @@ static unsigned readChunk_sRGB(LodePNGInfo* info, const unsigned char* data, siz
   return 0; /* OK */
 }
 
-static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSettings* zlibsettings,
+static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* decoder,
                                const unsigned char* data, size_t chunkLength) {
   unsigned error = 0;
   unsigned i;
   size_t size = 0;
+  /*copy the object to change parameters in it*/
+  LodePNGDecompressSettings zlibsettings = decoder->zlibsettings;
 
   unsigned length, string2_begin;
 
@@ -4655,9 +4689,12 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecompressSetting
   if(string2_begin > chunkLength) return 75; /*no null termination, corrupt?*/
 
   length = (unsigned)chunkLength - string2_begin;
+  zlibsettings.max_output_size = decoder->max_icc_size;
   error = zlib_decompress(&info->iccp_profile, &size, 0,
                           &data[string2_begin],
-                          length, zlibsettings);
+                          length, &zlibsettings);
+  /*error: ICC profile larger than  decoder->max_icc_size*/
+  if(error && size > zlibsettings.max_output_size) error = 113;
   info->iccp_profile_size = size;
   if(!error && !info->iccp_profile_size) error = 100; /*invalid ICC profile size*/
   return error;
@@ -4688,9 +4725,9 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
   } else if(lodepng_chunk_type_equals(chunk, "tEXt")) {
     error = readChunk_tEXt(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "zTXt")) {
-    error = readChunk_zTXt(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+    error = readChunk_zTXt(&state->info_png, &state->decoder, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "iTXt")) {
-    error = readChunk_iTXt(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+    error = readChunk_iTXt(&state->info_png, &state->decoder, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "tIME")) {
     error = readChunk_tIME(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "pHYs")) {
@@ -4702,7 +4739,7 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
   } else if(lodepng_chunk_type_equals(chunk, "sRGB")) {
     error = readChunk_sRGB(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
-    error = readChunk_iCCP(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+    error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   } else {
     /* unhandled chunk is ok (is not an error) */
@@ -4820,13 +4857,13 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     } else if(lodepng_chunk_type_equals(chunk, "zTXt")) {
       /*compressed text chunk (zTXt)*/
       if(state->decoder.read_text_chunks) {
-        state->error = readChunk_zTXt(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+        state->error = readChunk_zTXt(&state->info_png, &state->decoder, data, chunkLength);
         if(state->error) break;
       }
     } else if(lodepng_chunk_type_equals(chunk, "iTXt")) {
       /*international text chunk (iTXt)*/
       if(state->decoder.read_text_chunks) {
-        state->error = readChunk_iTXt(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+        state->error = readChunk_iTXt(&state->info_png, &state->decoder, data, chunkLength);
         if(state->error) break;
       }
     } else if(lodepng_chunk_type_equals(chunk, "tIME")) {
@@ -4845,7 +4882,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       state->error = readChunk_sRGB(&state->info_png, data, chunkLength);
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
-      state->error = readChunk_iCCP(&state->info_png, &state->decoder.zlibsettings, data, chunkLength);
+      state->error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
       if(state->error) break;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     } else /*it's not an implemented chunk type, so ignore it: skip over the data*/ {
@@ -4871,7 +4908,7 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(!IEND) chunk = lodepng_chunk_next_const(chunk, in + insize);
   }
 
-  if(state->info_png.color.colortype == LCT_PALETTE && !state->info_png.color.palette) {
+  if(!state->error && state->info_png.color.colortype == LCT_PALETTE && !state->info_png.color.palette) {
     state->error = 106; /* error: PNG file must have PLTE chunk if color type is palette */
   }
 
@@ -4955,6 +4992,11 @@ unsigned lodepng_decode_memory(unsigned char** out, unsigned* w, unsigned* h, co
   lodepng_state_init(&state);
   state.info_raw.colortype = colortype;
   state.info_raw.bitdepth = bitdepth;
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+  /*disable reading things that this function doesn't output*/
+  state.decoder.read_text_chunks = 0;
+  state.decoder.remember_unknown_chunks = 0;
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   error = lodepng_decode(out, w, h, &state, in, insize);
   lodepng_state_cleanup(&state);
   return error;
@@ -4997,6 +5039,8 @@ void lodepng_decoder_settings_init(LodePNGDecoderSettings* settings) {
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   settings->read_text_chunks = 1;
   settings->remember_unknown_chunks = 0;
+  settings->max_text_size = 16777216;
+  settings->max_icc_size = 16777216; /* 16MB is much more than enough for any reasonable ICC profile */
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   settings->ignore_crc = 0;
   settings->ignore_critical = 0;
@@ -6204,6 +6248,16 @@ const char* lodepng_error_text(unsigned code) {
     case 106: return "PNG file must have PLTE chunk if color type is palette";
     case 107: return "color convert from palette mode requested without setting the palette data in it";
     case 108: return "tried to add more than 256 values to a palette";
+    /*this limit can be configured in LodePNGDecompressSettings*/
+    case 109: return "tried to decompress zlib or deflate data larger than desired max_output_size";
+    case 110: return "custom zlib or inflate decompression failed";
+    case 111: return "custom zlib or deflate compression failed";
+    /*max text size limit can be configured in LodePNGDecoderSettings. This error prevents
+    unreasonable memory consumption when decoding due to impossibly large text sizes.*/
+    case 112: return "compressed text unreasonably large";
+    /*max ICC size limit can be configured in LodePNGDecoderSettings. This error prevents
+    unreasonable memory consumption when decoding due to impossibly large ICC profile*/
+    case 113: return "ICC profile unreasonably large";
   }
   return "unknown error code";
 }

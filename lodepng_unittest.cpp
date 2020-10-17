@@ -106,6 +106,7 @@ cat lodepng.cpp lodepng_util.cpp | grep "#include"
 
 *) try the Makefile
 make clean && make -j
+rm *.o *.obj
 
 *) check that no plain free, malloc, realloc, strlen, memcpy, memset, ... used, but the lodepng_* versions instead
 
@@ -117,6 +118,8 @@ make clean && make -j
 g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Werror -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng && ./showpng testdata/PngSuite/''*.png
 
 *) strip trailing spaces and ensure consistent newlines
+
+*) test warnings in other compilers
 
 *) check diff of lodepng.cpp and lodepng.h before submitting
 git difftool -y
@@ -1626,6 +1629,8 @@ void testFuzzing() {
   std::cout << std::endl;
 }
 
+int custom_proof = 0; // global variable for nested function to call. Of course when this test is switched to modern C++ we can use a lamba instead.
+
 void testCustomZlibCompress() {
   std::cout << "testCustomZlibCompress" << std::endl;
   Image image;
@@ -1639,7 +1644,8 @@ void testCustomZlibCompress() {
                           const unsigned char*, size_t,
                           const LodePNGCompressSettings* settings) {
       ASSERT_EQUALS(5, *(int*)(settings->custom_context));
-      return 5555; //return a custom error code to prove this function was called
+      custom_proof = 1;
+      return 5555; // return a custom error code, which will be converted to an error known to lodepng.
     }
   };
 
@@ -1647,10 +1653,11 @@ void testCustomZlibCompress() {
   state.encoder.zlibsettings.custom_zlib = TestFun::custom_zlib;
   state.encoder.zlibsettings.custom_context = &customcontext;
 
-  unsigned error = lodepng::encode(encoded, image.data, image.width, image.height,
-                                   state);
+  custom_proof = 0;
+  unsigned error = lodepng::encode(encoded, image.data, image.width, image.height, state);
+  ASSERT_EQUALS(1, custom_proof); // check that the custom zlib was called
 
-  ASSERT_EQUALS(5555, error);
+  ASSERT_EQUALS(111, error); // expect a known lodepng error, not the custom 5555
 }
 
 void testCustomZlibCompress2() {
@@ -1690,7 +1697,8 @@ void testCustomDeflate() {
                                    const unsigned char*, size_t,
                                    const LodePNGCompressSettings* settings) {
       ASSERT_EQUALS(5, *(int*)(settings->custom_context));
-      return 5555; //return a custom error code to prove this function was called
+      custom_proof = 1;
+      return 5555; // return a custom error code, which will be converted to an error known to lodepng.
     }
   };
 
@@ -1698,10 +1706,11 @@ void testCustomDeflate() {
   state.encoder.zlibsettings.custom_deflate = TestFun::custom_deflate;
   state.encoder.zlibsettings.custom_context = &customcontext;
 
-  unsigned error = lodepng::encode(encoded, image.data, image.width, image.height,
-                                   state);
+  custom_proof = 0;
+  unsigned error = lodepng::encode(encoded, image.data, image.width, image.height, state);
+  ASSERT_EQUALS(1, custom_proof); // check that the custom deflate was called
 
-  ASSERT_EQUALS(5555, error);
+  ASSERT_EQUALS(111, error); // expect a known lodepng error, not the custom 5555
 }
 
 void testCustomZlibDecompress() {
@@ -1725,7 +1734,8 @@ void testCustomZlibDecompress() {
                           const unsigned char*, size_t,
                           const LodePNGDecompressSettings* settings) {
       ASSERT_EQUALS(5, *(int*)(settings->custom_context));
-      return 5555; //return a custom error code to prove this function was called
+      custom_proof = 1;
+      return 5555; // return a custom error code, which will be converted to an error known to lodepng.
     }
   };
 
@@ -1734,9 +1744,11 @@ void testCustomZlibDecompress() {
   state.decoder.zlibsettings.custom_context = &customcontext;
   state.decoder.zlibsettings.ignore_adler32 = 0;
   state.decoder.ignore_crc = 0;
+  custom_proof = 0;
   unsigned error = lodepng::decode(decoded, w, h, state, encoded);
+  ASSERT_EQUALS(1, custom_proof); // check that the custom zlib was called
 
-  ASSERT_EQUALS(5555, error);
+  ASSERT_EQUALS(110, error);
 }
 
 void testCustomInflate() {
@@ -1760,7 +1772,8 @@ void testCustomInflate() {
                                    const unsigned char*, size_t,
                                    const LodePNGDecompressSettings* settings) {
       ASSERT_EQUALS(5, *(int*)(settings->custom_context));
-      return 5555; //return a custom error code to prove this function was called
+      custom_proof = 1;
+      return 5555; // return a custom error code, which will be converted to an error known to lodepng.
     }
   };
 
@@ -1769,9 +1782,11 @@ void testCustomInflate() {
   state.decoder.zlibsettings.custom_context = &customcontext;
   state.decoder.zlibsettings.ignore_adler32 = 0;
   state.decoder.ignore_crc = 0;
+  custom_proof = 0;
   unsigned error = lodepng::decode(decoded, w, h, state, encoded);
+  ASSERT_EQUALS(1, custom_proof); // check that the custom zlib was called
 
-  ASSERT_EQUALS(5555, error);
+  ASSERT_EQUALS(110, error);
 }
 
 

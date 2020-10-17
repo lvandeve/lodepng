@@ -68,14 +68,15 @@ void showHelp() {
                "-p: show PNG file info\n"
                "-e: check the PNG for errors or warnings\n"
                "-i: show ICC profile details (if any)\n"
-               "-I: show ICC profile in binary (hex)\n"
-               "--format=<format>: hex display mode for -i:\n"
-               "    mix: Use printable ASCII characters, hex for others\n"
-               "    hex: Use only hex\n"
-               "--size=<width>: render width (not used by hex, hex16 or palette):\n"
+               "-I: show ICC profile bytes\n"
+               "--format=<format>: display mode for -I:\n"
+               "    hex: print bytes in hex\n"
+               "    mix: print printable bytes as ASCII characters, hex for others\n"
+               "    bin: dump as binary in terminal\n"
                "-l: show palette (if any)\n"
                "-s: show color statistics\n"
                "-r: render the PNG image in terminal (with --mode and --size)\n"
+               "--size=<width>: render width for -r\n"
                "--mode=<mode>: render mode for -r:\n"
                "    ascii:   Letters ROYLGTCABVMF indicate hue (L=lime, T=turquoise, A=azure, F=fuchsia, ...).\n"
                "    hex:     CSS hex notation for every pixel.\n"
@@ -105,7 +106,8 @@ enum RenderMode {
 // for displaying ICC profile
 enum HexFormat {
   HF_HEX,
-  HF_MIX // hex and ascii
+  HF_MIX, // hex and ascii
+  HF_BIN // bytes as binary data dump
 };
 
 struct Options {
@@ -163,6 +165,7 @@ struct Data {
   lodepng::State state;
   unsigned error;
   bool inspected;
+  bool is_icc; // the file is a raw icc file, not a PNG, only -i and -I are useful
 
   Data(const std::string& filename) : filename(filename), error(0), inspected(false) {}
 
@@ -176,34 +179,60 @@ struct Data {
     }
   }
 
+  // is PNG according to the file signature
+  bool isPng() {
+    if(buffer.size() < 8) return false;
+    return buffer[0] == 137 && buffer[1] == 80 && buffer[2] == 78 && buffer[3] == 71
+        && buffer[4] == 13 && buffer[5] == 10 && buffer[6] == 26 && buffer[7] == 10;
+  }
+
+  // is probably an ICC profile
+  bool isIcc() {
+    if(isPng()) return false;
+    if(buffer.size() < 128) return false;
+    size_t size = (buffer[0] << 24) + (buffer[1] << 16) + (buffer[2] << 8) + buffer[3];
+    if(size != buffer.size()) return false;
+    if(buffer[36] != 'a') return false;
+    if(buffer[37] != 'c') return false;
+    if(buffer[38] != 's') return false;
+    if(buffer[39] != 'p') return false;
+    return true;
+  }
+
   // Load header info (plus a few more nearby light chunks) if not already loaded, and the file if needed
   void loadInspect() {
     if(inspected) return;
     inspected = true;
     loadFile();
     if(error) return;
-    const unsigned char* data = &buffer[0];
-    error = lodepng_inspect(&w, &h, &state, data, buffer.size());
-    if(error) return;
-    // end before first IDAT chunk: do not parse more than first part of file for all this.
-    const unsigned char* end = lodepng_chunk_find_const(data, data + buffer.size(), "IDAT");
-    if(!end) end = data + buffer.size(); // no IDAT, invalid PNG but extract info anyway
-    inspect_chunk_by_name(data, end, state, "PLTE");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "cHRM");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "gAMA");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "sBIT");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "bKGD");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "hIST");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "pHYs");
-    if(error) return;
-    inspect_chunk_by_name(data, end, state, "iCCP");
-    if(error) return;
+    if(isIcc()) {
+      lodepng_set_icc(&state.info_png, "<none>", &buffer[0], buffer.size());
+      is_icc = true;
+    } else {
+      is_icc = false;
+      const unsigned char* data = &buffer[0];
+      error = lodepng_inspect(&w, &h, &state, data, buffer.size());
+      if(error) return;
+      // end before first IDAT chunk: do not parse more than first part of file for all this.
+      const unsigned char* end = lodepng_chunk_find_const(data, data + buffer.size(), "IDAT");
+      if(!end) end = data + buffer.size(); // no IDAT, invalid PNG but extract info anyway
+      inspect_chunk_by_name(data, end, state, "PLTE");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "cHRM");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "gAMA");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "sBIT");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "bKGD");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "hIST");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "pHYs");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "iCCP");
+      if(error) return;
+    }
   }
 
   // Load the pixels if not already loaded, and the file if needed
@@ -250,6 +279,7 @@ T strtoval(const std::string& s) {
 Display the names and sizes of all chunks in the PNG file.
 */
 void displayChunkNames(Data& data, const Options& options) {
+  if(data.is_icc) return;
   data.loadFile();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -896,9 +926,14 @@ void showSingleLineSummary(Data& data, const Options& options) {
   data.loadInspect();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
+  std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)";
+  if(data.is_icc) {
+    std::cout << ", not a PNG but an ICC profile, use -i for more info." << std::endl;
+    return;
+  }
 
-  std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << ", ";
-  std::cout << data.w << "x" << data.h << ", ";
+
+  std::cout << ", " << data.w << "x" << data.h << ", ";
   std::cout << "Color: " << colorTypeString(data.state.info_png.color.colortype) << ", " << data.state.info_png.color.bitdepth << " bit" << std::endl;
 }
 
@@ -1078,28 +1113,32 @@ void showHeaderInfo(Data& data, const Options& options) {
   const LodePNGColorMode& color = info.color;
   if(options.show_header) {
     std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
-    std::cout << "Width: " << data.w << std::endl;
-    std::cout << "Height: " << data.h << std::endl;
-    if(options.verbose) {
-      double bpp = data.buffer.size() / (double)(data.w * data.h);
-      std::cout << "Compressed bpp: " << bpp << std::endl;
-    }
-    std::cout << "Interlace method: " << info.interlace_method << std::endl;
-    if(options.verbose) {
-      std::cout << "Compression method: " << info.compression_method << std::endl;
-      std::cout << "Filter method: " << info.filter_method << std::endl;
-    }
-    std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
-    std::cout << "Bit depth: " << color.bitdepth << std::endl;
-    if(options.verbose) {
-      std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
-      std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
-      std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
-      std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
-      std::cout << "Has color key: " << color.key_defined << std::endl;
+    if(data.is_icc) {
+      std::cout << "Not a PNG but an ICC profile, use -i for more info." << std::endl;
+    } else {
+      std::cout << "Width: " << data.w << std::endl;
+      std::cout << "Height: " << data.h << std::endl;
+      if(options.verbose) {
+        double bpp = data.buffer.size() / (double)(data.w * data.h);
+        std::cout << "Compressed bpp: " << bpp << std::endl;
+      }
+      std::cout << "Interlace method: " << info.interlace_method << std::endl;
+      if(options.verbose) {
+        std::cout << "Compression method: " << info.compression_method << std::endl;
+        std::cout << "Filter method: " << info.filter_method << std::endl;
+      }
+      std::cout << "Color type: " << colorTypeString(color.colortype) << std::endl;
+      std::cout << "Bit depth: " << color.bitdepth << std::endl;
+      if(options.verbose) {
+        std::cout << "Bits per pixel: " << lodepng_get_bpp(&color) << std::endl;
+        std::cout << "Channels per pixel: " << lodepng_get_channels(&color) << std::endl;
+        std::cout << "Is greyscale type: " << lodepng_is_greyscale_type(&color) << std::endl;
+        std::cout << "Can have alpha: " << lodepng_can_have_alpha(&color) << std::endl;
+        std::cout << "Has color key: " << color.key_defined << std::endl;
+      }
     }
   }
-  if(options.show_png_info) {
+  if(options.show_png_info && !data.is_icc) {
     if (color.colortype == LCT_PALETTE) {
       std::cout << "Palette size: " << color.palettesize << std::endl;
     }
@@ -1132,7 +1171,7 @@ void showHeaderInfo(Data& data, const Options& options) {
       std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
     }
     if(info.iccp_defined) {
-      std::cout << "iCCP defined: (" << info.iccp_profile_size << " bytes), name: " << info.iccp_name << std::endl;
+      std::cout << "iCCP defined (" << info.iccp_profile_size << " bytes): name: " << info.iccp_name << std::endl;
       if(options.verbose && !options.show_icc_details && !options.show_icc_hex) {
         std::cout << "Use -i or -I to show ICC profile details or hex" << std::endl;
       }
@@ -1148,14 +1187,18 @@ void showHeaderInfo(Data& data, const Options& options) {
   if(info.iccp_defined && options.show_icc_hex) {
     for(size_t i = 0; i < info.iccp_profile_size; i++) {
       unsigned char c = info.iccp_profile[i];
-      if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
-      else printf("%02x ", c);
-      if(i % 32 == 31 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+      if(options.hexformat == HF_BIN) {
+        printf("%c", c);
+      } else {
+        if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
+        else printf("%02x ", c);
+        if(i % 32 == 31 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
+      }
     }
-    std::cout << std::endl;
+    if(options.hexformat != HF_BIN) std::cout << std::endl;
   }
 
-  if(options.show_png_info) {
+  if(options.show_png_info && !data.is_icc) {
     if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
     if(info.phys_defined) {
       std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
@@ -1172,7 +1215,7 @@ std::string shortenText(const std::string& text, const Options& options) {
   for(size_t i = 0; i < text.size(); i++) {
     if(text[i] == 10) numnl++;
     if(numnl >= maxnl) {
-      maxlen = i - 1;
+      maxlen = i;
       break;
     }
   }
@@ -1184,6 +1227,7 @@ std::string shortenText(const std::string& text, const Options& options) {
 
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
 void showPNGInfo(Data& data, const Options& options) {
+  if(data.is_icc) return;
   loadWithErrorRecovery(data, options, false);
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -1213,6 +1257,7 @@ void showPNGInfo(Data& data, const Options& options) {
 }
 
 void showColorStats(Data& data, const Options& options) {
+  if(data.is_icc) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::vector<unsigned char>& image = data.pixels;
   unsigned& w = data.w;
@@ -1374,6 +1419,7 @@ int main(int argc, char *argv[]) {
       if(key == "format") {
         if(value == "mix") options.hexformat = HF_MIX;
         else if(value == "hex") options.hexformat = HF_HEX;
+        else if(value == "bin") options.hexformat = HF_BIN;
       }
     }
     else filenames.push_back(s);
