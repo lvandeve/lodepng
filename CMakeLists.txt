@@ -9,7 +9,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 include_directories(.)
 add_library(lodepng STATIC lodepng.cpp)
-install(TARGETS lodepng)
+set_target_properties(lodepng PROPERTIES PUBLIC_HEADER lodepng.h)
+install(TARGETS lodepng PUBLIC_HEADER)
 
 add_executable(unittest lodepng_util.cpp lodepng_unittest.cpp)
 target_link_libraries(unittest lodepng)
