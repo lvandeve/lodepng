@@ -1,7 +1,7 @@
 /*
-LodePNG version 20201017
+LodePNG version 20210627
 
-Copyright (c) 2005-2020 Lode Vandevenne
+Copyright (c) 2005-2021 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20201017";
+const char* LODEPNG_VERSION_STRING = "20210627";
 
 /*
 This source file is built up in the following large parts. The code sections
@@ -4114,10 +4114,12 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
     case 0:
       for(i = 0; i != length; ++i) recon[i] = scanline[i];
       break;
-    case 1:
+    case 1: {
+      size_t j = 0;
       for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-      for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + recon[i - bytewidth];
+      for(i = bytewidth; i != length; ++i, ++j) recon[i] = scanline[i] + recon[j];
       break;
+    }
     case 2:
       if(precon) {
         for(i = 0; i != length; ++i) recon[i] = scanline[i] + precon[i];
@@ -4127,24 +4129,56 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
       break;
     case 3:
       if(precon) {
+        size_t j = 0;
         for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i] + (precon[i] >> 1u);
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + ((recon[i - bytewidth] + precon[i]) >> 1u);
+        /* Unroll independent paths of this predictor. A 6x and 8x version is also possible but that adds
+        too much code. Whether this speeds up anything depends on compiler and settings. */
+        if(bytewidth >= 4) {
+          for(; i + 3 < length; i += 4, j += 4) {
+            unsigned char s0 = scanline[i + 0], r0 = recon[j + 0], p0 = precon[i + 0];
+            unsigned char s1 = scanline[i + 1], r1 = recon[j + 1], p1 = precon[i + 1];
+            unsigned char s2 = scanline[i + 2], r2 = recon[j + 2], p2 = precon[i + 2];
+            unsigned char s3 = scanline[i + 3], r3 = recon[j + 3], p3 = precon[i + 3];
+            recon[i + 0] = s0 + ((r0 + p0) >> 1u);
+            recon[i + 1] = s1 + ((r1 + p1) >> 1u);
+            recon[i + 2] = s2 + ((r2 + p2) >> 1u);
+            recon[i + 3] = s3 + ((r3 + p3) >> 1u);
+          }
+        } else if(bytewidth >= 3) {
+          for(; i + 2 < length; i += 3, j += 3) {
+            unsigned char s0 = scanline[i + 0], r0 = recon[j + 0], p0 = precon[i + 0];
+            unsigned char s1 = scanline[i + 1], r1 = recon[j + 1], p1 = precon[i + 1];
+            unsigned char s2 = scanline[i + 2], r2 = recon[j + 2], p2 = precon[i + 2];
+            recon[i + 0] = s0 + ((r0 + p0) >> 1u);
+            recon[i + 1] = s1 + ((r1 + p1) >> 1u);
+            recon[i + 2] = s2 + ((r2 + p2) >> 1u);
+          }
+        } else if(bytewidth >= 2) {
+          for(; i + 1 < length; i += 2, j += 2) {
+            unsigned char s0 = scanline[i + 0], r0 = recon[j + 0], p0 = precon[i + 0];
+            unsigned char s1 = scanline[i + 1], r1 = recon[j + 1], p1 = precon[i + 1];
+            recon[i + 0] = s0 + ((r0 + p0) >> 1u);
+            recon[i + 1] = s1 + ((r1 + p1) >> 1u);
+          }
+        }
+        for(; i != length; ++i, ++j) recon[i] = scanline[i] + ((recon[j] + precon[i]) >> 1u);
       } else {
+        size_t j = 0;
         for(i = 0; i != bytewidth; ++i) recon[i] = scanline[i];
-        for(i = bytewidth; i < length; ++i) recon[i] = scanline[i] + (recon[i - bytewidth] >> 1u);
+        for(i = bytewidth; i != length; ++i, ++j) recon[i] = scanline[i] + (recon[j] >> 1u);
       }
       break;
     case 4:
       if(precon) {
+        size_t j = 0;
         for(i = 0; i != bytewidth; ++i) {
           recon[i] = (scanline[i] + precon[i]); /*paethPredictor(0, precon[i], 0) is always precon[i]*/
         }
 
-        /* Unroll independent paths of the paeth predictor. A 6x and 8x version would also be possible but that
-        adds too much code. Whether this actually speeds anything up at all depends on compiler and settings. */
+        /* Unroll independent paths of the paeth predictor. A 6x and 8x version is also possible but that
+        adds too much code. Whether this speeds up anything depends on compiler and settings. */
         if(bytewidth >= 4) {
-          for(; i + 3 < length; i += 4) {
-            size_t j = i - bytewidth;
+          for(; i + 3 < length; i += 4, j += 4) {
             unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1], s2 = scanline[i + 2], s3 = scanline[i + 3];
             unsigned char r0 = recon[j + 0], r1 = recon[j + 1], r2 = recon[j + 2], r3 = recon[j + 3];
             unsigned char p0 = precon[i + 0], p1 = precon[i + 1], p2 = precon[i + 2], p3 = precon[i + 3];
@@ -4155,8 +4189,7 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
             recon[i + 3] = s3 + paethPredictor(r3, p3, q3);
           }
         } else if(bytewidth >= 3) {
-          for(; i + 2 < length; i += 3) {
-            size_t j = i - bytewidth;
+          for(; i + 2 < length; i += 3, j += 3) {
             unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1], s2 = scanline[i + 2];
             unsigned char r0 = recon[j + 0], r1 = recon[j + 1], r2 = recon[j + 2];
             unsigned char p0 = precon[i + 0], p1 = precon[i + 1], p2 = precon[i + 2];
@@ -4166,8 +4199,7 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
             recon[i + 2] = s2 + paethPredictor(r2, p2, q2);
           }
         } else if(bytewidth >= 2) {
-          for(; i + 1 < length; i += 2) {
-            size_t j = i - bytewidth;
+          for(; i + 1 < length; i += 2, j += 2) {
             unsigned char s0 = scanline[i + 0], s1 = scanline[i + 1];
             unsigned char r0 = recon[j + 0], r1 = recon[j + 1];
             unsigned char p0 = precon[i + 0], p1 = precon[i + 1];
@@ -4177,16 +4209,17 @@ static unsigned unfilterScanline(unsigned char* recon, const unsigned char* scan
           }
         }
 
-        for(; i != length; ++i) {
-          recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[i - bytewidth]));
+        for(; i != length; ++i, ++j) {
+          recon[i] = (scanline[i] + paethPredictor(recon[i - bytewidth], precon[i], precon[j]));
         }
       } else {
+        size_t j = 0;
         for(i = 0; i != bytewidth; ++i) {
           recon[i] = scanline[i];
         }
-        for(i = bytewidth; i < length; ++i) {
+        for(i = bytewidth; i != length; ++i, ++j) {
           /*paethPredictor(recon[i - bytewidth], 0, 0) is always recon[i - bytewidth]*/
-          recon[i] = (scanline[i] + recon[i - bytewidth]);
+          recon[i] = (scanline[i] + recon[j]);
         }
       }
       break;
