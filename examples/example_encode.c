@@ -30,7 +30,7 @@ freely, subject to the following restrictions:
 
 /*
 3 ways to encode a PNG from RGBA pixel data to a file (and 2 in-memory ways).
-NOTE: this samples overwrite the file or test.png without warning!
+NOTE: these samples overwrite the file or test.png without warning!
 */
 
 /*

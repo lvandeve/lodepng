@@ -101,7 +101,7 @@ void encodeBMP(std::vector<unsigned char>& bmp, const unsigned char* image, int 
 
 int main(int argc, char *argv[]) {
   if(argc < 3) {
-    std::cout << "Please provice input PNG and output BMP file names" << std::endl;
+    std::cout << "Please provide input PNG and output BMP file names" << std::endl;
     return 0;
   }
   const char* infile = argv[1];
