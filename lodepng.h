@@ -94,6 +94,16 @@ source files with custom allocators.*/
 #include <string>
 #endif /*LODEPNG_COMPILE_CPP*/
 
+#ifdef LODEPNG_COMPILE_DISK
+#ifdef _WIN32
+#ifdef _MSC_VER 
+#ifndef LODEPNG_NO_WIDE_CHAR_OVERLOADS
+#define LODEPNG_WIDE_CHAR_OVERLOADS
+#endif /*LODEPNG_NO_WIDE_CHAR_OVERLOADS*/
+#endif /*_MSC_VER*/
+#endif /*_WIN32*/
+#endif /*LODEPNG_COMPILE_DISK*/
+
 #ifdef LODEPNG_COMPILE_PNG
 /*The PNG color types (also used for raw image).*/
 typedef enum LodePNGColorType {
@@ -162,6 +172,25 @@ NOTE: Wide-character filenames are not supported, you can use an external method
 to handle such files and decode in-memory.*/
 unsigned lodepng_decode24_file(unsigned char** out, unsigned* w, unsigned* h,
                                const char* filename);
+
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Load PNG from disk, from file with given name.
+Same as the other decode functions, but instead takes a filename as input.
+Filename is accepted as a wchar_t pointer.
+*/
+unsigned lodepng_decode_file_w(unsigned char** out, unsigned* w, unsigned* h,
+                               const wchar_t* filename,
+                               LodePNGColorType colortype, unsigned bitdepth);
+
+/*Same as lodepng_decode_file, but always decodes to 32-bit RGBA raw image.*/
+unsigned lodepng_decode32_file_w(unsigned char** out, unsigned* w, unsigned* h,
+                                 const wchar_t* filename);
+
+/*Same as lodepng_decode_file, but always decodes to 24-bit RGB raw image.*/
+unsigned lodepng_decode24_file_w(unsigned char** out, unsigned* w, unsigned* h,
+                                 const wchar_t* filename);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
 #endif /*LODEPNG_COMPILE_DISK*/
 #endif /*LODEPNG_COMPILE_DECODER*/
 
@@ -221,6 +250,26 @@ NOTE: Wide-character filenames are not supported, you can use an external method
 to handle such files and encode in-memory.*/
 unsigned lodepng_encode24_file(const char* filename,
                                const unsigned char* image, unsigned w, unsigned h);
+
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Converts raw pixel data into a PNG file on disk.
+Same as the other encode functions, but instead takes a filename as output.
+Filename is accepted as a wchar_t pointer.
+NOTE: This overwrites existing files without warning!
+*/
+unsigned lodepng_encode_file_w(const wchar_t* filename,
+                               const unsigned char* image, unsigned w, unsigned h,
+                               LodePNGColorType colortype, unsigned bitdepth);
+
+/*Same as lodepng_encode_file, but always encodes from 32-bit RGBA raw image.*/
+unsigned lodepng_encode32_file_w(const wchar_t* filename,
+                                 const unsigned char* image, unsigned w, unsigned h);
+
+/*Same as lodepng_encode_file, but always encodes from 24-bit RGB raw image.*/
+unsigned lodepng_encode24_file_w(const wchar_t* filename,
+                                 const unsigned char* image, unsigned w, unsigned h);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
 #endif /*LODEPNG_COMPILE_DISK*/
 #endif /*LODEPNG_COMPILE_ENCODER*/
 
@@ -247,8 +296,18 @@ to handle such files and decode in-memory.
 unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h,
                 const std::string& filename,
                 LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_DECODER */
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Converts PNG file from disk to raw pixel data in memory.
+Same as the other decode functions, but instead takes a filename as input.
+Filename is accepted as a wchar_t pointer.
+*/
+unsigned decode(std::vector<unsigned char>& out, unsigned& w, unsigned& h,
+                const std::wstring& filename,
+                LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /*Same as lodepng_encode_memory, but encodes to an std::vector. colortype
@@ -275,8 +334,22 @@ unsigned encode(const std::string& filename,
 unsigned encode(const std::string& filename,
                 const std::vector<unsigned char>& in, unsigned w, unsigned h,
                 LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_ENCODER */
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Converts 32-bit RGBA raw pixel data into a PNG file on disk.
+Same as the other encode functions, but instead takes a filename as output.
+Filename is accepted as a wchar_t pointer.
+NOTE: This overwrites existing files without warning!
+*/
+unsigned encode(const std::wstring& filename,
+                const unsigned char* in, unsigned w, unsigned h,
+                LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
+unsigned encode(const std::wstring& filename,
+                const std::vector<unsigned char>& in, unsigned w, unsigned h,
+                LodePNGColorType colortype = LCT_RGBA, unsigned bitdepth = 8);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_ENCODER*/
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/
 #endif /*LODEPNG_COMPILE_PNG*/
@@ -1006,6 +1079,18 @@ to handle such files and decode in-memory.
 */
 unsigned lodepng_load_file(unsigned char** out, size_t* outsize, const char* filename);
 
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Load a file from disk into buffer. The function allocates the out buffer, and
+after usage you should free it.
+out: output parameter, contains pointer to loaded buffer.
+outsize: output parameter, size of the allocated out buffer
+filename: the path to the file to load. It is accepted as a wchar_t pointer
+return value: error code (0 means ok)
+*/
+unsigned lodepng_load_file_w(unsigned char** out, size_t* outsize, const wchar_t* filename);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
+
 /*
 Save a file from buffer to disk. Warning, if it exists, this function overwrites
 the file without warning!
@@ -1018,6 +1103,18 @@ NOTE: Wide-character filenames are not supported, you can use an external method
 to handle such files and encode in-memory
 */
 unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const char* filename);
+
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Save a file from buffer to disk. Warning, if it exists, this function overwrites
+the file without warning!
+buffer: the buffer to write
+buffersize: size of the buffer to write
+filename: the path to the file to save to. It is accepted as a wchar_t pointer
+return value: error code (0 means ok)
+*/
+unsigned lodepng_save_file_w(const unsigned char* buffer, size_t buffersize, const wchar_t* filename);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
 #endif /*LODEPNG_COMPILE_DISK*/
 
 #ifdef LODEPNG_COMPILE_CPP
@@ -1070,8 +1167,22 @@ NOTE: Wide-character filenames are not supported, you can use an external method
 to handle such files and encode in-memory
 */
 unsigned save_file(const std::vector<unsigned char>& buffer, const std::string& filename);
-#endif /* LODEPNG_COMPILE_DISK */
-#endif /* LODEPNG_COMPILE_PNG */
+
+#ifdef LODEPNG_WIDE_CHAR_OVERLOADS
+/*
+Load a file from disk into an std::vector.
+return value: error code (0 means ok)
+*/
+unsigned load_file(std::vector<unsigned char>& buffer, const std::wstring& filename);
+
+/*
+Save the binary data in an std::vector to a file on disk. The file is overwritten
+without warning.
+*/
+unsigned save_file(const std::vector<unsigned char>& buffer, const std::wstring& filename);
+#endif /*LODEPNG_WIDE_CHAR_OVERLOADS*/
+#endif /*LODEPNG_COMPILE_DISK*/
+#endif /*LODEPNG_COMPILE_PNG*/
 
 #ifdef LODEPNG_COMPILE_ZLIB
 #ifdef LODEPNG_COMPILE_DECODER
@@ -1082,7 +1193,7 @@ unsigned decompress(std::vector<unsigned char>& out, const unsigned char* in, si
 /* Zlib-decompress an std::vector */
 unsigned decompress(std::vector<unsigned char>& out, const std::vector<unsigned char>& in,
                     const LodePNGDecompressSettings& settings = lodepng_default_decompress_settings);
-#endif /* LODEPNG_COMPILE_DECODER */
+#endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
 /* Zlib-compress an unsigned char buffer */
@@ -1092,8 +1203,8 @@ unsigned compress(std::vector<unsigned char>& out, const unsigned char* in, size
 /* Zlib-compress an std::vector */
 unsigned compress(std::vector<unsigned char>& out, const std::vector<unsigned char>& in,
                   const LodePNGCompressSettings& settings = lodepng_default_compress_settings);
-#endif /* LODEPNG_COMPILE_ENCODER */
-#endif /* LODEPNG_COMPILE_ZLIB */
+#endif /*LODEPNG_COMPILE_ENCODER*/
+#endif /*LODEPNG_COMPILE_ZLIB*/
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/
 
