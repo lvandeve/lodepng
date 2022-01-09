@@ -928,7 +928,7 @@ void showSingleLineSummary(Data& data, const Options& options) {
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)";
   if(data.is_icc) {
-    std::cout << ", not a PNG but an ICC profile, use -i for more info." << std::endl;
+    std::cout << ", not a PNG but an ICC profile, use -i to expand ICC profile info." << std::endl;
     return;
   }
 

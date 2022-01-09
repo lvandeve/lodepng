@@ -3554,117 +3554,6 @@ void testErrorImages() {
   testBase64Image("iVBORw0KGgoAAAANSUhEUgAAAQAAAAEAAgMAAAAhHED1AAAAU0lEQVR4Ae3MwQAAAAxFoXnM3/NDvGsBdB8JBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoFAIBAIBAKBQCAQCAQCgUAgEEQDHGPAW1eyhK0AAAAASUVORK5CYII=", true, 256, 256, "");
 }
 
-// defined in lodepng.cpp
-unsigned lode_png_test_bitreader(const unsigned char* data, size_t size, size_t numsteps, const size_t* steps, unsigned* result);
-
-void testBitReaderCase(const std::string& bits, const std::vector<size_t>& steps, bool expect_error, bool silent = false) {
-  if(!silent) std::cout << "testBitReaderCase: " << bits << ", #steps: " << steps.size() << std::endl;
-  std::vector<unsigned char> data;
-  std::vector<bool> bits0;
-  size_t bitcount = 0;
-  for(size_t i = 0; i < bits.size(); i++) {
-    char c = bits[i];
-    if(c != '0' && c != '1') continue;
-    if((bitcount & 7) == 0) data.push_back(0);
-    int bit = (c == '1');
-    data.back() |= (bit << (bitcount & 7));
-    bits0.push_back(bit);
-    bitcount++;
-  }
-  std::vector<unsigned> result(steps.size());
-  unsigned ok = lode_png_test_bitreader(data.data(), data.size(), steps.size(), steps.data(), result.data());
-  if(expect_error) {
-    assertEquals(0, ok, "expected it would give an error");
-    return;
-  }
-  assertEquals(1, ok, "expected there would be no error");
-
-  std::vector<bool> bits1;
-  for(size_t i = 0; i < steps.size(); i++) {
-    size_t step = steps[i];
-    size_t value = result[i];
-    for(size_t j = 0; j < step; j++) {
-      bits1.push_back((value >> j) & 1);
-    }
-  }
-  bits0.resize(bits1.size()); // only test those bits that were actually read for the test
-
-  assertEquals(bits0, bits1);
-}
-
-// This is still using C++98 for lodepng for compatibility, even though I'd love to use C++11 vector initializer lists here.
-// TODO: use modern C++ at least for the unit test
-#define V(arr) std::vector<size_t>(arr, arr + sizeof(arr) / sizeof(*arr))
-
-void testBitReader() {
-  std::string zeros = "0000000000000000000000000000000000000000000000000000000000000000";
-  testBitReaderCase("", std::vector<size_t>(0), false);
-  { size_t arr[] = {1}; testBitReaderCase("0", V(arr), false); }
-  { size_t arr[] = {1}; testBitReaderCase("1", V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("00", V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("01", V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("10", V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("11", V(arr), false); }
-  { size_t arr[] = {3}; testBitReaderCase("111", V(arr), false); }
-  { size_t arr[] = {4}; testBitReaderCase("1111", V(arr), false); }
-  { size_t arr[] = {8}; testBitReaderCase("11111111", V(arr), false); }
-  { size_t arr[] = {9}; testBitReaderCase("111111111", V(arr), false); }
-  { size_t arr[] = {9}; testBitReaderCase("11111111", V(arr), true); }
-  { size_t arr[] = {16}; testBitReaderCase("1111111111111111", V(arr), false); }
-  { size_t arr[] = {17}; testBitReaderCase("11111111111111111", V(arr), false); }
-  { size_t arr[] = {17}; testBitReaderCase("1111111111111111", V(arr), true); }
-  { size_t arr[] = {24}; testBitReaderCase("111111111111111111111111", V(arr), false); }
-  { size_t arr[] = {25}; testBitReaderCase("1111111111111111111111111", V(arr), false); }
-  { size_t arr[] = {25}; testBitReaderCase("111111111111111111111111", V(arr), true); }
-  { size_t arr[] = {31}; testBitReaderCase("1111111111111111111111111111111", V(arr), false); }
-  { size_t arr[] = {1, 31}; testBitReaderCase("11111111111111111111111111111111", V(arr), false); }
-  { size_t arr[] = {31}; testBitReaderCase("111111111111111111111111", V(arr), true); }
-  { size_t arr[] = {16, 16}; testBitReaderCase("11111111111111111111111111111111", V(arr), false); }
-  { size_t arr[] = {1}; testBitReaderCase("0" + zeros, V(arr), false); }
-  { size_t arr[] = {1}; testBitReaderCase("1" + zeros, V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("00" + zeros, V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("01" + zeros, V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("10" + zeros, V(arr), false); }
-  { size_t arr[] = {2}; testBitReaderCase("11" + zeros, V(arr), false); }
-  { size_t arr[] = {3}; testBitReaderCase("111" + zeros, V(arr), false); }
-  { size_t arr[] = {4}; testBitReaderCase("1111" + zeros, V(arr), false); }
-  { size_t arr[] = {8}; testBitReaderCase("11111111" + zeros, V(arr), false); }
-  { size_t arr[] = {9}; testBitReaderCase("111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {16}; testBitReaderCase("1111111111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {17}; testBitReaderCase("11111111111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {24}; testBitReaderCase("111111111111111111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {25}; testBitReaderCase("1111111111111111111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {31}; testBitReaderCase("1111111111111111111111111111111" + zeros, V(arr), false); }
-  { size_t arr[] = {16, 16}; testBitReaderCase("11111111111111111111111111111111" + zeros, V(arr), false); }
-
-  // 128 arbitrary bits
-  std::string test = "10101011110000101110010010000101000100100000111000010010010010010010111100000100100100100000001010111111110001111010101011011001";
-  for(size_t i = 0; i < 32; i++) {
-    std::cout << "testBitReader loop " << i << std::endl;
-    { size_t arr[] = {i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {i, i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {i, i, i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {1, i, i, i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {2, i, i, i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {3, i, i, i, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {31, 31, 31, i}; testBitReaderCase(test, V(arr), false, true); }
-    { size_t arr[] = {i, i, i, i, i, i, i, i}; testBitReaderCase(test + test, V(arr), false, true); }
-    for(size_t j = 0; j < 32; j++) {
-      { size_t arr[] = {i, j}; testBitReaderCase(test, V(arr), false, true); }
-      { size_t arr[] = {i, j, i, j}; testBitReaderCase(test, V(arr), false, true); }
-      { size_t arr[] = {i, i, j, j}; testBitReaderCase(test, V(arr), false, true); }
-      { size_t arr[] = {31, 31, i, j}; testBitReaderCase(test, V(arr), false, true); }
-    }
-  }
-  { size_t arr[] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}; testBitReaderCase(test, V(arr), false); }
-  { size_t arr[] = {3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3}; testBitReaderCase(test, V(arr), false); }
-  { size_t arr[] = {1,1,1,1,1,1,1,1,1,1,1,1,1,31,1,1,1,1,1,1,1,1,1,1,1}; testBitReaderCase(test, V(arr), false); }
-  { size_t arr[] = {16,1,2,4,7,3,6,28,28,31,1,17,12,1,3,8,3,3,14,21,25,24,1,8,7}; testBitReaderCase(test + test + test, V(arr), false); }
-  { size_t arr[] = {5,7,17,15,6,8,4,5,3,11,1,4,4,8,6,4,5,1,6,5,13,8,18,1,1,8,7,2}; testBitReaderCase(test + test + test, V(arr), false); }
-
-}
-
 void doMain() {
   //PNG
   testPngSuite();
@@ -3707,7 +3596,6 @@ void doMain() {
   testCustomDeflate();
   testCustomZlibDecompress();
   testCustomInflate();
-  testBitReader();
   // TODO: add test for huffman code with exactly 0 and 1 symbols present
 
   //lodepng_util

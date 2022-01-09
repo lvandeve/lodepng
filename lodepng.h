@@ -1,7 +1,7 @@
 /*
-LodePNG version 20210627
+LodePNG version 20220109
 
-Copyright (c) 2005-2021 Lode Vandevenne
+Copyright (c) 2005-2022 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -1845,6 +1845,7 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 09 jan 2022: minor decoder speed improvements.
 *) 27 jun 2021: added warnings that file reading/writing functions don't support
    wide-character filenames (support for this is not planned, opening files is
    not the core part of PNG decoding/decoding and is platform dependent).
@@ -2015,5 +2016,5 @@ Domain: gmail dot com.
 Account: lode dot vandevenne.
 
 
-Copyright (c) 2005-2021 Lode Vandevenne
+Copyright (c) 2005-2022 Lode Vandevenne
 */
