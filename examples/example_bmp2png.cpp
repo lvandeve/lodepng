@@ -97,7 +97,7 @@ unsigned decodeBMP(std::vector<unsigned char>& image, unsigned& w, unsigned& h, 
 
 int main(int argc, char *argv[]) {
   if(argc < 3) {
-    std::cout << "Please provice input PNG and output BMP file names" << std::endl;
+    std::cout << "Please provide input BMP and output PNG file names" << std::endl;
     return 0;
   }
 
