@@ -2490,17 +2490,24 @@ const unsigned char* lodepng_chunk_data_const(const unsigned char* chunk) {
 }
 
 unsigned lodepng_chunk_check_crc(const unsigned char* chunk) {
+#ifndef LODEPNG_NO_COMPILE_CRC
   unsigned length = lodepng_chunk_length(chunk);
   unsigned CRC = lodepng_read32bitInt(&chunk[length + 8]);
   /*the CRC is taken of the data and the 4 chunk type letters, not the length*/
   unsigned checksum = lodepng_crc32(&chunk[4], length + 4);
   if(CRC != checksum) return 1;
-  else return 0;
+  else
+#endif
+  return 0;
 }
 
 void lodepng_chunk_generate_crc(unsigned char* chunk) {
   unsigned length = lodepng_chunk_length(chunk);
+#ifndef LODEPNG_NO_COMPILE_CRC
   unsigned CRC = lodepng_crc32(&chunk[4], length + 4);
+#else
+  unsigned CRC = 0;
+#endif
   lodepng_set32bitInt(chunk + 8 + length, CRC);
 }
 
@@ -4078,6 +4085,7 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
   /*error: only interlace methods 0 and 1 exist in the specification*/
   if(info->interlace_method > 1) CERROR_RETURN_ERROR(state->error, 34);
 
+#ifndef LODEPNG_NO_COMPILE_CRC
   if(!state->decoder.ignore_crc) {
     unsigned CRC = lodepng_read32bitInt(&in[29]);
     unsigned checksum = lodepng_crc32(&in[12], 17);
@@ -4085,6 +4093,7 @@ unsigned lodepng_inspect(unsigned* w, unsigned* h, LodePNGState* state,
       CERROR_RETURN_ERROR(state->error, 57); /*invalid CRC*/
     }
   }
+#endif
 
   return state->error;
 }
