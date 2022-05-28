@@ -37,7 +37,7 @@ freely, subject to the following restrictions:
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <SDL/SDL.h> //SDL is used for timing.
+#include <SDL2/SDL.h> //SDL is used for timing.
 
 bool apply_mods = false;
 
@@ -127,7 +127,7 @@ std::vector<unsigned char> testEncode(Image& image) {
   if(apply_mods) {
     //state.encoder.filter_strategy = LFS_ZERO;
     //state.encoder.filter_strategy = LFS_ENTROPY;
-    state.encoder.filter_strategy = LFS_FOUR;
+    //state.encoder.filter_strategy = LFS_FOUR;
     //state.encoder.zlibsettings.btype = 0;
     //state.encoder.zlibsettings.btype = 1;
     //state.encoder.auto_convert = 0;

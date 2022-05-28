@@ -273,15 +273,12 @@ void* lodepng_malloc(size_t size);
 void lodepng_free(void* ptr);
 #endif /*LODEPNG_COMPILE_ALLOCATORS*/
 
-/* avoid needing <float.h> for FLT_MAX. This assumes IEEE 32-bit float. */
-static const float lodepng_flt_max = 3.40282346638528859811704183484516925e38f;
-
 /* define infinity and NaN in a way compatible with ANSI C90 (no INFINITY or NAN macros) yet also with visual studio */
-/* visual studio doesn't allow division through a zero literal, but allows it through non-const variable set to zero */
+/* visual studio doesn't allow division through a zero literal, but allows it through public non-const variable set to zero */
 float lodepng_flt_zero_ = 0.0f;
 static const float lodepng_flt_inf = 1.0f / lodepng_flt_zero_; /* infinity */
 static const float lodepng_flt_nan = 0.0f / lodepng_flt_zero_; /* not a number */
-
+static const float lodepng_flt_max = 3.40282346638528859811704183484516925e38f; /* avoid needing <float.h> for FLT_MAX. This assumes IEEE 32-bit float. */
 
 /* powf polyfill, 5-6 digits accurate, 33-80% slower than powf, assumes IEEE
 32-bit float, but other than that multiplatform and no math lib needed
@@ -291,15 +288,14 @@ static float lodepng_powf(float x, float y) {
   int i = 0;
   /* handle all the special floating point rules */
   if(x == 1 || y == 0) return 1; /*these cases return 1 even if the other value is NaN, as specified*/
-  if(y == 1) return x;
-  if(!(x > 0 && x <= lodepng_flt_max && y == y && y <= lodepng_flt_max && y >= -lodepng_flt_max)) {
-    if(y == 1) return x; /* preserves negative-0 */
+  if(y == 1) return x; /* preserves negative-0 */
+  if(!(x > 0 && x <= lodepng_flt_max && y >= -lodepng_flt_max && y <= lodepng_flt_max)) { /*all special cases*/
     if(x != x || y != y) return x + y; /* nan */
     if(x > 0) {
       if(x > lodepng_flt_max) return y <= 0 ? (y == 0 ? 1 : 0) : x; /* x = +infinity */
     } else {
       if(!(y < -1073741824.0f || y > 1073741824.0f)) { /* large y always even integer, but cast would overflow */
-        i = (int)y;
+        i = (int)y; /* not using floor: not using math lib */
         if(i != y) {
           return (x < -lodepng_flt_max) ? (y < 0 ? 0 : lodepng_flt_inf) :
               (x == 0 ? (y < 0 ? lodepng_flt_inf : 0) : lodepng_flt_nan);
@@ -312,7 +308,7 @@ static float lodepng_powf(float x, float y) {
             -lodepng_flt_inf : lodepng_flt_inf);
       }
       x = -x;
-      if(x == 1) return 1;
+      if(x == 1) return 1; /* under the C++ rules, pow(-1, +/- infinity) also returns 1 */
     }
     if(y < -lodepng_flt_max || y > lodepng_flt_max) return ((x < 1) != (y > 0)) ? (y < 0 ? -y : y) : 0;
   }

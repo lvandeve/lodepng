@@ -24,12 +24,12 @@ freely, subject to the following restrictions:
 */
 
 //Compile command for Linux:
-//g++ lodepng.cpp example_sdl.cpp -lSDL -O3 -o showpng
+//g++ lodepng.cpp example_sdl.cpp -lSDL2 -O3 -o showpng
 
 /*
 LodePNG SDL example
 This example displays a PNG with a checkerboard pattern to show tranparency.
-It requires the SDL library to compile and run.
+It requires the SDL2 library to compile and run.
 If multiple filenames are given to the command line, it shows all of them.
 Press any key to see next image, or esc to quit.
 */
@@ -37,7 +37,7 @@ Press any key to see next image, or esc to quit.
 #include "lodepng.h"
 
 #include <iostream>
-#include <SDL/SDL.h>
+#include <SDL2/SDL.h>
 
 int show(const std::string& caption, const unsigned char* rgba, unsigned w, unsigned h) {
   //avoid too large window size by downscaling large image
@@ -45,17 +45,21 @@ int show(const std::string& caption, const unsigned char* rgba, unsigned w, unsi
   if(w / 1024 >= jump) jump = w / 1024 + 1;
   if(h / 1024 >= jump) jump = h / 1024 + 1;
 
+  size_t screenw = w / jump;
+  size_t screenh = h / jump;
+  size_t pitch = screenw * sizeof(Uint32);
   //init SDL
-  if(SDL_Init(SDL_INIT_VIDEO) < 0) {
-    std::cout << "error, SDL video init failed" << std::endl;
-    return 0;
-  }
-  SDL_Surface* scr = SDL_SetVideoMode(w / jump, h / jump, 32, SDL_HWSURFACE);
-  if(!scr) {
+  SDL_Window* sdl_window;
+  SDL_Renderer* sdl_renderer;
+  SDL_CreateWindowAndRenderer(screenw, screenh, SDL_WINDOW_OPENGL, &sdl_window, &sdl_renderer);
+  SDL_SetWindowTitle(sdl_window, caption.c_str());
+  if(!sdl_window) {
     std::cout << "error, no SDL screen" << std::endl;
     return 0;
   }
-  SDL_WM_SetCaption(caption.c_str(), NULL); //set window caption
+  SDL_Texture* sdl_texture = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_ARGB8888,
+                                               SDL_TEXTUREACCESS_STREAMING, screenw, screenh);
+  std::vector<Uint32> sdl_pixels(screenw * screenh * sizeof(Uint32));
 
   //plot the pixels of the PNG file
   for(unsigned y = 0; y + jump - 1 < h; y += jump)
@@ -73,10 +77,14 @@ int show(const std::string& caption, const unsigned char* rgba, unsigned w, unsi
     b = (a * b + (255 - a) * checkerColor) / 255;
 
     //give the color value to the pixel of the screenbuffer
-    Uint32* bufp;
-    bufp = (Uint32 *)scr->pixels + (y * scr->pitch / 4) / jump + (x / jump);
-    *bufp = 65536 * r + 256 * g + b;
+    sdl_pixels[(y * screenw + x) / jump] = 65536 * r + 256 * g + b;
   }
+
+  // render the pixels to the screen
+  SDL_UpdateTexture(sdl_texture, NULL, sdl_pixels.data(), pitch);
+  SDL_RenderClear(sdl_renderer);
+  SDL_RenderCopy(sdl_renderer, sdl_texture, NULL, NULL);
+  SDL_RenderPresent(sdl_renderer);
 
   //pause until you press escape and meanwhile redraw screen
   SDL_Event event;
@@ -84,10 +92,9 @@ int show(const std::string& caption, const unsigned char* rgba, unsigned w, unsi
   while(done == 0) {
     while(SDL_PollEvent(&event)) {
       if(event.type == SDL_QUIT) done = 2;
-      else if(SDL_GetKeyState(NULL)[SDLK_ESCAPE]) done = 2;
+      else if(SDL_GetKeyboardState(NULL)[SDLK_ESCAPE]) done = 2;
       else if(event.type == SDL_KEYDOWN) done = 1; //press any other key for next image
     }
-    SDL_UpdateRect(scr, 0, 0, 0, 0); //redraw screen
     SDL_Delay(5); //pause 5 ms so it consumes less processing power
   }
 

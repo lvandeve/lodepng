@@ -47,7 +47,7 @@ mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -pedant
 *) test other compilers
 
 *) try lodepng_benchmark.cpp
-g++ lodepng.cpp lodepng_benchmark.cpp -Werror -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out testdata/corpus/''*
+g++ lodepng.cpp lodepng_benchmark.cpp -Werror -Wall -Wextra -pedantic -ansi -lSDL2 -O3 && ./a.out testdata/corpus/''*
 
 *) try the fuzzer
 clang++ -fsanitize=fuzzer -DLODEPNG_MAX_ALLOC=100000000 lodepng.cpp lodepng_fuzzer.cpp -O3 -o fuzzer && ./fuzzer
@@ -115,7 +115,7 @@ rm *.o *.obj
 *) check year in copyright message at top of all files as well as at bottom of lodepng.h
 
 *) check examples/sdl.cpp with the png test suite images (the "x" ones are expected to show error)
-g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Werror -Wall -Wextra -pedantic -ansi -O3 -lSDL -o showpng && ./showpng testdata/PngSuite/''*.png
+g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Werror -Wall -Wextra -pedantic -ansi -O3 -lSDL2 -o showpng && ./showpng testdata/PngSuite/''*.png
 
 *) strip trailing spaces and ensure consistent newlines
 

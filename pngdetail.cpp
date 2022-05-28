@@ -64,9 +64,9 @@ void showHelp() {
                "E.g. 'pngdetail image.png -plc' to show png info, palette info and chunks\n"
                "Options:\n"
                "-o: show header summary on one line\n"
-               "-h: show header info\n"
+               "-H: show header info\n"
                "-p: show PNG file info\n"
-               "-e: check the PNG for errors or warnings\n"
+               "-e: analyze errors or warnings\n"
                "-i: show ICC profile details (if any)\n"
                "-I: show ICC profile bytes\n"
                "--format=<format>: display mode for -I:\n"
@@ -93,7 +93,7 @@ void showHelp() {
                "-v: be more verbose\n"
                "-t: expand long texts\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
-               "-?, --help: show this help" << std::endl;
+               "-?, --help, -h: show this help" << std::endl;
 }
 
 enum RenderMode {
@@ -167,7 +167,7 @@ struct Data {
   bool inspected;
   bool is_icc; // the file is a raw icc file, not a PNG, only -i and -I are useful
 
-  Data(const std::string& filename) : filename(filename), error(0), inspected(false) {}
+  Data(const std::string& filename) : filename(filename), error(0), inspected(false), is_icc(false) {}
 
 
   // Load the file if not already loaded
@@ -217,6 +217,8 @@ struct Data {
       const unsigned char* end = lodepng_chunk_find_const(data, data + buffer.size(), "IDAT");
       if(!end) end = data + buffer.size(); // no IDAT, invalid PNG but extract info anyway
       inspect_chunk_by_name(data, end, state, "PLTE");
+      if(error) return;
+      inspect_chunk_by_name(data, end, state, "tRNS");
       if(error) return;
       inspect_chunk_by_name(data, end, state, "cHRM");
       if(error) return;
@@ -924,14 +926,13 @@ void loadWithErrorRecovery(Data& data, const Options& options, bool show_errors_
 
 void showSingleLineSummary(Data& data, const Options& options) {
   data.loadInspect();
-  if(data.error) return;
+  if(data.error && data.error != 57) return; // CRC error (57) ignored here for parsing of header only
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)";
   if(data.is_icc) {
     std::cout << ", not a PNG but an ICC profile, use -i to expand ICC profile info." << std::endl;
     return;
   }
-
 
   std::cout << ", " << data.w << "x" << data.h << ", ";
   std::cout << "Color: " << colorTypeString(data.state.info_png.color.colortype) << ", " << data.state.info_png.color.bitdepth << " bit" << std::endl;
@@ -1352,12 +1353,8 @@ int main(int argc, char *argv[]) {
       if(s != "-x" && s != "-v" && s != "-t") options_chosen = true;
       for(size_t j = 1; j < s.size(); j++) {
         char c = s[j];
-        if(c == '?') {
-          showHelp();
-          return 0;
-        }
-        else if(c == 'o') options.show_one_line_summary = true;
-        else if(c == 'h') options.show_header = true;
+        if(c == 'o') options.show_one_line_summary = true;
+        else if(c == 'H') options.show_header = true;
         else if(c == 'i') options.show_icc_details = true;
         else if(c == 'I') options.show_icc_hex = true;
         else if(c == 'v') options.verbose = true;
@@ -1384,14 +1381,8 @@ int main(int argc, char *argv[]) {
         else if(c == 'x') {
           options.use_hex = true;
           std::cout << std::hex;
-        }
-        else if(c == '-') {
-          if(s != "--help") std::cout << "Unknown flag: " << s << ". Use -h for help" << std::endl;
-          showHelp();
-          return 0;
-        }
-        else {
-          std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
+        } else {
+          if(s != "--help" && c != 'h' && c != '?') std::cout << "Unknown flag: " << c << ". Use -h for help" << std::endl;
           showHelp();
           return 0;
         }
