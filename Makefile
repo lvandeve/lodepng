@@ -22,13 +22,13 @@ unittest: lodepng.o lodepng_util.o lodepng_unittest.o
 	$(CXX) $^ $(CXXFLAGS) -o $@
 
 benchmark: lodepng.o lodepng_benchmark.o
-	$(CXX) $^ $(CXXFLAGS) -lSDL -o $@
+	$(CXX) $^ $(CXXFLAGS) -lSDL2 -o $@
 
 pngdetail: lodepng.o lodepng_util.o pngdetail.o
 	$(CXX) $^ $(CXXFLAGS) -o $@
 
 showpng: lodepng.o examples/example_sdl.o
-	$(CXX) -I ./ $^ $(CXXFLAGS) -lSDL -o $@
+	$(CXX) -I ./ $^ $(CXXFLAGS) -lSDL2 -o $@
 
 clean:
 	rm -f unittest benchmark pngdetail showpng lodepng_unittest.o lodepng_benchmark.o lodepng.o lodepng_util.o pngdetail.o examples/example_sdl.o
