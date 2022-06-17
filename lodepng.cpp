@@ -711,10 +711,10 @@ static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
   numpresent = 0;
   for(i = 0; i < tree->numcodes; ++i) {
     unsigned l = tree->lengths[i];
+    if(l == 0) continue;
     unsigned symbol = tree->codes[i]; /*the huffman bit pattern. i itself is the value.*/
     /*reverse bits, because the huffman bits are given in MSB first order but the bit reader reads LSB first*/
     unsigned reverse = reverseBits(symbol, l);
-    if(l == 0) continue;
     numpresent++;
 
     if(l <= FIRSTBITS) {
