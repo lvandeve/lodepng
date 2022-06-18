@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2020 Lode Vandevenne
+Copyright (c) 2005-2022 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -283,7 +283,8 @@ struct ZlibBlockInfo {
 };
 
 //Extracts all info needed from a PNG file to reconstruct the zlib compression exactly.
-void extractZlibInfo(std::vector<ZlibBlockInfo>& zlibinfo, const std::vector<unsigned char>& in);
+// Returns 0 if no error, non-zero value if error
+unsigned extractZlibInfo(std::vector<ZlibBlockInfo>& zlibinfo, const std::vector<unsigned char>& in);
 
 } // namespace lodepng
 

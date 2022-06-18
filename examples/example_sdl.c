@@ -115,6 +115,7 @@ int show(const char* filename) {
   SDL_RenderPresent(sdl_renderer);
 
   /* pause until you press escape and meanwhile redraw screen */
+  done = 0;
   while(done == 0) {
     while(SDL_PollEvent(&sdl_event)) {
       if(sdl_event.type == SDL_QUIT) done = 2;

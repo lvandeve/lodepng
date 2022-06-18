@@ -1,5 +1,5 @@
 /*
-LodePNG version 20220613
+LodePNG version 20220618
 
 Copyright (c) 2005-2022 Lode Vandevenne
 
@@ -35,43 +35,50 @@ The following #defines are used to create code sections. They can be disabled
 to disable code sections, which can give faster compile time and smaller binary.
 The "NO_COMPILE" defines are designed to be used to pass as defines to the
 compiler command to disable them without modifying this header, e.g.
--DLODEPNG_NO_COMPILE_ZLIB for gcc.
-In addition to those below, you can also define LODEPNG_NO_COMPILE_CRC to
-allow implementing a custom lodepng_crc32.
+-DLODEPNG_NO_COMPILE_ZLIB for gcc or clang.
 */
 /*deflate & zlib. If disabled, you must specify alternative zlib functions in
 the custom_zlib field of the compress and decompress settings*/
 #ifndef LODEPNG_NO_COMPILE_ZLIB
+/*pass -DLODEPNG_NO_COMPILE_ZLIB to the compiler to disable this, or comment out LODEPNG_COMPILE_ZLIB below*/
 #define LODEPNG_COMPILE_ZLIB
 #endif
 
 /*png encoder and png decoder*/
 #ifndef LODEPNG_NO_COMPILE_PNG
+/*pass -DLODEPNG_NO_COMPILE_PNG to the compiler to disable this, or comment out LODEPNG_COMPILE_PNG below*/
 #define LODEPNG_COMPILE_PNG
 #endif
 
 /*deflate&zlib decoder and png decoder*/
 #ifndef LODEPNG_NO_COMPILE_DECODER
+/*pass -DLODEPNG_NO_COMPILE_DECODER to the compiler to disable this, or comment out LODEPNG_COMPILE_DECODER below*/
 #define LODEPNG_COMPILE_DECODER
 #endif
 
 /*deflate&zlib encoder and png encoder*/
 #ifndef LODEPNG_NO_COMPILE_ENCODER
+/*pass -DLODEPNG_NO_COMPILE_ENCODER to the compiler to disable this, or comment out LODEPNG_COMPILE_ENCODER below*/
 #define LODEPNG_COMPILE_ENCODER
 #endif
 
 /*the optional built in harddisk file loading and saving functions*/
 #ifndef LODEPNG_NO_COMPILE_DISK
+/*pass -DLODEPNG_NO_COMPILE_DISK to the compiler to disable this, or comment out LODEPNG_COMPILE_DISK below*/
 #define LODEPNG_COMPILE_DISK
 #endif
 
 /*support for chunks other than IHDR, IDAT, PLTE, tRNS, IEND: ancillary and unknown chunks*/
 #ifndef LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS
+/*pass -DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS to the compiler to disable this,
+or comment out LODEPNG_COMPILE_ANCILLARY_CHUNKS below*/
 #define LODEPNG_COMPILE_ANCILLARY_CHUNKS
 #endif
 
 /*ability to convert error numerical codes to English text string*/
 #ifndef LODEPNG_NO_COMPILE_ERROR_TEXT
+/*pass -DLODEPNG_NO_COMPILE_ERROR_TEXT to the compiler to disable this,
+or comment out LODEPNG_COMPILE_ERROR_TEXT below*/
 #define LODEPNG_COMPILE_ERROR_TEXT
 #endif
 
@@ -79,12 +86,24 @@ the custom_zlib field of the compress and decompress settings*/
 you can define the functions lodepng_free, lodepng_malloc and lodepng_realloc in your
 source files with custom allocators.*/
 #ifndef LODEPNG_NO_COMPILE_ALLOCATORS
+/*pass -DLODEPNG_NO_COMPILE_ALLOCATORS to the compiler to disable the built-in ones,
+or comment out LODEPNG_COMPILE_ALLOCATORS below*/
 #define LODEPNG_COMPILE_ALLOCATORS
+#endif
+
+/*Disable built-in CRC function, in that case a custom implementation of
+lodepng_crc32 must be defined externally so that it can be linked in.*/
+#ifndef LODEPNG_NO_COMPILE_CRC
+/*pass -DLODEPNG_NO_COMPILE_CRC to the compiler to disable the built-in one,
+or comment out LODEPNG_COMPILE_CRC below*/
+#define LODEPNG_COMPILE_CRC
 #endif
 
 /*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
 #ifdef __cplusplus
 #ifndef LODEPNG_NO_COMPILE_CPP
+/*pass -DLODEPNG_NO_COMPILE_CPP to the compiler to disable C++ (not needed if a C-only compiler),
+or comment out LODEPNG_COMPILE_CPP below*/
 #define LODEPNG_COMPILE_CPP
 #endif
 #endif
