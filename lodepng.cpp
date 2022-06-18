@@ -711,10 +711,11 @@ static unsigned HuffmanTree_makeTable(HuffmanTree* tree) {
   numpresent = 0;
   for(i = 0; i < tree->numcodes; ++i) {
     unsigned l = tree->lengths[i];
+    unsigned symbol, reverse;
     if(l == 0) continue;
-    unsigned symbol = tree->codes[i]; /*the huffman bit pattern. i itself is the value.*/
+    symbol = tree->codes[i]; /*the huffman bit pattern. i itself is the value.*/
     /*reverse bits, because the huffman bits are given in MSB first order but the bit reader reads LSB first*/
-    unsigned reverse = reverseBits(symbol, l);
+    reverse = reverseBits(symbol, l);
     numpresent++;
 
     if(l <= FIRSTBITS) {
@@ -1367,8 +1368,8 @@ static unsigned inflateNoCompression(ucvector* out, LodePNGBitReader* reader,
   /*read the literal data: LEN bytes are now stored in the out buffer*/
   if(bytepos + LEN > size) return 23; /*error: reading outside of in buffer*/
 
-  /*out->data can be NULL (when LEN is zero), and arithmetics on NULL ptr is undefined. so we check*/
-  if (out->data) {
+  /*out->data can be NULL (when LEN is zero), and arithmetics on NULL ptr is undefined*/
+  if (LEN) {
     lodepng_memcpy(out->data + out->size - LEN, reader->data + bytepos, LEN);
     bytepos += LEN;
   }

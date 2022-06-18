@@ -65,6 +65,7 @@ g++ lodepng.cpp lodepng_util.cpp pngdetail.cpp -Werror -W -Wall -ansi -pedantic 
 ./pngdetail testdata/PngSuite/basi0g01.png
 
 *) Test compiling with some code sections with #defines disabled, for unused static function warnings etc...
+g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_CRC
 g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_ZLIB
 g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_PNG
 g++ lodepng.cpp -W -Wall -ansi -pedantic -O3 -c -DLODEPNG_NO_COMPILE_DECODER
