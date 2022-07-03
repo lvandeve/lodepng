@@ -5003,16 +5003,30 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       expected_size += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, bpp);
     }
 
+    if(expected_size > LODEPNG_IMAGE_DATA_SIZE_MAX) {
+      state->error = 116;
+    }
+  }
+
+  if (!state->error) {
     state->error = zlib_decompress(&scanlines, &scanlines_size, expected_size, idat, idatsize, &state->decoder.zlibsettings);
   }
+
   if(!state->error && scanlines_size != expected_size) state->error = 91; /*decompressed size doesn't match prediction*/
   lodepng_free(idat);
 
   if(!state->error) {
     outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
+    if (outsize > LODEPNG_IMAGE_DATA_SIZE_MAX) {
+      state->error = 116;
+    }
+  }
+
+  if(!state->error) {
     *out = (unsigned char*)lodepng_malloc(outsize);
     if(!*out) state->error = 83; /*alloc fail*/
   }
+
   if(!state->error) {
     lodepng_memset(*out, 0, outsize);
     state->error = postProcessScanlines(*out, scanlines, *w, *h, &state->info_png);
@@ -6446,6 +6460,8 @@ const char* lodepng_error_text(unsigned code) {
     case 113: return "ICC profile unreasonably large";
     case 114: return "sBIT chunk has wrong size for the color type of the image";
     case 115: return "sBIT value out of range";
+    /*max size of an in-memory image buffer*/
+    case 116: return "image data unreasonably large";
   }
   return "unknown error code";
 }
