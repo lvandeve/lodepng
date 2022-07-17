@@ -31,7 +31,7 @@ namespace lodepng {
 LodePNGInfo getPNGHeaderInfo(const std::vector<unsigned char>& png) {
   unsigned w, h;
   lodepng::State state;
-  lodepng_inspect(&w, &h, &state, &png[0], png.size());
+  lodepng_inspect(&w, &h, &state, png.empty() ? NULL : &png[0], png.size());
   return state.info_png;
 }
 
@@ -139,7 +139,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
   lodepng::State state;
   unsigned w, h;
   unsigned error;
-  error = lodepng_inspect(&w, &h, &state, &png[0], png.size());
+  error = lodepng_inspect(&w, &h, &state, png.empty() ? NULL : &png[0], png.size());
 
   if(error) return 1;
 
@@ -173,7 +173,7 @@ unsigned getFilterTypesInterlaced(std::vector<std::vector<unsigned char> >& filt
 
   //Decompress all IDAT data (if the while loop ended early, this might fail)
   std::vector<unsigned char> data;
-  error = lodepng::decompress(data, &zdata[0], zdata.size());
+  error = lodepng::decompress(data, zdata.empty() ? NULL : &zdata[0], zdata.size());
 
   if(error) return 1;
 
@@ -230,7 +230,7 @@ unsigned getFilterTypes(std::vector<unsigned char>& filterTypes, const std::vect
     const unsigned shift1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
     lodepng::State state;
     unsigned w, h;
-    lodepng_inspect(&w, &h, &state, &png[0], png.size());
+    lodepng_inspect(&w, &h, &state, png.empty() ? NULL : &png[0], png.size());
     const unsigned* column = w > 1 ? column1 : column0;
     const unsigned* shift = w > 1 ? shift1 : shift0;
     for(size_t i = 0; i < h; i++) {
@@ -1404,8 +1404,8 @@ unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
     unsigned error = 0;
     float* xyz = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
     float whitepoint[3];
-    error = convertToXYZ(&xyz[0], whitepoint, in, w, h, state_in);
-    if (!error) error = convertFromXYZ(out, &xyz[0], w, h, state_out, whitepoint, rendering_intent);
+    error = convertToXYZ(xyz, whitepoint, in, w, h, state_in);
+    if (!error) error = convertFromXYZ(out, xyz, w, h, state_out, whitepoint, rendering_intent);
     lodepng_free(xyz);
     return error;
   }
@@ -1691,7 +1691,7 @@ struct ExtractPNG { //PNG decoding and information extraction
   void decode(const unsigned char* in, size_t size) {
     error = 0;
     if(size == 0 || in == 0) { error = 48; return; } //the given data is empty
-    readPngHeader(&in[0], size); if(error) return;
+    readPngHeader(in, size); if(error) return;
     size_t pos = 33; //first byte of the first chunk after the header
     std::vector<unsigned char> idat; //the data from idat chunks
     bool IEND = false;
@@ -1754,7 +1754,7 @@ struct ExtractPNG { //PNG decoding and information extraction
 
 unsigned extractZlibInfo(std::vector<ZlibBlockInfo>& zlibinfo, const std::vector<unsigned char>& in) {
   ExtractPNG decoder(&zlibinfo);
-  decoder.decode(&in[0], in.size());
+  decoder.decode(in.empty() ? NULL : &in[0], in.size());
 
   return decoder.error ? 1 : 0;
 }
