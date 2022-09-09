@@ -66,6 +66,18 @@ This shows compiler flags it was designed for, but normally one would use the
 compiler or build system of their project instead of those commands, and other
 C compilers are supported.
 
+### Building lodepng - Using vcpkg
+
+You can download and install lodepng using the [vcpkg](https://github.com/Microsoft/vcpkg) dependency manager:
+
+    git clone https://github.com/Microsoft/vcpkg.git
+    cd vcpkg
+    ./bootstrap-vcpkg.sh
+    ./vcpkg integrate install
+    ./vcpkg install lodepng
+
+The lodepng port in vcpkg is kept up to date by Microsoft team members and community contributors. If the version is out of date, please [create an issue or pull request](https://github.com/Microsoft/vcpkg) on the vcpkg repository.
+
 ### Makefile
 
 There is a Makefile, but this is not intended for using LodePNG itself since the
