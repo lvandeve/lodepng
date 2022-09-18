@@ -3256,33 +3256,28 @@ static void getPixelColorRGBA8(unsigned char* r, unsigned char* g,
   if(mode->colortype == LCT_GREY) {
     if(mode->bitdepth == 8) {
       *r = *g = *b = in[i];
-      if(mode->key_defined && *r == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = 255 * !(mode->key_defined && *r == mode->key_r);
     } else if(mode->bitdepth == 16) {
       *r = *g = *b = in[i * 2 + 0];
-      if(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = 255 * !(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r);
     } else {
       unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
       size_t j = i * mode->bitdepth;
       unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
       *r = *g = *b = (value * 255) / highest;
-      if(mode->key_defined && value == mode->key_r) *a = 0;
-      else *a = 255;
+      *a = 255 * !(mode->key_defined && value == mode->key_r);
     }
   } else if(mode->colortype == LCT_RGB) {
     if(mode->bitdepth == 8) {
       *r = in[i * 3 + 0]; *g = in[i * 3 + 1]; *b = in[i * 3 + 2];
-      if(mode->key_defined && *r == mode->key_r && *g == mode->key_g && *b == mode->key_b) *a = 0;
-      else *a = 255;
+      *a = 255 * !(mode->key_defined && *r == mode->key_r && *g == mode->key_g && *b == mode->key_b);
     } else {
       *r = in[i * 6 + 0];
       *g = in[i * 6 + 2];
       *b = in[i * 6 + 4];
-      if(mode->key_defined && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
+      *a = 255 * !(mode->key_defined && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
          && 256U * in[i * 6 + 2] + in[i * 6 + 3] == mode->key_g
-         && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b) *a = 0;
-      else *a = 255;
+         && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b);
     }
   } else if(mode->colortype == LCT_PALETTE) {
     unsigned index;
@@ -3337,13 +3332,13 @@ static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t n
       if(mode->key_defined) {
         buffer -= numpixels * num_channels;
         for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-          if(buffer[0] == mode->key_r) buffer[3] = 0;
+          buffer[3] *= !(buffer[0] == mode->key_r);
         }
       }
     } else if(mode->bitdepth == 16) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         buffer[0] = buffer[1] = buffer[2] = in[i * 2];
-        buffer[3] = mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r ? 0 : 255;
+        buffer[3] = 255 * !(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r);
       }
     } else {
       unsigned highest = ((1U << mode->bitdepth) - 1U); /*highest possible value for this bit depth*/
@@ -3351,7 +3346,7 @@ static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t n
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
         unsigned value = readBitsFromReversedStream(&j, in, mode->bitdepth);
         buffer[0] = buffer[1] = buffer[2] = (value * 255) / highest;
-        buffer[3] = mode->key_defined && value == mode->key_r ? 0 : 255;
+        buffer[3] = 255 * !(mode->key_defined && value == mode->key_r);
       }
     }
   } else if(mode->colortype == LCT_RGB) {
@@ -3363,7 +3358,7 @@ static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t n
       if(mode->key_defined) {
         buffer -= numpixels * num_channels;
         for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-          if(buffer[0] == mode->key_r && buffer[1]== mode->key_g && buffer[2] == mode->key_b) buffer[3] = 0;
+          buffer[3] *= !(buffer[0] == mode->key_r && buffer[1]== mode->key_g && buffer[2] == mode->key_b);
         }
       }
     } else {
@@ -3371,10 +3366,10 @@ static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t n
         buffer[0] = in[i * 6 + 0];
         buffer[1] = in[i * 6 + 2];
         buffer[2] = in[i * 6 + 4];
-        buffer[3] = mode->key_defined
+        buffer[3] = 255 * !(mode->key_defined
            && 256U * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
            && 256U * in[i * 6 + 2] + in[i * 6 + 3] == mode->key_g
-           && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b ? 0 : 255;
+           && 256U * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b);
       }
     }
   } else if(mode->colortype == LCT_PALETTE) {
@@ -3497,17 +3492,15 @@ static void getPixelColorRGBA16(unsigned short* r, unsigned short* g, unsigned s
                                 const unsigned char* in, size_t i, const LodePNGColorMode* mode) {
   if(mode->colortype == LCT_GREY) {
     *r = *g = *b = 256 * in[i * 2 + 0] + in[i * 2 + 1];
-    if(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r) *a = 0;
-    else *a = 65535;
+    *a = 65535 * !(mode->key_defined && 256U * in[i * 2 + 0] + in[i * 2 + 1] == mode->key_r);
   } else if(mode->colortype == LCT_RGB) {
     *r = 256u * in[i * 6 + 0] + in[i * 6 + 1];
     *g = 256u * in[i * 6 + 2] + in[i * 6 + 3];
     *b = 256u * in[i * 6 + 4] + in[i * 6 + 5];
-    if(mode->key_defined
+    *a = 65535 *!(mode->key_defined
        && 256u * in[i * 6 + 0] + in[i * 6 + 1] == mode->key_r
        && 256u * in[i * 6 + 2] + in[i * 6 + 3] == mode->key_g
-       && 256u * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b) *a = 0;
-    else *a = 65535;
+       && 256u * in[i * 6 + 4] + in[i * 6 + 5] == mode->key_b);
   } else if(mode->colortype == LCT_GREY_ALPHA) {
     *r = *g = *b = 256u * in[i * 4 + 0] + in[i * 4 + 1];
     *a = 256u * in[i * 4 + 2] + in[i * 4 + 3];
