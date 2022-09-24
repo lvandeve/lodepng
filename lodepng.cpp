@@ -3675,8 +3675,8 @@ void lodepng_color_stats_init(LodePNGColorStats* stats) {
 static unsigned getValueRequiredBits(unsigned char value) {
   if(value == 0 || value == 255) return 1;
   /*The scaling of 2-bit and 4-bit values uses multiples of 85 and 17*/
-  if(value % 17 == 0) return value % 85 == 0 ? 2 : 4;
-  return 8;
+  else if(value % 17 == 0) return value % 85 == 0 ? 2 : 4;
+  else return 8;
 }
 
 /*stats must already have been inited. */
@@ -3689,12 +3689,12 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
   unsigned error = 0;
 
   /* mark things as done already if it would be impossible to have a more expensive case */
-  unsigned colored_done = lodepng_is_greyscale_type(mode_in) ? 1 : 0;
-  unsigned alpha_done = lodepng_can_have_alpha(mode_in) ? 0 : 1;
-  unsigned numcolors_done = 0;
+  unsigned char colored_done = lodepng_is_greyscale_type(mode_in) ? 1 : 0;
+  unsigned char alpha_done = lodepng_can_have_alpha(mode_in) ? 0 : 1;
+  unsigned char numcolors_done = 0;
   unsigned bpp = lodepng_get_bpp(mode_in);
-  unsigned bits_done = (stats->bits == 1 && bpp == 1) ? 1 : 0;
-  unsigned sixteen = 0; /* whether the input image is 16 bit */
+  unsigned char bits_done = (stats->bits == 1 && bpp == 1) ? 1 : 0;
+  unsigned char sixteen = 0; /* whether the input image is 16 bit */
   unsigned maxnumcolors = 257;
   if(bpp <= 8) maxnumcolors = LODEPNG_MIN(257, stats->numcolors + (1u << bpp));
 
@@ -3749,7 +3749,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
       }
 
       if(!alpha_done) {
-        unsigned matchkey = (r == stats->key_r && g == stats->key_g && b == stats->key_b);
+        unsigned char matchkey = (r == stats->key_r && g == stats->key_g && b == stats->key_b);
         if(a != 65535 && (a != 0 || (stats->key && !matchkey))) {
           stats->alpha = 1;
           stats->key = 0;
@@ -3799,7 +3799,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
       }
 
       if(!alpha_done) {
-        unsigned matchkey = (r == stats->key_r && g == stats->key_g && b == stats->key_b);
+        unsigned char matchkey = (r == stats->key_r && g == stats->key_g && b == stats->key_b);
         if(a != 255 && (a != 0 || (stats->key && !matchkey))) {
           stats->alpha = 1;
           stats->key = 0;
@@ -3897,10 +3897,10 @@ static unsigned auto_choose_color(LodePNGColorMode* mode_out,
   unsigned palettebits;
   size_t i, n;
   size_t numpixels = stats->numpixels;
-  unsigned palette_ok, gray_ok;
+  unsigned char palette_ok, gray_ok;
 
-  unsigned alpha = stats->alpha;
-  unsigned key = stats->key;
+  unsigned char alpha = stats->alpha;
+  unsigned char key = stats->key;
   unsigned bits = stats->bits;
 
   mode_out->key_defined = 0;
