@@ -1,5 +1,5 @@
 /*
-LodePNG version 20220717
+LodePNG version 20221108
 
 Copyright (c) 2005-2022 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20220717";
+const char* LODEPNG_VERSION_STRING = "20221108";
 
 /*
 This source file is divided into the following large parts. The code sections

@@ -216,23 +216,23 @@ struct Data {
       // end before first IDAT chunk: do not parse more than first part of file for all this.
       const unsigned char* end = lodepng_chunk_find_const(data, data + buffer.size(), "IDAT");
       if(!end) end = data + buffer.size(); // no IDAT, invalid PNG but extract info anyway
-      inspect_chunk_by_name(data, end, state, "PLTE");
+      error = inspect_chunk_by_name(data, end, state, "PLTE");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "tRNS");
+      error = inspect_chunk_by_name(data, end, state, "tRNS");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "cHRM");
+      error = inspect_chunk_by_name(data, end, state, "cHRM");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "gAMA");
+      error = inspect_chunk_by_name(data, end, state, "gAMA");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "sBIT");
+      error = inspect_chunk_by_name(data, end, state, "sBIT");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "bKGD");
+      error = inspect_chunk_by_name(data, end, state, "bKGD");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "hIST");
+      error = inspect_chunk_by_name(data, end, state, "hIST");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "pHYs");
+      error = inspect_chunk_by_name(data, end, state, "pHYs");
       if(error) return;
-      inspect_chunk_by_name(data, end, state, "iCCP");
+      error = inspect_chunk_by_name(data, end, state, "iCCP");
       if(error) return;
     }
   }
