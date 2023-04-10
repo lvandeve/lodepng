@@ -152,6 +152,7 @@ struct Options {
 unsigned inspect_chunk_by_name(const unsigned char* data, const unsigned char* end,
                                lodepng::State& state, const char type[5]) {
   const unsigned char* p = lodepng_chunk_find_const(data, end, type);
+  if(!p) return 0; // not found, but this is not considered an error
   return lodepng_inspect_chunk(&state, p - data, data, end - data);
 }
 

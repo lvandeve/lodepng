@@ -1,7 +1,7 @@
 /*
 LodePNG Benchmark
 
-Copyright (c) 2005-2019 Lode Vandevenne
+Copyright (c) 2005-2023 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -221,8 +221,8 @@ void testDecode(const std::vector<unsigned char>& png) {
 std::string getFilePart(const std::string& path) {
   if(path.empty()) return "";
   int slash = path.size() - 1;
-  while(slash >= 0 && path[slash] != '/') slash--;
-  return path.substr(slash + 1);
+  while(slash >= 0 && path[(size_t)slash] != '/') slash--;
+  return path.substr((size_t)(slash + 1));
 }
 
 void testFile(const std::string& filename) {

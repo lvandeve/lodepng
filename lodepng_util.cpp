@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2022 Lode Vandevenne
+Copyright (c) 2005-2023 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -1609,12 +1609,11 @@ struct ExtractZlib { // Zlib decompression and information extraction
 
   void inflateHuffmanBlock(std::vector<unsigned char>& out,
                            const unsigned char* in, size_t& bp, size_t& pos, size_t inlength, unsigned long btype) {
-    size_t numcodes = 0, numlit = 0, numlen = 0; //for logging
+    size_t numlit = 0, numlen = 0; //for logging
     if(btype == 1) { generateFixedTrees(codetree, codetreeD); }
     else if(btype == 2) { getTreeInflateDynamic(codetree, codetreeD, in, bp, inlength); if(error) return; }
     for(;;) {
       unsigned long code = huffmanDecodeSymbol(in, bp, codetree, inlength); if(error) return;
-      numcodes++;
       zlibinfo->back().lz77_lcode.push_back(code); //output code
       zlibinfo->back().lz77_dcode.push_back(0);
       zlibinfo->back().lz77_lbits.push_back(0);
