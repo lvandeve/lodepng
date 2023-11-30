@@ -1439,7 +1439,7 @@ static unsigned inflatev(ucvector* out, const unsigned char* in, size_t insize,
 /* / Deflator (Compressor)                                                  / */
 /* ////////////////////////////////////////////////////////////////////////// */
 
-static const size_t MAX_SUPPORTED_DEFLATE_LENGTH = 258;
+static const unsigned MAX_SUPPORTED_DEFLATE_LENGTH = 258;
 
 /*search the index in the array, that has the largest value smaller than or equal to the given value,
 given array must be sorted (if no value is smaller, it returns the size of the given array)*/
