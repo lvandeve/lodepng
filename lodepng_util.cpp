@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2023 Lode Vandevenne
+Copyright (c) 2005-2024 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -254,10 +254,15 @@ int getPaletteValue(const unsigned char* data, size_t i, int bits) {
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 
 
-
 // Only temporarily here until this is integrated into lodepng.c(pp)
 #define LODEPNG_MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define LODEPNG_MIN(a, b) (((a) < (b)) ? (a) : (b))
+/* Safely check if multiplying two integers will overflow (no undefined
+behavior, compiler removing the code, etc...) and output result. */
+static int lodepng_mulofl(size_t a, size_t b, size_t* result) {
+  *result = a * b; /* Unsigned multiplication is well defined and safe in C90 */
+  return (a != 0 && *result / a != b);
+}
 
 // Only temporarily here until this is integrated into lodepng.c(pp)
 #ifdef LODEPNG_COMPILE_ALLOCATORS
@@ -982,8 +987,12 @@ static unsigned modelsEqual(const LodePNGState* state_a,
   size_t i;
   const LodePNGInfo* a = state_a ? &state_a->info_png : 0;
   const LodePNGInfo* b = state_b ? &state_b->info_png : 0;
-  if(isSRGB(a) != isSRGB(b)) return 0;
-  /* now a and b are guaranteed to be non-NULL */
+  unsigned a_srgb = isSRGB(a);
+  unsigned b_srgb = isSRGB(b);
+  if(a_srgb != b_srgb) return 0;
+  if(a_srgb && b_srgb) return 1;
+  /* now a and b are both non-sRGB, and both guaranteed to be non-NULL: only
+  non-NULL can represent a different color model than sRGB. */
   if(a->iccp_defined != b->iccp_defined) return 0;
   if(a->iccp_defined) {
     if(a->iccp_profile_size != b->iccp_profile_size) return 0;
@@ -1025,10 +1034,10 @@ static unsigned modelsEqual(const LodePNGState* state_a,
 }
 
 /* Converts in-place. Does not clamp. Do not use for integer input, make table instead there. */
-static void convertToXYZ_gamma(float* out, const float* in, unsigned w, unsigned h,
-                               const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc) {
-  size_t i, c;
-  size_t n = w * h;
+static unsigned convertToXYZ_gamma(float* out, const float* in, unsigned w, unsigned h,
+                                  const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc) {
+  size_t i, c, n;
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) return 92;
   for(i = 0; i < n * 4; i++) {
     out[i] = in[i];
   }
@@ -1059,6 +1068,7 @@ static void convertToXYZ_gamma(float* out, const float* in, unsigned w, unsigned
       }
     }
   }
+  return 0; /* no error */
 }
 
 /* Same as convertToXYZ_gamma, but creates a lookup table rather than operating on an image */
@@ -1098,9 +1108,9 @@ static unsigned convertToXYZ_chrm(float* im, unsigned w, unsigned h,
                                   const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc,
                                   float whitepoint[3]) {
   unsigned error = 0;
-  size_t i;
-  size_t n = w * h;
+  size_t i, n;
   float m[9]; /* XYZ to linear RGB matrix */
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) return 92;
 
   /* Must be called even for grayscale, to get the correct whitepoint to output */
   error = getChrm(m, whitepoint, use_icc, icc, info);
@@ -1125,8 +1135,7 @@ static unsigned convertToXYZ_chrm(float* im, unsigned w, unsigned h,
 unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
                       unsigned w, unsigned h, const LodePNGState* state) {
   unsigned error = 0;
-  size_t i;
-  size_t n = w * h;
+  size_t i, n, bytes;
   const LodePNGColorMode* mode_in = &state->info_raw;
   const LodePNGInfo* info = &state->info_png;
   unsigned char* data = 0;
@@ -1134,7 +1143,6 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
   int bit16 = mode_in->bitdepth > 8;
   size_t num = bit16 ? 65536 : 256;
   LodePNGColorMode tempmode = lodepng_color_mode_make(LCT_RGBA, bit16 ? 16 : 8);
-
 
   unsigned use_icc = 0;
   LodePNGICC icc;
@@ -1145,7 +1153,12 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
     use_icc = validateICC(&icc);
   }
 
-  data = (unsigned char*)lodepng_malloc(w * h * (bit16 ? 8 : 4));
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) error = 92;
+  if(error) goto cleanup;
+  if(lodepng_mulofl(n, bit16 ? 8 : 4, &bytes)) error = 92;
+  if(error) goto cleanup;
+
+  data = (unsigned char*)lodepng_malloc(bytes);
   error = lodepng_convert(data, in, &tempmode, mode_in, w, h);
   if(error) goto cleanup;
 
@@ -1187,7 +1200,8 @@ unsigned convertToXYZ(float* out, float whitepoint[3], const unsigned char* in,
     }
   }
 
-  convertToXYZ_chrm(out, w, h, info, use_icc, &icc, whitepoint);
+  error = convertToXYZ_chrm(out, w, h, info, use_icc, &icc, whitepoint);
+  if(error) goto cleanup;
 
 cleanup:
   lodepng_icc_cleanup(&icc);
@@ -1211,8 +1225,10 @@ unsigned convertToXYZFloat(float* out, float whitepoint[3], const float* in,
   }
   /* Input is floating point, so lookup table cannot be used, but it's ensured to
   use float pow, not the slower double pow. */
-  convertToXYZ_gamma(out, in, w, h, info, use_icc, &icc);
-  convertToXYZ_chrm(out, w, h, info, use_icc, &icc, whitepoint);
+  error = convertToXYZ_gamma(out, in, w, h, info, use_icc, &icc);
+  if(error) goto cleanup;
+  error = convertToXYZ_chrm(out, w, h, info, use_icc, &icc, whitepoint);
+  if(error) goto cleanup;
 
 cleanup:
   lodepng_icc_cleanup(&icc);
@@ -1222,11 +1238,12 @@ cleanup:
 static unsigned convertFromXYZ_chrm(float* out, const float* in, unsigned w, unsigned h,
                                     const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc,
                                     const float whitepoint[3], unsigned rendering_intent) {
-  size_t i;
-  size_t n = w * h;
+  size_t i, n;
 
   float m[9]; /* XYZ to linear RGB matrix */
   float white[3]; /* The whitepoint (absolute) of the target RGB space */
+
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) return 92;
 
   if(getChrm(m, white, use_icc, icc, info)) return 1;
   if(invMatrix(m)) return 1; /* error, not invertible */
@@ -1269,10 +1286,10 @@ static unsigned convertFromXYZ_chrm(float* out, const float* in, unsigned w, uns
 }
 
 /* Converts in-place. Does not clamp. */
-static void convertFromXYZ_gamma(float* im, unsigned w, unsigned h,
-                                 const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc) {
-  size_t i, c;
-  size_t n = w * h;
+static unsigned convertFromXYZ_gamma(float* im, unsigned w, unsigned h,
+                                     const LodePNGInfo* info, unsigned use_icc, const LodePNGICC* icc) {
+  size_t i, c, n;
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) return 92;
   if(use_icc) {
     for(i = 0; i < n; i++) {
       for(c = 0; c < 3; c++) {
@@ -1299,14 +1316,14 @@ static void convertFromXYZ_gamma(float* im, unsigned w, unsigned h,
       }
     }
   }
+  return 0; /* no error */
 }
 
 unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigned h,
                         const LodePNGState* state,
                         const float whitepoint[3], unsigned rendering_intent) {
   unsigned error = 0;
-  size_t i, c;
-  size_t n = w * h;
+  size_t i, c, n, bytes_im, bytes_data;
   const LodePNGColorMode* mode_out = &state->info_raw;
   const LodePNGInfo* info = &state->info_png;
   int bit16 = mode_out->bitdepth > 8;
@@ -1323,17 +1340,25 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
     use_icc = validateICC(&icc);
   }
 
+  if(lodepng_mulofl((size_t)w, (size_t)h, &n)) error = 92;
+  if(error) goto cleanup;
+  if(lodepng_mulofl(n, 4 * sizeof(float), &bytes_im)) error = 92;
+  if(error) goto cleanup;
+  if(lodepng_mulofl(n, bit16 ? 8 : 4, &bytes_data)) error = 92;
+  if(error) goto cleanup;
+
   /* Handle gamut */
-  im = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
+  im = (float*)lodepng_malloc(bytes_im);
   error = convertFromXYZ_chrm(im, in, w, h, info, use_icc, &icc, whitepoint, rendering_intent);
   if(error) goto cleanup;
 
   /* Handle transfer function */
   /* Input is floating point, so lookup table cannot be used, but it's ensured to use float pow, not the slower double pow. */
-  convertFromXYZ_gamma(im, w, h, info, use_icc, &icc);
+  error = convertFromXYZ_gamma(im, w, h, info, use_icc, &icc);
+  if(error) goto cleanup;
 
   /* Convert to integer output */
-  data = (unsigned char*)lodepng_malloc(w * h * 8);
+  data = (unsigned char*)lodepng_malloc(bytes_data);
   /* TODO: check if also 1/2/4 bit case needed: rounding is at different fine-grainedness for 8 and 16 bits below. */
   if(bit16) {
     LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGBA, 16);
@@ -1386,7 +1411,8 @@ unsigned convertFromXYZFloat(float* out, const float* in, unsigned w, unsigned h
   if(error) goto cleanup;
 
   /* Handle transfer function */
-  convertFromXYZ_gamma(out, w, h, info, use_icc, &icc);
+  error = convertFromXYZ_gamma(out, w, h, info, use_icc, &icc);
+  if(error) goto cleanup;
 
 cleanup:
   lodepng_icc_cleanup(&icc);
@@ -1402,7 +1428,10 @@ unsigned convertRGBModel(unsigned char* out, const unsigned char* in,
     return lodepng_convert(out, in, &state_out->info_raw, &state_in->info_raw, w, h);
   } else {
     unsigned error = 0;
-    float* xyz = (float*)lodepng_malloc(w * h * 4 * sizeof(float));
+    size_t n, bytes;
+    if(lodepng_mulofl((size_t)w, (size_t)h, &n)) return 92;
+    if(lodepng_mulofl(n, 4 * sizeof(float), &bytes)) return 92;
+    float* xyz = (float*)lodepng_malloc(bytes);
     float whitepoint[3];
     error = convertToXYZ(xyz, whitepoint, in, w, h, state_in);
     if (!error) error = convertFromXYZ(out, xyz, w, h, state_out, whitepoint, rendering_intent);
