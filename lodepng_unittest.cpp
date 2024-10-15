@@ -34,7 +34,7 @@ Testing instructions:
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with clang, which may sometimes give different warnings
-clang++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3
+clang++ lodepng.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshorten-64-to-32 -Wshadow -pedantic -ansi -O3
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
