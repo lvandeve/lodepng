@@ -23,8 +23,8 @@ freely, subject to the following restrictions:
     distribution.
 */
 
-//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3
-//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL -O3 && ./a.out
+//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL2main -lSDL2 -O3
+//g++ lodepng.cpp lodepng_benchmark.cpp -Wall -Wextra -pedantic -ansi -lSDL2main -lSDL2 -O3 && ./a.out
 
 #include "lodepng.h"
 
@@ -301,7 +301,7 @@ int main(int argc, char *argv[]) {
   if(!do_encode) decode_encoded = false;
 
   if(files.empty()) {
-    std::cout << "must give .png filenames to benchamrk" << std::endl;
+    std::cout << "must give .png filenames to benchmark" << std::endl;
     showHelp(argc, argv);
     return 1;
   }
@@ -350,4 +350,6 @@ int main(int argc, char *argv[]) {
               << " compressed bytes (" << ((total_raw_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s, "
               << ((total_pixels/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MP/s)" << std::endl;
   }
+
+  return 0;
 }
