@@ -114,6 +114,7 @@ or comment out LODEPNG_COMPILE_CPP below*/
 #ifdef LODEPNG_COMPILE_CPP
 #include <vector>
 #include <string>
+#include <lodepng_export.h>
 #endif /*LODEPNG_COMPILE_CPP*/
 
 #ifdef LODEPNG_COMPILE_PNG
@@ -338,7 +339,7 @@ struct LodePNGDecompressSettings {
   const void* custom_context; /*optional custom settings for custom functions*/
 };
 
-extern const LodePNGDecompressSettings lodepng_default_decompress_settings;
+extern LODEPNG_EXPORT const LodePNGDecompressSettings lodepng_default_decompress_settings;
 void lodepng_decompress_settings_init(LodePNGDecompressSettings* settings);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
@@ -371,7 +372,7 @@ struct LodePNGCompressSettings /*deflate = compress*/ {
   const void* custom_context; /*optional custom settings for custom functions*/
 };
 
-extern const LodePNGCompressSettings lodepng_default_compress_settings;
+extern LODEPNG_EXPORT const LodePNGCompressSettings lodepng_default_compress_settings;
 void lodepng_compress_settings_init(LodePNGCompressSettings* settings);
 #endif /*LODEPNG_COMPILE_ENCODER*/
 
