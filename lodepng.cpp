@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241015
+LodePNG version 20241215
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20241015";
+const char* LODEPNG_VERSION_STRING = "20241215";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -3266,26 +3266,25 @@ unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langt
   return lodepng_add_itext_sized(info, key, langtag, transkey, str, lodepng_strlen(str));
 }
 
-/* same as set but does not delete */
-static unsigned lodepng_assign_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
+unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
+  if(info->iccp_defined) lodepng_clear_icc(info);
+
   if(profile_size == 0) return 100; /*invalid ICC profile size*/
 
   info->iccp_name = alloc_string(name);
-  info->iccp_profile = (unsigned char*)lodepng_malloc(profile_size);
+  if(!info->iccp_name) return 83; /*alloc fail*/
 
-  if(!info->iccp_name || !info->iccp_profile) return 83; /*alloc fail*/
+  info->iccp_profile = (unsigned char*)lodepng_malloc(profile_size);
+  if(!info->iccp_profile) {
+    lodepng_free(info->iccp_name);
+    return 83; /*alloc fail*/
+  }
 
   lodepng_memcpy(info->iccp_profile, profile, profile_size);
   info->iccp_profile_size = profile_size;
-
-  return 0; /*ok*/
-}
-
-unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
-  if(info->iccp_name) lodepng_clear_icc(info);
   info->iccp_defined = 1;
 
-  return lodepng_assign_icc(info, name, profile, profile_size);
+  return 0; /*ok*/
 }
 
 void lodepng_clear_icc(LodePNGInfo* info) {
@@ -3294,6 +3293,26 @@ void lodepng_clear_icc(LodePNGInfo* info) {
   info->iccp_profile = NULL;
   info->iccp_profile_size = 0;
   info->iccp_defined = 0;
+}
+
+unsigned lodepng_set_exif(LodePNGInfo* info, const unsigned char* exif, unsigned exif_size) {
+  if(info->exif_defined) lodepng_clear_exif(info);
+  info->exif = (unsigned char*)lodepng_malloc(exif_size);
+
+  if(!info->exif) return 83; /*alloc fail*/
+
+  lodepng_memcpy(info->exif, exif, exif_size);
+  info->exif_size = exif_size;
+  info->exif_defined = 1;
+
+  return 0; /*ok*/
+}
+
+void lodepng_clear_exif(LodePNGInfo* info) {
+  lodepng_free(info->exif);
+  info->exif = NULL;
+  info->exif_size = 0;
+  info->exif_defined = 0;
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
@@ -3319,6 +3338,10 @@ void lodepng_info_init(LodePNGInfo* info) {
   info->iccp_name = NULL;
   info->iccp_profile = NULL;
 
+  info->exif_defined = 0;
+  info->exif = NULL;
+  info->exif_size = 0;
+
   info->sbit_defined = 0;
   info->sbit_r = info->sbit_g = info->sbit_b = info->sbit_a = 0;
 
@@ -3333,6 +3356,7 @@ void lodepng_info_cleanup(LodePNGInfo* info) {
   LodePNGIText_cleanup(info);
 
   lodepng_clear_icc(info);
+  lodepng_clear_exif(info);
 
   LodePNGUnknownChunks_cleanup(info);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -3348,7 +3372,12 @@ unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
   CERROR_TRY_RETURN(LodePNGText_copy(dest, source));
   CERROR_TRY_RETURN(LodePNGIText_copy(dest, source));
   if(source->iccp_defined) {
-    CERROR_TRY_RETURN(lodepng_assign_icc(dest, source->iccp_name, source->iccp_profile, source->iccp_profile_size));
+    dest->iccp_defined = 0; /*the memcpy above set this to 1 while it shouldn't*/
+    CERROR_TRY_RETURN(lodepng_set_icc(dest, source->iccp_name, source->iccp_profile, source->iccp_profile_size));
+  }
+  if(source->exif_defined) {
+    dest->exif_defined = 0; /*the memcpy above set this to 1 while it shouldn't*/
+    CERROR_TRY_RETURN(lodepng_set_exif(dest, source->exif, source->exif_size));
   }
 
   LodePNGUnknownChunks_init(dest);
@@ -5043,8 +5072,8 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* 
 
   unsigned length, string2_begin;
 
+  if(info->iccp_defined) lodepng_clear_icc(info);
   info->iccp_defined = 1;
-  if(info->iccp_name) lodepng_clear_icc(info);
 
   for(length = 0; length < chunkLength && data[length] != 0; ++length) ;
   if(length + 2 >= chunkLength) return 75; /*no null termination, corrupt?*/
@@ -5066,11 +5095,15 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* 
   error = zlib_decompress(&info->iccp_profile, &size, 0,
                           &data[string2_begin],
                           length, &zlibsettings);
-  /*error: ICC profile larger than  decoder->max_icc_size*/
+  /*error: ICC profile larger than decoder->max_icc_size*/
   if(error && size > zlibsettings.max_output_size) error = 113;
   info->iccp_profile_size = (unsigned)size;
   if(!error && !info->iccp_profile_size) error = 100; /*invalid ICC profile size*/
   return error;
+}
+
+static unsigned readChunk_eXIf(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
+  return lodepng_set_exif(info, data, (unsigned)chunkLength);
 }
 
 /*significant bits chunk (sBIT)*/
@@ -5154,6 +5187,8 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
     error = readChunk_sRGB(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
     error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
+  } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
+    error = readChunk_eXIf(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "sBIT")) {
     error = readChunk_sBIT(&state->info_png, data, chunkLength);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -5300,6 +5335,9 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
       state->error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
+      if(state->error) break;
+    } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
+      state->error = readChunk_eXIf(&state->info_png, data, chunkLength);
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "sBIT")) {
       state->error = readChunk_sBIT(&state->info_png, data, chunkLength);
@@ -5805,6 +5843,10 @@ static unsigned addChunk_iCCP(ucvector* out, const LodePNGInfo* info, LodePNGCom
 
   lodepng_free(compressed);
   return error;
+}
+
+static unsigned addChunk_eXIf(ucvector* out, const LodePNGInfo* info) {
+  return lodepng_chunk_createv(out, info->exif_size, "eXIf", info->exif);
 }
 
 static unsigned addChunk_sBIT(ucvector* out, const LodePNGInfo* info) {
@@ -6498,6 +6540,10 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     }
     if(info_png->sbit_defined) {
       state->error = addChunk_sBIT(&outv, &info);
+      if(state->error) goto cleanup;
+    }
+    if(info.exif_defined) {
+      state->error = addChunk_eXIf(&outv, &info);
       if(state->error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/

@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2022 Lode Vandevenne
+Copyright (c) 2005-2024 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -34,7 +34,7 @@ Testing instructions:
 g++ lodepng.cpp lodepng_util.cpp lodepng_unittest.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshadow -pedantic -ansi -O3 && ./a.out
 
 *) Compile with clang, which may sometimes give different warnings
-clang++ lodepng.cpp -Werror -Wall -Wextra -Wsign-conversion -Wshorten-64-to-32 -Wshadow -pedantic -ansi -O3
+clang++ lodepng.cpp -c -Werror -Wall -Wextra -Wsign-conversion -Wshorten-64-to-32 -Wshadow -pedantic -ansi -O3
 
 *) Compile with pure ISO C90 and all warnings:
 mv lodepng.cpp lodepng.c ; gcc -I ./ lodepng.c examples/example_decode.c -ansi -pedantic -Werror -Wall -Wextra -O3 ; mv lodepng.c lodepng.cpp
@@ -113,7 +113,7 @@ rm *.o *.obj
 
 *) check version dates in copyright message and LODEPNG_VERSION_STRING
 
-*) check year in copyright message at top of all files as well as at bottom of lodepng.h
+*) check year in copyright message at top of all files
 
 *) check examples/sdl.cpp with the png test suite images (the "x" ones are expected to show error)
 g++ -I ./ lodepng.cpp examples/example_sdl.cpp -Werror -Wall -Wextra -pedantic -ansi -O3 -lSDL2 -o showpng && ./showpng testdata/PngSuite/''*.png
@@ -392,9 +392,9 @@ void md5sum(const unsigned char* in, size_t size, unsigned* a0, unsigned* b0, un
   }
 }
 
-std::string md5sum(const std::vector<unsigned char>& in) {
+std::string md5sum(const unsigned char* data, size_t size) {
   unsigned a0, b0, c0, d0;
-  md5sum(in.data(), in.size(), &a0, &b0, &c0, &d0);
+  md5sum(data, size, &a0, &b0, &c0, &d0);
   char result[33];
   //sprintf(result, "%8.8x%8.8x%8.8x%8.8x", a0, b0, c0, d0);
   sprintf(result, "%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x",
@@ -403,6 +403,10 @@ std::string md5sum(const std::vector<unsigned char>& in) {
           c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255, (c0 >> 24) & 255,
           d0 & 255, (d0 >> 8) & 255, (d0 >> 16) & 255, (d0 >> 24) & 255);
   return std::string(result);
+}
+
+std::string md5sum(const std::vector<unsigned char>& in) {
+  return md5sum(in.data(), in.size());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2338,7 +2342,6 @@ void testColorProfile() {
     for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
     std::vector<unsigned char> png;
     lodepng::State state;
-    state.info_png.iccp_defined = 1;
     std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
@@ -2366,7 +2369,6 @@ void testColorProfile() {
     }
     std::vector<unsigned char> png;
     lodepng::State state;
-    state.info_png.iccp_defined = 1;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
@@ -2398,7 +2400,6 @@ void testColorProfile() {
     }
     std::vector<unsigned char> png;
     lodepng::State state;
-    state.info_png.iccp_defined = 1;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
@@ -2425,7 +2426,6 @@ void testColorProfile() {
     }
     std::vector<unsigned char> png;
     lodepng::State state;
-    state.info_png.iccp_defined = 1;
     std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
@@ -2455,12 +2455,63 @@ void testColorProfile() {
     }
     std::vector<unsigned char> png;
     lodepng::State state;
-    state.info_png.iccp_defined = 1;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
     lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NOT_EQUALS(0, error);  // must give error due to color image input with gray profile
+  }
+}
+
+void assertExifDataEqual(const lodepng::State& a, const lodepng::State& b) {
+  ASSERT_EQUALS(a.info_png.exif_defined, b.info_png.exif_defined);
+  if(!a.info_png.exif_defined) return;
+
+  ASSERT_EQUALS(a.info_png.exif_size, b.info_png.exif_size);
+  for(size_t i = 0; i < a.info_png.exif_size; i++) {
+    ASSERT_EQUALS(a.info_png.exif[i], b.info_png.exif[i]);
+  }
+}
+
+void testExif() {
+  std::cout << "testExif" << std::endl;
+
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i + 4 <= image.size(); i += 4) {
+      image[i] = image[i + 1] = image[i + 2] = image[i + 3] = i;
+    }
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    std::string testexif = "MM  0123456789";
+    lodepng_set_exif(&state.info_png, (const unsigned char*)testexif.c_str(), testexif.size());
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertExifDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+  }
+
+  {
+    // exif2c08.png PngSuite image
+    std::string base64 = "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";
+    std::vector<unsigned char> png;
+    fromBase64(png, base64);
+    lodepng::State state;
+    std::vector<unsigned char> image;
+    unsigned w, h;
+    unsigned error = lodepng::decode(image, w, h, state, png);
+    ASSERT_NO_PNG_ERROR(error);
+    ASSERT_EQUALS(978, state.info_png.exif_size);
+    ASSERT_EQUALS("072f0ad39affebf437689f935fab270c", md5sum(state.info_png.exif, state.info_png.exif_size));
   }
 }
 
@@ -3790,6 +3841,7 @@ void doMain() {
   testPaletteToPaletteDecode();
   testPaletteToPaletteDecode2();
   testColorProfile();
+  testExif();
   testBkgdChunk();
   testBkgdChunk2();
   testSbitChunk();

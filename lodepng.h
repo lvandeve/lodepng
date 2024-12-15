@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241015
+LodePNG version 20241215
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -550,6 +550,18 @@ typedef struct LodePNGInfo {
   char** itext_transkeys; /*keyword translated to the international language - UTF-8 string*/
   char** itext_strings; /*the actual international text - UTF-8 string*/
 
+  /*
+  Optional exif metadata in exif_size bytes.
+  Don't allocate this buffer yourself. Use the init/cleanup functions
+  correctly and use lodepng_set_exif and lodepng_clear_exif.
+  The exif data is in exif-encoded form but without JPEG markers, starting with the 'II' or 'MM' marker that indicates
+  endianness. It's up to an exif handling library to encode/decode its information.
+  */
+  unsigned exif_defined; /* Whether exif metadata is present, that is, the PNG image has an eXIf chunk */
+  unsigned char* exif; /* The bytes of the exif metadata, if present */
+  unsigned exif_size; /* The size of the exif data in bytes */
+
+
   /*time chunk (tIME)*/
   unsigned time_defined; /*set to 1 to make the encoder generate a tIME chunk*/
   LodePNGTime time;
@@ -704,7 +716,11 @@ void lodepng_clear_itext(LodePNGInfo* info); /*use this to clear the itexts agai
 
 /*replaces if exists*/
 unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size);
-void lodepng_clear_icc(LodePNGInfo* info); /*use this to clear the texts again after you filled them in*/
+void lodepng_clear_icc(LodePNGInfo* info); /*use this to clear the profile again after you filled it in*/
+
+/*replaces if exists*/
+unsigned lodepng_set_exif(LodePNGInfo* info, const unsigned char* exif, unsigned exif_size);
+void lodepng_clear_exif(LodePNGInfo* info); /*use this to clear the exif metadata again after you filled it in*/
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
 /*
@@ -1175,7 +1191,8 @@ TODO:
 [.] check compatibility with various compilers  - done but needs to be redone for every newer version
 [X] converting color to 16-bit per channel types
 [X] support color profile chunk types (but never let them touch RGB values by default)
-[ ] support all public PNG chunk types (almost done except sPLT and hIST)
+[ ] support all second edition public PNG chunk types (almost done except sPLT and hIST)
+[ ] support non-animation third edition public PNG chunk types: eXIf, cICP, mDCv, cLLi
 [ ] make sure encoder generates no chunks with size > (2^31)-1
 [ ] partial decoding (stream processing)
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
@@ -1915,6 +1932,7 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 15 dec 2024: added support for the eXIf chunk (for png third edition spec)
 *) 10 apr 2023: faster CRC32 implementation, but with larger lookup table.
 *) 13 jun 2022: added support for the sBIT chunk.
 *) 09 jan 2022: minor decoder speed improvements.
@@ -2074,19 +2092,4 @@ https://github.com/lvandeve/lodepng
 *) 22 apr 2006: Optimized and improved some code
 *) 07 sep 2005: (!) Changed to std::vector interface
 *) 12 aug 2005: Initial release (C++, decoder only)
-
-
-13. contact information
------------------------
-
-Feel free to contact me with suggestions, problems, comments, ... concerning
-LodePNG. If you encounter a PNG image that doesn't work properly with this
-decoder, feel free to send it and I'll use it to find and fix the problem.
-
-My email address is (puzzle the account and domain together with an @ symbol):
-Domain: gmail dot com.
-Account: lode dot vandevenne.
-
-
-Copyright (c) 2005-2022 Lode Vandevenne
 */
