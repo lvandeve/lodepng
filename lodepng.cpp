@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241215
+LodePNG version 20241222
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20241215";
+const char* LODEPNG_VERSION_STRING = "20241222";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -3337,6 +3337,11 @@ void lodepng_info_init(LodePNGInfo* info) {
   info->iccp_defined = 0;
   info->iccp_name = NULL;
   info->iccp_profile = NULL;
+  info->cicp_defined = 0;
+  info->cicp_color_primaries = 0;
+  info->cicp_transfer_function = 0;
+  info->cicp_matrix_coefficients = 0;
+  info->cicp_video_full_range_flag = 0;
 
   info->exif_defined = 0;
   info->exif = NULL;
@@ -5102,6 +5107,20 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* 
   return error;
 }
 
+static unsigned readChunk_cICP(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
+  if(chunkLength != 4) return 117; /*invalid cICP chunk size*/
+
+  info->cicp_defined = 1;
+  /* No error checking for value ranges is done here, that is up to a CICP
+  handling library, not the PNG decoding. Just pass on the metadata. */
+  info->cicp_color_primaries = data[0];
+  info->cicp_transfer_function = data[1];
+  info->cicp_matrix_coefficients = data[2];
+  info->cicp_video_full_range_flag = data[3];
+
+  return 0; /* OK */
+}
+
 static unsigned readChunk_eXIf(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
   return lodepng_set_exif(info, data, (unsigned)chunkLength);
 }
@@ -5187,6 +5206,8 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
     error = readChunk_sRGB(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
     error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
+  } else if(lodepng_chunk_type_equals(chunk, "cICP")) {
+    error = readChunk_cICP(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
     error = readChunk_eXIf(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "sBIT")) {
@@ -5335,6 +5356,9 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "iCCP")) {
       state->error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
+      if(state->error) break;
+    } else if(lodepng_chunk_type_equals(chunk, "cICP")) {
+      state->error = readChunk_cICP(&state->info_png, data, chunkLength);
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
       state->error = readChunk_eXIf(&state->info_png, data, chunkLength);
@@ -5843,6 +5867,24 @@ static unsigned addChunk_iCCP(ucvector* out, const LodePNGInfo* info, LodePNGCom
 
   lodepng_free(compressed);
   return error;
+}
+
+static unsigned addChunk_cICP(ucvector* out, const LodePNGInfo* info) {
+  unsigned char* chunk;
+  /* Allow up to 255 since they are bytes. The ITU-R-BT.709 spec has a more
+  restricted set of valid values for each field, but that's up to the error
+  handling of a CICP library, not the PNG encoding/decoding, to manage. */
+  if(info->cicp_color_primaries > 255) return 116;
+  if(info->cicp_transfer_function > 255) return 116;
+  if(info->cicp_matrix_coefficients > 255) return 116;
+  if(info->cicp_video_full_range_flag > 255) return 116;
+  CERROR_TRY_RETURN(lodepng_chunk_init(&chunk, out, 4, "cICP"));
+  chunk[8 + 0] = (unsigned char)info->cicp_color_primaries;
+  chunk[8 + 1] = (unsigned char)info->cicp_transfer_function;
+  chunk[8 + 2] = (unsigned char)info->cicp_matrix_coefficients;
+  chunk[8 + 3] = (unsigned char)info->cicp_video_full_range_flag;
+  lodepng_chunk_generate_crc(chunk);
+  return 0;
 }
 
 static unsigned addChunk_eXIf(ucvector* out, const LodePNGInfo* info) {
@@ -6522,6 +6564,10 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       if(state->error) goto cleanup;
     }
     /*color profile chunks must come before PLTE */
+    if(info.cicp_defined) {
+      state->error = addChunk_cICP(&outv, &info);
+      if(state->error) goto cleanup;
+    }
     if(info.iccp_defined) {
       state->error = addChunk_iCCP(&outv, &info, &state->encoder.zlibsettings);
       if(state->error) goto cleanup;
@@ -6849,6 +6895,8 @@ const char* lodepng_error_text(unsigned code) {
     case 113: return "ICC profile unreasonably large";
     case 114: return "sBIT chunk has wrong size for the color type of the image";
     case 115: return "sBIT value out of range";
+    case 116: return "cICP value out of range";
+    case 117: return "invalid cICP chunk size";
   }
   return "unknown error code";
 }

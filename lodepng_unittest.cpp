@@ -2269,6 +2269,14 @@ void assertColorProfileDataEqual(const lodepng::State& a, const lodepng::State& 
     ASSERT_EQUALS(a.info_png.srgb_intent, b.info_png.srgb_intent);
   }
 
+  ASSERT_EQUALS(a.info_png.cicp_defined, b.info_png.cicp_defined);
+  if(a.info_png.cicp_defined) {
+    ASSERT_EQUALS(a.info_png.cicp_color_primaries, b.info_png.cicp_color_primaries);
+    ASSERT_EQUALS(a.info_png.cicp_transfer_function, b.info_png.cicp_transfer_function);
+    ASSERT_EQUALS(a.info_png.cicp_matrix_coefficients, b.info_png.cicp_matrix_coefficients);
+    ASSERT_EQUALS(a.info_png.cicp_video_full_range_flag, b.info_png.cicp_video_full_range_flag);
+  }
+
   ASSERT_EQUALS(a.info_png.iccp_defined, b.info_png.iccp_defined);
   if(a.info_png.iccp_defined) {
     //ASSERT_EQUALS(std::string(a.info_png.iccp_name), std::string(b.info_png.iccp_name));
@@ -2322,6 +2330,31 @@ void testColorProfile() {
     lodepng::State state;
     state.info_png.srgb_defined = 1;
     state.info_png.srgb_intent = 2;
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.cicp_defined = 1;
+    state.info_png.cicp_color_primaries = 4;
+    state.info_png.cicp_transfer_function = 3;
+    state.info_png.cicp_matrix_coefficients = 2;
+    state.info_png.cicp_video_full_range_flag = 1;
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 

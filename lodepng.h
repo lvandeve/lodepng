@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241215
+LodePNG version 20241222
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -573,20 +573,32 @@ typedef struct LodePNGInfo {
   unsigned phys_unit; /*may be 0 (unknown unit) or 1 (metre)*/
 
   /*
-  Color profile related chunks: gAMA, cHRM, sRGB, iCPP, sBIT
+  Color profile related chunk types: cICP, iCPP, sRGB, gAMA, cHRM, sBIT
 
   LodePNG does not apply any color conversions on pixels in the encoder or decoder and does not interpret these color
-  profile values. It merely passes on the information. If you wish to use color profiles and convert colors, please
-  use these values with a color management library.
+  profile values. It merely passes on the information. If you wish to use color profiles and convert colors, a separate
+  color management library should be used. There is also a limited library for this in lodepng_util.h.
 
-  See the PNG, ICC and sRGB specifications for more information about the meaning of these values.
+  There are 4 types of (sets of) chunks providing color information (excluding sBIT which is orthogonal to this). If
+  multiple are present, each will be decoded by LodePNG, but only one should be handled by the user, with the
+  following order of priority depending on what the user supports:
+  1: cICP: Coding-independent code points (CICP)
+  2: iCCP: ICC profile
+  3: sRGB: indicates the image is in the sRGB color profile
+  4: gAMA and cHRM: indicates a gamma and chromaticity value to define the color profile
   */
 
-  /* gAMA chunk: optional, overridden by sRGB or iCCP if those are present. */
+  /*
+  gAMA chunk: optional, overridden by cICP, iCCP or sRGB if those are present.
+  Together with cHRM, this is a primitive way of specifying the image color profile.
+  */
   unsigned gama_defined; /* Whether a gAMA chunk is present (0 = not present, 1 = present). */
   unsigned gama_gamma;   /* Gamma exponent times 100000 */
 
-  /* cHRM chunk: optional, overridden by sRGB or iCCP if those are present. */
+  /*
+  cHRM chunk: optional, overridden by cICP, iCCP or sRGB if those are present.
+  Together with gAMA, this is a primitive way of specifying the image color profile.
+  */
   unsigned chrm_defined; /* Whether a cHRM chunk is present (0 = not present, 1 = present). */
   unsigned chrm_white_x; /* White Point x times 100000 */
   unsigned chrm_white_y; /* White Point y times 100000 */
@@ -598,7 +610,7 @@ typedef struct LodePNGInfo {
   unsigned chrm_blue_y;  /* Blue y times 100000 */
 
   /*
-  sRGB chunk: optional. May not appear at the same time as iCCP.
+  sRGB chunk: optional. Should not appear at the same time as iCCP.
   If gAMA is also present gAMA must contain value 45455.
   If cHRM is also present cHRM must contain respectively 31270,32900,64000,33000,30000,60000,15000,6000.
   */
@@ -606,22 +618,24 @@ typedef struct LodePNGInfo {
   unsigned srgb_intent;  /* Rendering intent: 0=perceptual, 1=rel. colorimetric, 2=saturation, 3=abs. colorimetric */
 
   /*
-  iCCP chunk: optional. May not appear at the same time as sRGB.
+  iCCP chunk: optional. Should not appear at the same time as sRGB.
 
-  LodePNG does not parse or use the ICC profile (except its color space header field for an edge case), a
-  separate library to handle the ICC data (not included in LodePNG) format is needed to use it for color
+  Contains ICC profile, which can use any version of the ICC.1 specification by the International Color Consortium. See
+  its specification for more details. LodePNG does not parse or use the ICC profile (except its color space header
+  field for "RGB" or "GRAY", see below), a separate library to handle the ICC data format is needed to use it for color
   management and conversions.
 
-  For encoding, if iCCP is present, gAMA and cHRM are recommended to be added as well with values that match the ICC
-  profile as closely as possible, if you wish to do this you should provide the correct values for gAMA and cHRM and
-  enable their '_defined' flags since LodePNG will not automatically compute them from the ICC profile.
+  For encoding, if iCCP is present, the PNG specification recommends to also add gAMA and cHRM chunks that approximate
+  the ICC profile, for compatibility with applications that don't use the ICC chunk. This is not required, and it's up
+  to the user to compute approximate values and set then in the appropriate gama_ and chrm_ fields, LodePNG does not do
+  this automatically since it does not interpret the ICC profile.
 
-  For encoding, the ICC profile is required by the PNG specification to be an "RGB" profile for non-gray
-  PNG color types and a "GRAY" profile for gray PNG color types. If you disable auto_convert, you must ensure
-  the ICC profile type matches your requested color type, else the encoder gives an error. If auto_convert is
-  enabled (the default), and the ICC profile is not a good match for the pixel data, this will result in an encoder
-  error if the pixel data has non-gray pixels for a GRAY profile, or a silent less-optimal compression of the pixel
-  data if the pixels could be encoded as grayscale but the ICC profile is RGB.
+  For encoding, the ICC profile is required by the PNG specification to be an "RGB" profile for non-gray PNG color
+  types (types 2, 3 and 6) and a "GRAY" profile for gray PNG color types (types 1 and 4). If you disable auto_convert,
+  you must ensure the ICC profile type matches your requested color type, else the encoder gives an error. If
+  auto_convert is enabled (the default), and the ICC profile is not a correct match for the pixel data, this will result
+  in an encoder error if the pixel data has non-gray pixels for a GRAY profile, or a silent less-optimal compression of
+  the pixel data if the pixels could be encoded as grayscale but the ICC profile is RGB.
 
   To avoid this do not set an ICC profile in the image unless there is a good reason for it, and when doing so
   make sure you compute it carefully to avoid the above problems.
@@ -635,6 +649,20 @@ typedef struct LodePNGInfo {
   */
   unsigned char* iccp_profile;
   unsigned iccp_profile_size; /* The size of iccp_profile in bytes */
+
+  /*
+  cICP chunk: optional. If present, and supported, overrides iCCP, sRGB, gAMA and cHRM.
+  The meaning of the values are as defined in the specification ITU-T-H.273. LodePNG does not
+  use these values, only passes on the metadata. The meaning of the values is they are enum
+  values representing certain color spaces, including HDR color spaces, such as Display P3,
+  PQ and HLG. The video full range flag value should typically be 1 for the use cases of PNG
+  images, but can be 0 for narrow-range images in certain video editing workflows.
+  */
+  unsigned cicp_defined; /* Whether an cICP chunk is present (0 = not present, 1 = present). */
+  unsigned cicp_color_primaries; /* Colour primaries value */
+  unsigned cicp_transfer_function; /* Transfer characteristics value */
+  unsigned cicp_matrix_coefficients; /* Matrix coefficients value */
+  unsigned cicp_video_full_range_flag; /* Video full range flag value */
 
   /*
   sBIT chunk: significant bits. Optional metadata, only set this if needed.
@@ -1932,6 +1960,7 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 22 dec 2024: added support for the cICP chunk (for png third edition spec)
 *) 15 dec 2024: added support for the eXIf chunk (for png third edition spec)
 *) 10 apr 2023: faster CRC32 implementation, but with larger lookup table.
 *) 13 jun 2022: added support for the sBIT chunk.
