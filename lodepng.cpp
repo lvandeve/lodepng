@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241222
+LodePNG version 20241223
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20241222";
+const char* LODEPNG_VERSION_STRING = "20241223";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -3342,6 +3342,20 @@ void lodepng_info_init(LodePNGInfo* info) {
   info->cicp_transfer_function = 0;
   info->cicp_matrix_coefficients = 0;
   info->cicp_video_full_range_flag = 0;
+  info->mdcv_defined = 0;
+  info->mdcv_red_x = 0;
+  info->mdcv_red_y = 0;
+  info->mdcv_green_x = 0;
+  info->mdcv_green_y = 0;
+  info->mdcv_blue_x = 0;
+  info->mdcv_blue_y = 0;
+  info->mdcv_white_x = 0;
+  info->mdcv_white_y = 0;
+  info->mdcv_max_luminance = 0;
+  info->mdcv_min_luminance = 0;
+  info->clli_defined = 0;
+  info->clli_max_cll = 0;
+  info->clli_max_fall = 0;
 
   info->exif_defined = 0;
   info->exif = NULL;
@@ -5121,6 +5135,34 @@ static unsigned readChunk_cICP(LodePNGInfo* info, const unsigned char* data, siz
   return 0; /* OK */
 }
 
+static unsigned readChunk_mDCv(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
+  if(chunkLength != 24) return 119; /*invalid mDCv chunk size*/
+
+  info->mdcv_defined = 1;
+  info->mdcv_red_x = 256u * data[0] + data[1];
+  info->mdcv_red_y = 256u * data[2] + data[3];
+  info->mdcv_green_x = 256u * data[4] + data[5];
+  info->mdcv_green_y = 256u * data[6] + data[7];
+  info->mdcv_blue_x = 256u * data[8] + data[9];
+  info->mdcv_blue_y = 256u * data[10] + data[11];
+  info->mdcv_white_x = 256u * data[12] + data[13];
+  info->mdcv_white_y = 256u * data[14] + data[15];
+  info->mdcv_max_luminance = 16777216u * data[16] + 65536u * data[17] + 256u * data[18] + data[19];
+  info->mdcv_min_luminance = 16777216u * data[20] + 65536u * data[21] + 256u * data[22] + data[23];
+
+  return 0; /* OK */
+}
+
+static unsigned readChunk_cLLi(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
+  if(chunkLength != 8) return 120; /*invalid cLLi chunk size*/
+
+  info->clli_defined = 1;
+  info->clli_max_cll = 16777216u * data[0] + 65536u * data[1] + 256u * data[2] + data[3];
+  info->clli_max_fall = 16777216u * data[4] + 65536u * data[5] + 256u * data[6] + data[7];
+
+  return 0; /* OK */
+}
+
 static unsigned readChunk_eXIf(LodePNGInfo* info, const unsigned char* data, size_t chunkLength) {
   return lodepng_set_exif(info, data, (unsigned)chunkLength);
 }
@@ -5208,6 +5250,10 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
     error = readChunk_iCCP(&state->info_png, &state->decoder, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "cICP")) {
     error = readChunk_cICP(&state->info_png, data, chunkLength);
+  } else if(lodepng_chunk_type_equals(chunk, "mDCv")) {
+    error = readChunk_mDCv(&state->info_png, data, chunkLength);
+  } else if(lodepng_chunk_type_equals(chunk, "cLLi")) {
+    error = readChunk_cLLi(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
     error = readChunk_eXIf(&state->info_png, data, chunkLength);
   } else if(lodepng_chunk_type_equals(chunk, "sBIT")) {
@@ -5359,6 +5405,12 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "cICP")) {
       state->error = readChunk_cICP(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    } else if(lodepng_chunk_type_equals(chunk, "mDCv")) {
+      state->error = readChunk_mDCv(&state->info_png, data, chunkLength);
+      if(state->error) break;
+    } else if(lodepng_chunk_type_equals(chunk, "cLLi")) {
+      state->error = readChunk_cLLi(&state->info_png, data, chunkLength);
       if(state->error) break;
     } else if(lodepng_chunk_type_equals(chunk, "eXIf")) {
       state->error = readChunk_eXIf(&state->info_png, data, chunkLength);
@@ -5883,6 +5935,49 @@ static unsigned addChunk_cICP(ucvector* out, const LodePNGInfo* info) {
   chunk[8 + 1] = (unsigned char)info->cicp_transfer_function;
   chunk[8 + 2] = (unsigned char)info->cicp_matrix_coefficients;
   chunk[8 + 3] = (unsigned char)info->cicp_video_full_range_flag;
+  lodepng_chunk_generate_crc(chunk);
+  return 0;
+}
+
+static unsigned addChunk_mDCv(ucvector* out, const LodePNGInfo* info) {
+  unsigned char* chunk;
+  /* Allow up to 65535 since they are 16-bit ints. */
+  if(info->mdcv_red_x > 65535) return 118;
+  if(info->mdcv_red_y > 65535) return 118;
+  if(info->mdcv_green_x > 65535) return 118;
+  if(info->mdcv_green_y > 65535) return 118;
+  if(info->mdcv_blue_x > 65535) return 118;
+  if(info->mdcv_blue_y > 65535) return 118;
+  if(info->mdcv_white_x > 65535) return 118;
+  if(info->mdcv_white_y > 65535) return 118;
+  CERROR_TRY_RETURN(lodepng_chunk_init(&chunk, out, 24, "mDCv"));
+  chunk[8 + 0] = (unsigned char)((info->mdcv_red_x) >> 8u);
+  chunk[8 + 1] = (unsigned char)(info->mdcv_red_x);
+  chunk[8 + 2] = (unsigned char)((info->mdcv_red_y) >> 8u);
+  chunk[8 + 3] = (unsigned char)(info->mdcv_red_y);
+  chunk[8 + 4] = (unsigned char)((info->mdcv_green_x) >> 8u);
+  chunk[8 + 5] = (unsigned char)(info->mdcv_green_x);
+  chunk[8 + 6] = (unsigned char)((info->mdcv_green_y) >> 8u);
+  chunk[8 + 7] = (unsigned char)(info->mdcv_green_y);
+  chunk[8 + 8] = (unsigned char)((info->mdcv_blue_x) >> 8u);
+  chunk[8 + 9] = (unsigned char)(info->mdcv_blue_x);
+  chunk[8 + 10] = (unsigned char)((info->mdcv_blue_y) >> 8u);
+  chunk[8 + 11] = (unsigned char)(info->mdcv_blue_y);
+  chunk[8 + 12] = (unsigned char)((info->mdcv_white_x) >> 8u);
+  chunk[8 + 13] = (unsigned char)(info->mdcv_white_x);
+  chunk[8 + 14] = (unsigned char)((info->mdcv_white_y) >> 8u);
+  chunk[8 + 15] = (unsigned char)(info->mdcv_white_y);
+  lodepng_set32bitInt(chunk + 8 + 16, info->mdcv_max_luminance);
+  lodepng_set32bitInt(chunk + 8 + 20, info->mdcv_min_luminance);
+  lodepng_chunk_generate_crc(chunk);
+  return 0;
+}
+
+static unsigned addChunk_cLLi(ucvector* out, const LodePNGInfo* info) {
+  unsigned char* chunk;
+  CERROR_TRY_RETURN(lodepng_chunk_init(&chunk, out, 8, "cLLi"));
+  lodepng_set32bitInt(chunk + 8 + 0, info->clli_max_cll);
+  lodepng_set32bitInt(chunk + 8 + 4, info->clli_max_fall);
   lodepng_chunk_generate_crc(chunk);
   return 0;
 }
@@ -6568,6 +6663,14 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       state->error = addChunk_cICP(&outv, &info);
       if(state->error) goto cleanup;
     }
+    if(info.mdcv_defined) {
+      state->error = addChunk_mDCv(&outv, &info);
+      if(state->error) goto cleanup;
+    }
+    if(info.clli_defined) {
+      state->error = addChunk_cLLi(&outv, &info);
+      if(state->error) goto cleanup;
+    }
     if(info.iccp_defined) {
       state->error = addChunk_iCCP(&outv, &info, &state->encoder.zlibsettings);
       if(state->error) goto cleanup;
@@ -6897,6 +7000,9 @@ const char* lodepng_error_text(unsigned code) {
     case 115: return "sBIT value out of range";
     case 116: return "cICP value out of range";
     case 117: return "invalid cICP chunk size";
+    case 118: return "mDCv value out of range";
+    case 119: return "invalid mDCv chunk size";
+    case 120: return "invalid cLLi chunk size";
   }
   return "unknown error code";
 }

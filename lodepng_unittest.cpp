@@ -2277,6 +2277,26 @@ void assertColorProfileDataEqual(const lodepng::State& a, const lodepng::State& 
     ASSERT_EQUALS(a.info_png.cicp_video_full_range_flag, b.info_png.cicp_video_full_range_flag);
   }
 
+  ASSERT_EQUALS(a.info_png.mdcv_defined, b.info_png.mdcv_defined);
+  if(a.info_png.mdcv_defined) {
+    ASSERT_EQUALS(a.info_png.mdcv_red_x, b.info_png.mdcv_red_x);
+    ASSERT_EQUALS(a.info_png.mdcv_red_y, b.info_png.mdcv_red_y);
+    ASSERT_EQUALS(a.info_png.mdcv_green_x, b.info_png.mdcv_green_x);
+    ASSERT_EQUALS(a.info_png.mdcv_green_y, b.info_png.mdcv_green_y);
+    ASSERT_EQUALS(a.info_png.mdcv_blue_x, b.info_png.mdcv_blue_x);
+    ASSERT_EQUALS(a.info_png.mdcv_blue_y, b.info_png.mdcv_blue_y);
+    ASSERT_EQUALS(a.info_png.mdcv_white_x, b.info_png.mdcv_white_x);
+    ASSERT_EQUALS(a.info_png.mdcv_white_y, b.info_png.mdcv_white_y);
+    ASSERT_EQUALS(a.info_png.mdcv_max_luminance, b.info_png.mdcv_max_luminance);
+    ASSERT_EQUALS(a.info_png.mdcv_min_luminance, b.info_png.mdcv_min_luminance);
+  }
+
+  ASSERT_EQUALS(a.info_png.clli_defined, b.info_png.clli_defined);
+  if(a.info_png.clli_defined) {
+    ASSERT_EQUALS(a.info_png.clli_max_cll, b.info_png.clli_max_cll);
+    ASSERT_EQUALS(a.info_png.clli_max_fall, b.info_png.clli_max_fall);
+  }
+
   ASSERT_EQUALS(a.info_png.iccp_defined, b.info_png.iccp_defined);
   if(a.info_png.iccp_defined) {
     //ASSERT_EQUALS(std::string(a.info_png.iccp_name), std::string(b.info_png.iccp_name));
@@ -2355,6 +2375,60 @@ void testColorProfile() {
     state.info_png.cicp_transfer_function = 3;
     state.info_png.cicp_matrix_coefficients = 2;
     state.info_png.cicp_video_full_range_flag = 1;
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.mdcv_defined = 1;
+    state.info_png.mdcv_red_x = 2;
+    state.info_png.mdcv_red_y = 3;
+    state.info_png.mdcv_green_x = 4;
+    state.info_png.mdcv_green_y = 5;
+    state.info_png.mdcv_blue_x = 6;
+    state.info_png.mdcv_blue_y = 7;
+    state.info_png.mdcv_white_x = 8;
+    state.info_png.mdcv_white_y = 9;
+    state.info_png.mdcv_max_luminance = 10;
+    state.info_png.mdcv_min_luminance = 11;
+    error = lodepng::encode(png, &image[0], w, h, state);
+    ASSERT_NO_PNG_ERROR(error);
+
+    lodepng::State state2;
+    std::vector<unsigned char> image2;
+    error = lodepng::decode(image2, w, h, state2, png);
+    ASSERT_NO_PNG_ERROR(error);
+    assertColorProfileDataEqual(state, state2);
+    ASSERT_EQUALS(32, w);
+    ASSERT_EQUALS(32, h);
+    ASSERT_EQUALS(image.size(), image2.size());
+    for(size_t i = 0; i < image.size(); i++) ASSERT_EQUALS(image[i], image2[i]);
+  }
+  {
+    unsigned error;
+    unsigned w = 32, h = 32;
+    std::vector<unsigned char> image(w * h * 4);
+    for(size_t i = 0; i < image.size(); i++) image[i] = i & 255;
+    std::vector<unsigned char> png;
+    lodepng::State state;
+    state.info_png.clli_defined = 1;
+    state.info_png.clli_max_cll = 2;
+    state.info_png.clli_max_fall = 3;
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 

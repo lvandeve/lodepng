@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241222
+LodePNG version 20241223
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -579,9 +579,9 @@ typedef struct LodePNGInfo {
   profile values. It merely passes on the information. If you wish to use color profiles and convert colors, a separate
   color management library should be used. There is also a limited library for this in lodepng_util.h.
 
-  There are 4 types of (sets of) chunks providing color information (excluding sBIT which is orthogonal to this). If
-  multiple are present, each will be decoded by LodePNG, but only one should be handled by the user, with the
-  following order of priority depending on what the user supports:
+  There are 4 types of (sets of) chunks providing color information. If multiple are present, each will be decoded by
+  LodePNG, but only one should be handled by the user, with the following order of priority depending on what the user
+  supports:
   1: cICP: Coding-independent code points (CICP)
   2: iCCP: ICC profile
   3: sRGB: indicates the image is in the sRGB color profile
@@ -589,14 +589,16 @@ typedef struct LodePNGInfo {
   */
 
   /*
-  gAMA chunk: optional, overridden by cICP, iCCP or sRGB if those are present.
+  gAMA chunk: Image gamma
+  Optional, overridden by cICP, iCCP or sRGB if those are present.
   Together with cHRM, this is a primitive way of specifying the image color profile.
   */
   unsigned gama_defined; /* Whether a gAMA chunk is present (0 = not present, 1 = present). */
   unsigned gama_gamma;   /* Gamma exponent times 100000 */
 
   /*
-  cHRM chunk: optional, overridden by cICP, iCCP or sRGB if those are present.
+  cHRM chunk: Primary chromaticities and white point
+  Optional, overridden by cICP, iCCP or sRGB if those are present.
   Together with gAMA, this is a primitive way of specifying the image color profile.
   */
   unsigned chrm_defined; /* Whether a cHRM chunk is present (0 = not present, 1 = present). */
@@ -610,7 +612,8 @@ typedef struct LodePNGInfo {
   unsigned chrm_blue_y;  /* Blue y times 100000 */
 
   /*
-  sRGB chunk: optional. Should not appear at the same time as iCCP.
+  sRGB chunk: Indicates the image is in the sRGB color space.
+  Optional. Should not appear at the same time as iCCP.
   If gAMA is also present gAMA must contain value 45455.
   If cHRM is also present cHRM must contain respectively 31270,32900,64000,33000,30000,60000,15000,6000.
   */
@@ -618,7 +621,8 @@ typedef struct LodePNGInfo {
   unsigned srgb_intent;  /* Rendering intent: 0=perceptual, 1=rel. colorimetric, 2=saturation, 3=abs. colorimetric */
 
   /*
-  iCCP chunk: optional. Should not appear at the same time as sRGB.
+  iCCP chunk: Embedded ICC profile.
+  Optional. Should not appear at the same time as sRGB.
 
   Contains ICC profile, which can use any version of the ICC.1 specification by the International Color Consortium. See
   its specification for more details. LodePNG does not parse or use the ICC profile (except its color space header
@@ -651,7 +655,8 @@ typedef struct LodePNGInfo {
   unsigned iccp_profile_size; /* The size of iccp_profile in bytes */
 
   /*
-  cICP chunk: optional. If present, and supported, overrides iCCP, sRGB, gAMA and cHRM.
+  cICP chunk: Coding-independent code points for video signal type identification.
+  Optional. If present, and supported, overrides iCCP, sRGB, gAMA and cHRM.
   The meaning of the values are as defined in the specification ITU-T-H.273. LodePNG does not
   use these values, only passes on the metadata. The meaning of the values is they are enum
   values representing certain color spaces, including HDR color spaces, such as Display P3,
@@ -665,7 +670,43 @@ typedef struct LodePNGInfo {
   unsigned cicp_video_full_range_flag; /* Video full range flag value */
 
   /*
-  sBIT chunk: significant bits. Optional metadata, only set this if needed.
+  mDCv chunk: Mastering Display Color Volume.
+  Optional, typically used in conjunction with certain HDR color spaces that can
+  be represented by the cICP chunk.
+  See the PNG specification, third edition, for more information on this chunk.
+  All the red, green, blue and white x and y values are encoded as 16-bit
+  integers and therefore must be in range 0-65536. The min and max luminance
+  values are 32-bit integers.
+  */
+  unsigned mdcv_defined; /* Whether a mDCv chunk is present (0 = not present, 1 = present). */
+  /* Mastering display color primary chromaticities (CIE 1931 x,y of R,G,B) */
+  unsigned mdcv_red_x;   /* Red x times 50000 */
+  unsigned mdcv_red_y;   /* Red y times 50000 */
+  unsigned mdcv_green_x; /* Green x times 50000 */
+  unsigned mdcv_green_y; /* Green y times 50000 */
+  unsigned mdcv_blue_x;  /* Blue x times 50000 */
+  unsigned mdcv_blue_y;  /* Blue y times 50000 */
+  /* Mastering display white point chromaticity (CIE 1931 x,y) */
+  unsigned mdcv_white_x; /* White Point x times 50000 */
+  unsigned mdcv_white_y; /* White Point y times 50000 */
+  /* Mastering display luminance */
+  unsigned mdcv_max_luminance; /* Max luminance in cd/m^2 times 10000 */
+  unsigned mdcv_min_luminance; /* Min luminance in cd/m^2 times 10000 */
+
+  /*
+  cLLi chunk: Content Light Level Information.
+  Optional, typically used in conjunction with certain HDR color spaces that can
+  be represented by the cICP chunk.
+  See the PNG specification, third edition, for more information on this chunk.
+  The clli_max_cll and clli_max_fall values are 32-bit integers.
+  */
+  unsigned clli_defined; /* Whether a cLLi chunk is present (0 = not present, 1 = present). */
+  unsigned clli_max_cll; /* Maximum Content Light Level (MaxCLL) in cd/m^2 times 10000 */
+  unsigned clli_max_fall; /* Maximum Frame-Average Light Level (MaxFALL) in cd/m^2 times 10000 */
+
+  /*
+  sBIT chunk: significant bits.
+  Optional metadata, only set this if needed.
 
   If defined, these values give the bit depth of the original data. Since PNG only stores 1, 2, 4, 8 or 16-bit
   per channel data, the significant bits value can be used to indicate the original encoded data has another
@@ -1220,7 +1261,7 @@ TODO:
 [X] converting color to 16-bit per channel types
 [X] support color profile chunk types (but never let them touch RGB values by default)
 [ ] support all second edition public PNG chunk types (almost done except sPLT and hIST)
-[ ] support non-animation third edition public PNG chunk types: eXIf, cICP, mDCv, cLLi
+[X] support non-animation third edition public PNG chunk types: eXIf, cICP, mDCv, cLLi
 [ ] make sure encoder generates no chunks with size > (2^31)-1
 [ ] partial decoding (stream processing)
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
@@ -1960,6 +2001,8 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 23 dec 2024: added support for the mDCv and cLLi chunks (for png third
+   edition spec)
 *) 22 dec 2024: added support for the cICP chunk (for png third edition spec)
 *) 15 dec 2024: added support for the eXIf chunk (for png third edition spec)
 *) 10 apr 2023: faster CRC32 implementation, but with larger lookup table.
