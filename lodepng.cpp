@@ -6108,21 +6108,11 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
   unsigned error = 0;
   LodePNGFilterStrategy strategy = settings->filter_strategy;
 
-  /*
-  There is a heuristic called the minimum sum of absolute differences heuristic, suggested by the PNG standard:
-   *  If the image type is Palette, or the bit depth is smaller than 8, then do not filter the image (i.e.
-      use fixed filtering, with the filter None).
-   * (The other case) If the image type is Grayscale or RGB (with or without Alpha), and the bit depth is
-     not smaller than 8, then use adaptive filtering heuristic as follows: independently for each row, apply
-     all five filters and select the filter that produces the smallest sum of absolute values per row.
-  This heuristic is used if filter strategy is LFS_MINSUM and filter_palette_zero is true.
-
-  If filter_palette_zero is true and filter_strategy is not LFS_MINSUM, the above heuristic is followed,
-  but for "the other case", whatever strategy filter_strategy is set to instead of the minimum sum
-  heuristic is used.
-  */
-  if(settings->filter_palette_zero &&
-     (color->colortype == LCT_PALETTE || color->bitdepth < 8)) strategy = LFS_ZERO;
+  if(settings->filter_palette_zero && (color->colortype == LCT_PALETTE || color->bitdepth < 8)) {
+    /*if the filter_palette_zero setting is enabled, override the filter strategy with
+    zero for all scanlines for palette and less-than-8-bitdepth images*/
+    strategy = LFS_ZERO;
+  }
 
   if(bpp == 0) return 31; /*error: invalid color type*/
 
@@ -6136,7 +6126,8 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
       prevline = &in[inindex];
     }
   } else if(strategy == LFS_MINSUM) {
-    /*adaptive filtering*/
+    /*adaptive filtering: independently for each row, try all five filter types and select the one that produces the
+    smallest sum of absolute values per row.*/
     unsigned char* attempt[5]; /*five filtering attempts, one for each filter type*/
     size_t smallest = 0;
     unsigned char type, bestType = 0;

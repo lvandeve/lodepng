@@ -848,7 +848,8 @@ void lodepng_decoder_settings_init(LodePNGDecoderSettings* settings);
 #endif /*LODEPNG_COMPILE_DECODER*/
 
 #ifdef LODEPNG_COMPILE_ENCODER
-/*automatically use color type with less bits per pixel if losslessly possible. Default: AUTO*/
+/*strategy to use to choose the PNG filter per scanline. Strategies 0-4 correspond
+to each of the 5 filter types PNG supports, the next values are adaptive strategies*/
 typedef enum LodePNGFilterStrategy {
   /*every filter at zero*/
   LFS_ZERO = 0,
@@ -857,7 +858,8 @@ typedef enum LodePNGFilterStrategy {
   LFS_TWO = 2,
   LFS_THREE = 3,
   LFS_FOUR = 4,
-  /*Use filter that gives minimum sum, as described in the official PNG filter heuristic.*/
+  /*Use the filter out of the 5 above types that gives minimum sum, by trying each one. This is the adaptive filtering
+  suggested heuristic in the PNG standard chapter 'Filter selection'.*/
   LFS_MINSUM,
   /*Use the filter type that gives smallest Shannon entropy for this scanline. Depending
   on the image, this is better or worse than minsum.*/
@@ -908,10 +910,10 @@ typedef struct LodePNGEncoderSettings {
   Default: true*/
   unsigned auto_convert;
 
-  /*If true, follows the official PNG heuristic: if the PNG uses a palette or lower than
-  8 bit depth, set all filters to zero. Otherwise use the filter_strategy. Note that to
-  completely follow the official PNG heuristic, filter_palette_zero must be true and
-  filter_strategy must be LFS_MINSUM*/
+  /*If true, follows the suggestion in the PNG standard in chapter 'Filter selection': if the PNG uses
+  a palette or lower than 8 bit depth, set all filters to zero.
+  In other cases this will use the heuristic from the chosen filter_strategy. The PNG standard
+  suggests LFS_MINSUM for those cases.*/
   unsigned filter_palette_zero;
   /*Which filter strategy to use when not using zeroes due to filter_palette_zero.
   Set filter_palette_zero to 0 to ensure always using your chosen strategy. Default: LFS_MINSUM*/
