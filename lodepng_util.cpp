@@ -348,7 +348,7 @@ typedef struct {
   float* lut; /* for type 1 */
   size_t lut_size;
   float gamma; /* for type 2 and more */
-  float a, b, c, d, e, f; /* parameters for type 3-7 */
+  float a, b, c, d, e, f; /* parameters for type 3-6 */
 } LodePNGICCCurve;
 
 void lodepng_icc_curve_init(LodePNGICCCurve* curve) {

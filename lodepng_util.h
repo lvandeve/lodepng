@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2023 Lode Vandevenne
+Copyright (c) 2005-2024 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -211,7 +211,7 @@ unsigned convertToXYZ(float* out, float whitepoint[3],
 
 /*
 Same as convertToXYZ but takes floating point input. Slower.
-The main black..white range in 0..1. Does not clip values that are outside that range.
+The main black..white range is 0..1. Does not clip values that are outside that range.
 */
 unsigned convertToXYZFloat(float* out, float whitepoint[3], const float* in,
                            unsigned w, unsigned h, const LodePNGState* state);
@@ -245,7 +245,7 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
 
 /*
 Same as convertFromXYZ but outputs the RGB colors in floating point.
-The main black..white range in 0..1. Does not clip values that are outside that range.
+The main black..white range is 0..1. Does not clip values that are outside that range.
 */
 unsigned convertFromXYZFloat(float* out, const float* in, unsigned w, unsigned h,
                              const LodePNGState* state,
