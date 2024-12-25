@@ -76,6 +76,7 @@ void showHelp() {
                "-c: show PNG chunks\n"
                "-C: show PNG chunks (alternate format)\n"
                "-f: show PNG filters\n"
+               "-z: show Zlib info\n"
                "-v: be more verbose\n"
                "-t: expand long texts\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
@@ -120,6 +121,7 @@ struct Options {
   bool show_chunks; //show the PNG chunk names and their lengths
   bool show_chunks2; //alternate form to print chunks
   bool show_filters; //show the PNG filter of each scanline (not supported for interlaced PNGs currently)
+  bool show_zlib_info; //show basic zlib info
   bool use_hex; //show some sizes or positions in hexadecimal
 
   Options() : verbose(false), expand_long_texts(false),
@@ -128,7 +130,8 @@ struct Options {
               show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
               hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
-              show_chunks(false), show_chunks2(false), show_filters(false), use_hex(false) {
+              show_chunks(false), show_chunks2(false), show_filters(false),
+              show_zlib_info(false), use_hex(false) {
   }
 };
 
@@ -154,7 +157,6 @@ struct Data {
   bool is_exif; // the file is a raw exif file, not a PNG, only option -e is useful
 
   Data(const std::string& filename) : filename(filename), error(0), inspected(false), is_png(false), is_icc(false), is_exif(false) {}
-
 
   // Load the file if not already loaded
   void loadFile() {
@@ -684,6 +686,59 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer, const Option
   } else {
     std::cout << "Pixel palette indices: not shown, not a palette image\n" << std::endl;
   }
+}
+
+void printZlibInfo(Data& data) {
+  data.loadFile();
+  if(data.error || !data.isPng()) return;
+  const std::vector<unsigned char>& png = data.buffer;
+
+  //Read literal data from all IDAT chunks
+  const unsigned char *chunk, *begin, *end;
+  end = &png.back() + 1;
+  begin = chunk = &png.front() + 8;
+
+  std::vector<unsigned char> compressed;
+
+  while(chunk < end && end - chunk >= 8) {
+    char type[5];
+    lodepng_chunk_type(type, chunk);
+    if(std::string(type).size() != 4) {
+      std::cout << "invalid png" << std::endl;
+      return;
+    }
+
+    if(std::string(type) == "IDAT") {
+      const unsigned char* cdata = lodepng_chunk_data_const(chunk);
+      unsigned clength = lodepng_chunk_length(chunk);
+      if(chunk + clength + 12 > end || clength > png.size() || chunk + clength + 12 < begin) {
+        std::cout << "corrupt chunk length" << std::endl;
+        return;
+      }
+      compressed.insert(compressed.end(), cdata, cdata + clength);
+    }
+
+    chunk = lodepng_chunk_next_const(chunk, end);
+  }
+
+  if(compressed.size() >= 3) {
+    int bfinal = compressed[2] & 1;
+    int btype = (compressed[2] & 6) >> 1;
+    if(bfinal) {
+      std::cout << "zlib data stored in a single block, btype: " << btype << std::endl;
+    } else {
+      std::cout << "zlib data spread over multiple blocks. First block btype: " << btype << std::endl;
+    }
+  }
+
+  std::cout << "zlib compressed size: " << compressed.size() << std::endl;
+
+  //Decompress all IDAT data (if the while loop ended early, this might fail)
+  std::vector<unsigned char> uncompressed;
+  data.error = lodepng::decompress(uncompressed, compressed.empty() ? NULL : &compressed[0], compressed.size());
+  if(data.error) return;
+
+  std::cout << "zlib uncompressed size: " << uncompressed.size() << std::endl;
 }
 
 // returns number of unique RGBA colors in the image
@@ -1386,6 +1441,7 @@ void showInfos(Data& data, const Options& options) {
   if(options.show_palette) displayPalette(data, options);
   if(options.show_chunks || options.show_chunks2) displayChunkNames(data, options);
   if(options.show_filters) displayFilterTypes(data, options);
+  if(options.show_zlib_info) printZlibInfo(data);
   if(options.show_render) showRender(data, options);
 
   if(data.error) showError(data, options);
@@ -1420,6 +1476,7 @@ int main(int argc, char *argv[]) {
         else if(c == 'c') options.show_chunks = true;
         else if(c == 'C') options.show_chunks2 = true;
         else if(c == 'f') options.show_filters = true;
+        else if(c == 'z') options.show_zlib_info = true;
         else if(c == 'x') {
           options.use_hex = true;
           std::cout << std::hex;
