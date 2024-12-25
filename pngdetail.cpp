@@ -29,19 +29,7 @@ freely, subject to the following restrictions:
 /*
 Utility program that shows a lot of information in the console about a PNG file,
 including color type, text chunks, the names and sizes of all chunks in the
-image, all the zlib compression blocks and symbols, etc...
-
-compression info:
-./pngdetail -sfczB image.png
-
-everything, 8-bit:
-./pngdetail -sPlLA#cfzB7 image.png
-
-everything, 16-bit:
-./pngdetail -sPlLA@cfzB7 image.png
-
-everything except huge output:
-./pngdetail -sPlAcfzB image.png
+image, exif, and ICC profile, etc...
 */
 
 #include "lodepng.h"
@@ -88,10 +76,6 @@ void showHelp() {
                "-c: show PNG chunks\n"
                "-C: show PNG chunks (alternate format)\n"
                "-f: show PNG filters\n"
-               "-z: show Zlib info\n"
-               "-b: show Zlib blocks\n"
-               "-B: show Zlib block symbol counts\n"
-               "-7: show all lz77 values (huge output)\n"
                "-v: be more verbose\n"
                "-t: expand long texts\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
@@ -136,10 +120,6 @@ struct Options {
   bool show_chunks; //show the PNG chunk names and their lengths
   bool show_chunks2; //alternate form to print chunks
   bool show_filters; //show the PNG filter of each scanline (not supported for interlaced PNGs currently)
-  bool zlib_info; //show basic zlib info
-  bool zlib_blocks; //show type, tree info, code length summaries and sizes for each zlib block
-  bool zlib_counts; //in addition to the zlib_blocks info, show counts of occurrences all symbols
-  bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
   bool use_hex; //show some sizes or positions in hexadecimal
 
   Options() : verbose(false), expand_long_texts(false),
@@ -148,8 +128,7 @@ struct Options {
               show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
               hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
-              show_chunks(false), show_chunks2(false), show_filters(false),
-              zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false) {
+              show_chunks(false), show_chunks2(false), show_filters(false), use_hex(false) {
   }
 };
 
@@ -704,141 +683,6 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer, const Option
     }
   } else {
     std::cout << "Pixel palette indices: not shown, not a palette image\n" << std::endl;
-  }
-}
-
-void printZlibInfo(Data& data, const Options& options) {
-  data.loadFile();
-  if(data.error) return;
-  const std::vector<unsigned char>& in = data.buffer;
-  std::cout << (options.use_hex ? std::hex: std::dec);
-
-  std::vector<lodepng::ZlibBlockInfo> zlibinfo;
-  lodepng::extractZlibInfo(zlibinfo, in);
-
-  if(options.zlib_info) {
-    //std::cout << "Zlib info: " << std::endl;
-    size_t compressed = 0;
-    size_t uncompressed = 0;
-    std::vector<size_t> boundaries_compressed;
-    std::vector<size_t> boundaries_uncompressed;
-    for(size_t i = 0; i < zlibinfo.size(); i++) {
-      compressed += zlibinfo[i].compressedbits / 8;
-      uncompressed += zlibinfo[i].uncompressedbytes;
-      boundaries_compressed.push_back(compressed);
-      boundaries_uncompressed.push_back(uncompressed);
-    }
-
-    std::cout << "IDAT zlib info: " << compressed << std::endl;
-    std::cout << "Compressed size: " << compressed << std::endl;
-    std::cout << "Uncompressed size: " << uncompressed << std::endl;
-    std::cout << "Amount of zlib blocks: " << zlibinfo.size() << std::endl;
-    if(zlibinfo.size() > 1) {
-      std::cout << "Block sizes (uncompressed): ";
-      for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << zlibinfo[i].uncompressedbytes << " ";
-      std::cout << std::endl;
-      std::cout << "Block sizes (compressed): ";
-      for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << (zlibinfo[i].compressedbits / 8) << " ";
-      std::cout << std::endl;
-      std::cout << "Block boundaries (uncompressed): ";
-      for(size_t i = 0; i + 1 < boundaries_uncompressed.size(); i++)
-          std::cout << boundaries_uncompressed[i] << " ";
-      std::cout << std::endl;
-      std::cout << "Block boundaries (compressed): ";
-      for(size_t i = 0; i + 1 < boundaries_compressed.size(); i++)
-          std::cout << boundaries_compressed[i] << " ";
-      std::cout << std::endl;
-    }
-  }
-
-  if(options.zlib_blocks) {
-    for(size_t i = 0; i < zlibinfo.size(); i++) {
-      const lodepng::ZlibBlockInfo& info = zlibinfo[i];
-
-      std::cout << "Zlib block " << i << ":" << std::endl;
-      std::cout << " block type: " << info.btype << std::endl;
-
-      size_t compressedsize = info.compressedbits / 8;
-      size_t uncompressedsize = info.uncompressedbytes;
-      std::cout << " block compressed: " << compressedsize << " (" << compressedsize / 1024 << "K) (" << info.compressedbits << " bits)" << std::endl;
-      std::cout << " block uncompressed: " << uncompressedsize << " (" << uncompressedsize / 1024 << "K)" << std::endl;
-
-      if(info.btype > 2) {
-        std::cout << "Error: Invalid Block Type" << std::endl;
-        return;
-      }
-
-      if(info.btype == 2) {
-        std::cout << " encoded trees size: " << info.treebits / 8 << " (" << info.treebits << " bits)" << std::endl;
-        std::cout << " HLIT: " << info.hlit << std::endl;
-        std::cout << " HDIST: " << info.hdist << std::endl;
-        std::cout << " HCLEN: " << info.hclen << std::endl;
-        std::cout << std::hex;
-        std::cout << " code length code lengths: "; for(size_t j = 0; j < 19; j++) std::cout << info.clcl[j]; std::cout << std::endl;
-        if(!options.use_hex) std::cout << std::dec;
-        if(options.zlib_full) {
-          for(size_t j = 0; j < info.treecodes.size(); j++) {
-            int code = info.treecodes[j];
-            if(code < 17) {
-               std::cout << " tree: " << code << std::endl;
-            } else {
-              j++;
-              std::cout << " tree: " << code << " rep: " << info.treecodes[j] << std::endl;
-            }
-
-          }
-        }
-
-        std::cout << std::hex;
-        std::cout << " lit code lengths 0-127  : "; for(size_t j = 0; j < 128; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " lit code lengths 128-255: "; for(size_t j = 128; j < 256; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " end code length         : "; std::cout << info.litlenlengths[256]; std::cout << std::endl;
-        std::cout << " len code lengths        : "; for(size_t j = 257; j < 288; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " dist code lengths       : "; for(size_t j = 0; j < 32; j++) std::cout << info.distlengths[j]; std::cout << std::endl;
-        if(!options.use_hex) std::cout << std::dec;
-      }
-
-
-      if(info.btype != 0) {
-        std::cout << " code counts: lit: " << info.numlit << ", len/dist: " << info.numlen << ", total: " << (info.numlit + info.numlen + 1) << ", with dists: " << (info.numlit + 2 * info.numlen + 1) << std::endl;
-
-        if(options.zlib_full) {
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
-            int symbol = info.lz77_lcode[j];
-            if(symbol == 256) {
-              std::cout << " end" << std::endl;
-            } else if(symbol < 256) {
-              std::cout << " lit: " << symbol << std::endl;
-            } else {
-              std::cout << " len: " << info.lz77_lvalue[j] << ", dist: " << info.lz77_dvalue[j] << std::endl;
-            }
-          }
-        }
-
-        if(options.zlib_counts) {
-          std::vector<size_t> ll_count(288, 0);
-          std::vector<size_t> d_count(32, 0);
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
-            int symbol = info.lz77_lcode[j];
-            if(symbol <= 256) {
-              ll_count[symbol]++;
-            } else {
-              ll_count[symbol]++;
-              d_count[info.lz77_dcode[j]]++;
-            }
-          }
-          std::cout << " lit code 0-63 counts   : "; for(size_t j = 0; j < 64; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 64-127 counts : "; for(size_t j = 64; j < 128; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 128-191 counts: "; for(size_t j = 128; j < 192; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 192-255 counts: "; for(size_t j = 192; j < 256; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " end code count         : "; std::cout << ll_count[256] << " "; std::cout << std::endl;
-          std::cout << " len code counts        : "; for(size_t j = 257; j < 288; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " dist code counts       : "; for(size_t j = 0; j < 32; j++) std::cout << d_count[j] << " "; std::cout << std::endl;
-        }
-      }
-    }
   }
 }
 
@@ -1543,9 +1387,6 @@ void showInfos(Data& data, const Options& options) {
   if(options.show_chunks || options.show_chunks2) displayChunkNames(data, options);
   if(options.show_filters) displayFilterTypes(data, options);
   if(options.show_render) showRender(data, options);
-  if(options.zlib_info || options.zlib_blocks || options.zlib_counts || options.zlib_full) {
-    printZlibInfo(data, options);
-  }
 
   if(data.error) showError(data, options);
 }
@@ -1579,16 +1420,6 @@ int main(int argc, char *argv[]) {
         else if(c == 'c') options.show_chunks = true;
         else if(c == 'C') options.show_chunks2 = true;
         else if(c == 'f') options.show_filters = true;
-        else if(c == 'z') options.zlib_info = true;
-        else if(c == 'b') options.zlib_blocks = true;
-        else if(c == 'B') {
-          options.zlib_blocks = true;
-          options.zlib_counts = true;
-        }
-        else if(c == '7') {
-          options.zlib_blocks = true;
-          options.zlib_full = true;
-        }
         else if(c == 'x') {
           options.use_hex = true;
           std::cout << std::hex;
