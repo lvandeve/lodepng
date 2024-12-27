@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241223
+LodePNG version 20241227
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20241223";
+const char* LODEPNG_VERSION_STRING = "20241227";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -2748,11 +2748,28 @@ unsigned char lodepng_chunk_type_equals(const unsigned char* chunk, const char* 
   return (chunk[4] == type[0] && chunk[5] == type[1] && chunk[6] == type[2] && chunk[7] == type[3]);
 }
 
+static unsigned char lodepng_chunk_type_name_valid(const unsigned char* chunk) {
+  unsigned i;
+  for(i = 0; i != 4; ++i) {
+    char c = (char)chunk[4 + i];
+    if(!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) {
+      return 0; /* not valid */
+    }
+  }
+  return 1; /* valid */
+}
+
 unsigned char lodepng_chunk_ancillary(const unsigned char* chunk) {
   return((chunk[4] & 32) != 0);
 }
 
 unsigned char lodepng_chunk_private(const unsigned char* chunk) {
+  return((chunk[5] & 32) != 0);
+}
+
+/* this is an error: the third character must be uppercase in the PNG standard,
+lowercasing this character is reserved for possible future extension by the spec*/
+static unsigned char lodepng_chunk_reserved(const unsigned char* chunk) {
   return((chunk[6] & 32) != 0);
 }
 
@@ -5420,6 +5437,13 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     } else /*it's not an implemented chunk type, so ignore it: skip over the data*/ {
+      if(!lodepng_chunk_type_name_valid(chunk)) {
+        CERROR_BREAK(state->error, 121); /* invalid chunk type name */
+      }
+      if(lodepng_chunk_reserved(chunk)) {
+        CERROR_BREAK(state->error, 122); /* invalid third lowercase character */
+      }
+
       /*error: unknown critical chunk (5th bit of first byte of chunk type is 0)*/
       if(!state->decoder.ignore_critical && !lodepng_chunk_ancillary(chunk)) {
         CERROR_BREAK(state->error, 69);
@@ -6994,6 +7018,8 @@ const char* lodepng_error_text(unsigned code) {
     case 118: return "mDCv value out of range";
     case 119: return "invalid mDCv chunk size";
     case 120: return "invalid cLLi chunk size";
+    case 121: return "invalid chunk type name: may only contain [a-zA-Z]";
+    case 122: return "invalid chunk type name: third character must be uppercase";
   }
   return "unknown error code";
 }

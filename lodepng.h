@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241223
+LodePNG version 20241227
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -822,7 +822,7 @@ typedef struct LodePNGDecoderSettings {
   /* TODO: make a system involving warnings with levels and a strict mode instead. Other potentially recoverable
      errors: srgb rendering intent value, size of content of ancillary chunks, more than 79 characters for some
      strings, placement/combination rules for ancillary chunks, crc of unknown chunks, allowed characters
-     in string keys, etc... */
+     in string keys, invalid characters in chunk types names, etc... */
 
   unsigned color_convert; /*whether to convert the PNG to the color type you want. Default: yes*/
 
