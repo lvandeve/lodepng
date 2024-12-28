@@ -2733,6 +2733,7 @@ unsigned char lodepng_chunk_type_equals(const unsigned char* chunk, const char* 
   return (chunk[4] == type[0] && chunk[5] == type[1] && chunk[6] == type[2] && chunk[7] == type[3]);
 }
 
+/* chunk type name must exist only out of alphabetic characters a-z or A-Z */
 static unsigned char lodepng_chunk_type_name_valid(const unsigned char* chunk) {
   unsigned i;
   for(i = 0; i != 4; ++i) {
@@ -2752,7 +2753,7 @@ unsigned char lodepng_chunk_private(const unsigned char* chunk) {
   return((chunk[5] & 32) != 0);
 }
 
-/* this is an error: the third character must be uppercase in the PNG standard,
+/* this is an error if it is reserved: the third character must be uppercase in the PNG standard,
 lowercasing this character is reserved for possible future extension by the spec*/
 static unsigned char lodepng_chunk_reserved(const unsigned char* chunk) {
   return((chunk[6] & 32) != 0);
@@ -2835,6 +2836,13 @@ unsigned lodepng_chunk_append(unsigned char** out, size_t* outsize, const unsign
   unsigned i;
   size_t total_chunk_length, new_length;
   unsigned char *chunk_start, *new_buffer;
+
+  if(!lodepng_chunk_type_name_valid(chunk)) {
+    return 121; /* invalid chunk type name */
+  }
+  if(lodepng_chunk_reserved(chunk)) {
+    return 122; /* invalid third lowercase character */
+  }
 
   if(lodepng_addofl(lodepng_chunk_length(chunk), 12, &total_chunk_length)) return 77;
   if(lodepng_addofl(*outsize, total_chunk_length, &new_length)) return 77;
