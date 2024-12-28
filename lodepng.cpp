@@ -1,5 +1,5 @@
 /*
-LodePNG version 20241227
+LodePNG version 20241228
 
 Copyright (c) 2005-2024 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20241227";
+const char* LODEPNG_VERSION_STRING = "20241228";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -346,54 +346,39 @@ static void lodepng_set32bitInt(unsigned char* buffer, unsigned value) {
 #ifdef LODEPNG_COMPILE_DISK
 
 /* returns negative value on error. This should be pure C compatible, so no fstat. */
-static long lodepng_filesize(const char* filename) {
-  FILE* file;
+static long lodepng_filesize(FILE* file) {
   long size;
-  file = fopen(filename, "rb");
-  if(!file) return -1;
-
-  if(fseek(file, 0, SEEK_END) != 0) {
-    fclose(file);
-    return -1;
-  }
-
+  if(fseek(file, 0, SEEK_END) != 0) return -1;
   size = ftell(file);
   /* It may give LONG_MAX as directory size, this is invalid for us. */
-  if(size == LONG_MAX) size = -1;
-
-  fclose(file);
+  if(size == LONG_MAX) return -1;
+  if(fseek(file, 0, SEEK_SET) != 0) return -1;
   return size;
 }
 
-/* load file into buffer that already has the correct allocated size. Returns error code.*/
-static unsigned lodepng_buffer_file(unsigned char* out, size_t size, const char* filename) {
-  FILE* file;
-  size_t readsize;
-  file = fopen(filename, "rb");
-  if(!file) return 78;
-
-  readsize = fread(out, 1, size, file);
-  fclose(file);
-
-  if(readsize != size) return 78;
-  return 0;
+/* Allocates the output buffer to the file size and reads the file into it. Returns error code.*/
+static unsigned lodepng_load_file_(unsigned char** out, size_t* outsize, FILE* file) {
+  long size = lodepng_filesize(file);
+  if(size < 0) return 78;
+  *outsize = (size_t)size;
+  *out = (unsigned char*)lodepng_malloc((size_t)size);
+  if(!(*out) && size > 0) return 83; /*the above malloc failed*/
+  if(fread(*out, 1, *outsize, file) != *outsize) return 78;
+  return 0; /*ok*/
 }
 
 unsigned lodepng_load_file(unsigned char** out, size_t* outsize, const char* filename) {
-  long size = lodepng_filesize(filename);
-  if(size < 0) return 78;
-  *outsize = (size_t)size;
-
-  *out = (unsigned char*)lodepng_malloc((size_t)size);
-  if(!(*out) && size > 0) return 83; /*the above malloc failed*/
-
-  return lodepng_buffer_file(*out, (size_t)size, filename);
+  unsigned error;
+  FILE* file = fopen(filename, "rb");
+  if(!file) return 78;
+  error = lodepng_load_file_(out, outsize, file);
+  fclose(file);
+  return error;
 }
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
 unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const char* filename) {
-  FILE* file;
-  file = fopen(filename, "wb" );
+  FILE* file = fopen(filename, "wb" );
   if(!file) return 79;
   fwrite(buffer, 1, buffersize, file);
   fclose(file);
@@ -7035,11 +7020,23 @@ const char* lodepng_error_text(unsigned code) {
 namespace lodepng {
 
 #ifdef LODEPNG_COMPILE_DISK
-unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filename) {
-  long size = lodepng_filesize(filename.c_str());
+/* Resizes the vector to the file size and reads the file into it. Returns error code.*/
+static unsigned load_file_(std::vector<unsigned char>& buffer, FILE* file) {
+  long size = lodepng_filesize(file);
   if(size < 0) return 78;
   buffer.resize((size_t)size);
-  return size == 0 ? 0 : lodepng_buffer_file(&buffer[0], (size_t)size, filename.c_str());
+  if(size == 0) return 0; /*ok*/
+  if(fread(&buffer[0], 1, buffer.size(), file) != buffer.size()) return 78;
+  return 0; /*ok*/
+}
+
+unsigned load_file(std::vector<unsigned char>& buffer, const std::string& filename) {
+  unsigned error;
+  FILE* file = fopen(filename.c_str(), "rb");
+  if(!file) return 78;
+  error = load_file_(buffer, file);
+  fclose(file);
+  return error;
 }
 
 /*write given buffer to the file, overwriting the file, it doesn't append to it.*/
