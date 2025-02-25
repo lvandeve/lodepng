@@ -3428,73 +3428,68 @@ static void addColorBits(unsigned char* out, size_t index, unsigned bits, unsign
   else out[index * bits / 8u] |= in;
 }
 
-typedef struct ColorTree ColorTree;
+typedef struct ColorMap ColorMap;
+
+static const unsigned COLOR_MAP_HASH_MASK = (1 << 9) - 1;
 
 /*
-One node of a color tree
 This is the data structure used to count the number of unique colors and to get a palette
-index for a color. It's like an octree, but because the alpha channel is used too, each
-node has 16 instead of 8 children.
+index for a color. It's a hash table with 512 cells, up to 257 filled
+(257 = maxnumcolors limit in lodepng_compute_color_stats).
 */
-struct ColorTree {
-  ColorTree* children[16]; /*up to 16 pointers to ColorTree of next level*/
-  int index; /*the payload. Only has a meaningful value if this is in the last level*/
+struct ColorMap {
+  unsigned int rgba[COLOR_MAP_HASH_MASK + 1];
+  short index[COLOR_MAP_HASH_MASK + 1]; /*index < 0: empty cell, index >= 0: palette index of the corresponding rgba cell.*/
 };
 
-static void color_tree_init(ColorTree* tree) {
-  lodepng_memset(tree->children, 0, 16 * sizeof(*tree->children));
-  tree->index = -1;
+static void color_map_init(ColorMap* cmap) {
+  lodepng_memset(cmap->index, -1, sizeof(cmap->index));
 }
 
-static void color_tree_cleanup(ColorTree* tree) {
-  int i;
-  for(i = 0; i != 16; ++i) {
-    if(tree->children[i]) {
-      color_tree_cleanup(tree->children[i]);
-      lodepng_free(tree->children[i]);
-    }
-  }
+static void color_map_cleanup(ColorMap* cmap) {
+  /* nothing to do */
+}
+
+static unsigned int color_map_hash(unsigned int rgba) {
+  rgba = (rgba ^ (rgba >> 16)) * 0x7feb352d;
+  rgba = (rgba ^ (rgba >> 15)) * 0x846ca68b;
+  return rgba ^ (rgba >> 16);
+}
+
+/*index = -1: find (r, g, b, a), returns index if found or -1 if not found.
+  index >= 0: add mapping (r, g, b, a) -> index, returns 0 if added, >0 if error (impossible for now),
+              -1 if (r, g, b, a) already existed and nothing was done. */
+static LODEPNG_INLINE int color_map_find_or_add(ColorMap* cmap,
+  unsigned char r, unsigned char g, unsigned char b, unsigned char a, int index) {
+  unsigned int rgba = r | (g << 8) | (b << 16) | (a << 24);
+  size_t probe = color_map_hash(rgba) & COLOR_MAP_HASH_MASK;
+  while (cmap->index[probe] >= 0 && rgba != cmap->rgba[probe])
+    probe = (probe + 1) & COLOR_MAP_HASH_MASK;
+  if (index < 0) /*Not an insertion: return found index or -1.*/
+    return cmap->index[probe];
+  if (cmap->index[probe] >= 0) /*Insertion, duplicate.*/
+    return -1;
+  cmap->rgba[probe] = rgba; /*Insertion, new.*/
+  cmap->index[probe] = index;
+  return 0;
 }
 
 /*returns -1 if color not present, its index otherwise*/
-static int color_tree_get(ColorTree* tree, unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
-  int bit = 0;
-  for(bit = 0; bit < 8; ++bit) {
-    int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
-    if(!tree->children[i]) return -1;
-    else tree = tree->children[i];
-  }
-  return tree ? tree->index : -1;
+static int color_map_get(ColorMap* cmap, unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
+  return color_map_find_or_add(cmap, r, g, b, a, -1);
 }
 
-#ifdef LODEPNG_COMPILE_ENCODER
-static int color_tree_has(ColorTree* tree, unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
-  return color_tree_get(tree, r, g, b, a) >= 0;
-}
-#endif /*LODEPNG_COMPILE_ENCODER*/
-
-/*color is not allowed to already exist.
-Index should be >= 0 (it's signed to be compatible with using -1 for "doesn't exist")
-Returns error code, or 0 if ok*/
-static unsigned color_tree_add(ColorTree* tree,
-                               unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index) {
-  int bit;
-  for(bit = 0; bit < 8; ++bit) {
-    int i = 8 * ((r >> bit) & 1) + 4 * ((g >> bit) & 1) + 2 * ((b >> bit) & 1) + 1 * ((a >> bit) & 1);
-    if(!tree->children[i]) {
-      tree->children[i] = (ColorTree*)lodepng_malloc(sizeof(ColorTree));
-      if(!tree->children[i]) return 83; /*alloc fail*/
-      color_tree_init(tree->children[i]);
-    }
-    tree = tree->children[i];
-  }
-  tree->index = (int)index;
-  return 0;
+/*Returns error code, or 0 if ok.
+-1 is a special error code that means "already exists, nothing done".
+No other errors can happen presently. :)*/
+static int color_map_add(ColorMap* cmap,
+  unsigned char r, unsigned char g, unsigned char b, unsigned char a, unsigned index) {
+  return color_map_find_or_add(cmap, r, g, b, a, index);
 }
 
 /*put a pixel, given its RGBA color, into image of any color type*/
 static unsigned rgba8ToPixel(unsigned char* out, size_t i,
-                             const LodePNGColorMode* mode, ColorTree* tree /*for palette*/,
+                             const LodePNGColorMode* mode, ColorMap* cmap /*for palette*/,
                              unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
   if(mode->colortype == LCT_GREY) {
     unsigned char gray = r; /*((unsigned short)r + g + b) / 3u;*/
@@ -3516,7 +3511,7 @@ static unsigned rgba8ToPixel(unsigned char* out, size_t i,
       out[i * 6 + 4] = out[i * 6 + 5] = b;
     }
   } else if(mode->colortype == LCT_PALETTE) {
-    int index = color_tree_get(tree, r, g, b, a);
+    int index = color_map_get(cmap, r, g, b, a);
     if(index < 0) return 82; /*color not in palette*/
     if(mode->bitdepth == 8) out[i] = index;
     else addColorBits(out, i, mode->bitdepth, (unsigned)index);
@@ -3854,7 +3849,7 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
                          const LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in,
                          unsigned w, unsigned h) {
   size_t i;
-  ColorTree tree;
+  ColorMap cmap;
   size_t numpixels = (size_t)w * (size_t)h;
   unsigned error = 0;
 
@@ -3888,11 +3883,11 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
       }
     }
     if(palettesize < palsize) palsize = palettesize;
-    color_tree_init(&tree);
+    color_map_init(&cmap);
     for(i = 0; i != palsize; ++i) {
       const unsigned char* p = &palette[i * 4];
-      error = color_tree_add(&tree, p[0], p[1], p[2], p[3], (unsigned)i);
-      if(error) break;
+      int add_res = color_map_add(&cmap, p[0], p[1], p[2], p[3], (unsigned)i);
+      if (add_res > 0) { error = add_res; break; }
     }
   }
 
@@ -3911,14 +3906,14 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
       unsigned char r = 0, g = 0, b = 0, a = 0;
       for(i = 0; i != numpixels; ++i) {
         getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
-        error = rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a);
+        error = rgba8ToPixel(out, i, mode_out, &cmap, r, g, b, a);
         if(error) break;
       }
     }
   }
 
   if(mode_out->colortype == LCT_PALETTE) {
-    color_tree_cleanup(&tree);
+    color_map_cleanup(&cmap);
   }
 
   return error;
@@ -4022,7 +4017,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
                                      const unsigned char* in, unsigned w, unsigned h,
                                      const LodePNGColorMode* mode_in) {
   size_t i;
-  ColorTree tree;
+  ColorMap cmap;
   size_t numpixels = (size_t)w * (size_t)h;
   unsigned error = 0;
 
@@ -4041,7 +4036,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
   /*if palette not allowed, no need to compute numcolors*/
   if(!stats->allow_palette) numcolors_done = 1;
 
-  color_tree_init(&tree);
+  color_map_init(&cmap);
 
   /*If the stats was already filled in from previous data, fill its palette in tree
   and mark things as done already if we know they are the most expensive case already*/
@@ -4054,8 +4049,8 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
   if(!numcolors_done) {
     for(i = 0; i < stats->numcolors; i++) {
       const unsigned char* color = &stats->palette[i * 4];
-      error = color_tree_add(&tree, color[0], color[1], color[2], color[3], (unsigned)i);
-      if(error) goto cleanup;
+      int add_res = color_map_add(&cmap, color[0], color[1], color[2], color[3], (unsigned)i);
+      if (add_res > 0) { error = add_res; goto cleanup; }
     }
   }
 
@@ -4125,7 +4120,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
       getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
 
       /*skip if color same as before, this speeds up large non-photographic
-      images with many same colors by avoiding 'color_tree_has' below */
+      images with many same colors by avoiding 'color_map_add' below */
       if(i != 0 && r == pr && g == pg && b == pb && a == pa) continue;
       pr = r;
       pg = g;
@@ -4167,9 +4162,9 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
       }
 
       if(!numcolors_done) {
-        if(!color_tree_has(&tree, r, g, b, a)) {
-          error = color_tree_add(&tree, r, g, b, a, stats->numcolors);
-          if(error) goto cleanup;
+        int add_res = color_map_add(&cmap, r, g, b, a, stats->numcolors);
+        if (add_res > 0) { error = add_res; goto cleanup; }
+        if (add_res == 0) {
           if(stats->numcolors < 256) {
             unsigned char* p = stats->palette;
             unsigned n = stats->numcolors;
@@ -4206,7 +4201,7 @@ unsigned lodepng_compute_color_stats(LodePNGColorStats* stats,
   }
 
 cleanup:
-  color_tree_cleanup(&tree);
+  color_map_cleanup(&cmap);
   return error;
 }
 
