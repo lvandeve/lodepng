@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2024 Lode Vandevenne
+Copyright (c) 2005-2025 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -282,6 +282,7 @@ T strtoval(const std::string& s) {
 Display the names and sizes of all chunks in the PNG file.
 */
 void displayChunkNames(Data& data, const Options& options) {
+  data.loadInspect();
   if(!data.is_png) return;
   data.loadFile();
   if(data.error) return;
@@ -455,8 +456,8 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
   if(smooth) {
     // box filter.
     std::vector<unsigned char> temp(w1 * h0 * numchannels);
-    for (int c = 0; c < numchannels; c++) {
-      for (int x = 0; x < w1; x++) {
+    for(int c = 0; c < numchannels; c++) {
+      for(int x = 0; x < w1; x++) {
         float xaf = x * 1.0 * w0 / w1;
         float xbf = (x + 1.0) * w0 / w1;
         int xa = (int)xaf;
@@ -464,10 +465,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (xbf - xaf);
         xaf -= std::floor(xaf);
         xbf -= std::floor(xbf);
-        for (int y = 0; y < h0; y++) {
+        for(int y = 0; y < h0; y++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int x0 = xa; x0 <= xb; x0++) {
+          for(int x0 = xa; x0 <= xb && x0 < w0; x0++) {
             int index0 = x0 * numchannels + y * w0 * numchannels;
             double v = 1;
             if(x0 == xa) v -= xaf;
@@ -477,7 +478,7 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
           temp[index1 + c] = val * norm;
         }
       }
-      for (int y = 0; y < h1; y++) {
+      for(int y = 0; y < h1; y++) {
         float yaf = y * 1.0 * h0 / h1;
         float ybf = (y + 1.0) * h0 / h1;
         int ya = (int)yaf;
@@ -485,10 +486,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (ybf - yaf);
         yaf -= std::floor(yaf);
         ybf -= std::floor(ybf);
-        for (int x = 0; x < w1; x++) {
+        for(int x = 0; x < w1; x++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int y0 = ya; y0 <= yb; y0++) {
+          for(int y0 = ya; y0 <= yb && y0 < h0; y0++) {
             int index0 = x * numchannels + y0 * w1 * numchannels;
             double v = 1;
             if(y0 == ya) v -= yaf;
@@ -517,7 +518,7 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
 
 /*
 Show ASCII art preview of the image
-image is given in 16-bit big endian
+Image is given in 16-bit big endian (because only one format, with the max possible precision, is used throughout this)
 */
 void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h, unsigned asciiw) {
   const std::vector<unsigned char>* imagep = &image;
@@ -744,7 +745,7 @@ void printZlibInfo(Data& data) {
 // returns number of unique RGBA colors in the image
 // also fills unique r, g, b, a counts in the output parameters
 // the input image is in 16-bit per channel color, so 8 chars per pixel
-size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
+size_t countColors(const std::vector<unsigned char>& image, unsigned w, unsigned h,
     size_t* ro, size_t* go, size_t* bo, size_t* ao) {
   typedef std::pair<std::pair<unsigned short, unsigned short>, std::pair<unsigned short, unsigned short> > RGBA;
   std::map<RGBA, size_t> rgbam;
@@ -1166,6 +1167,7 @@ std::string shortenText(const std::string& text, const Options& options) {
 
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
 void showPNGInfo(Data& data, const Options& options) {
+  data.loadInspect();
   if(!data.is_png) return;
   loadWithErrorRecovery(data, options, false);
   if(data.error) return;
@@ -1196,6 +1198,7 @@ void showPNGInfo(Data& data, const Options& options) {
 }
 
 void showColorStats(Data& data, const Options& options) {
+  data.loadInspect();
   if(!data.is_png) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::vector<unsigned char>& image = data.pixels;
@@ -1504,7 +1507,7 @@ int main(int argc, char *argv[]) {
       }
       if(key == "size") {
         int size = strtoval<int>(value);
-        if(options.rendersize >= 1 && options.rendersize <= 4096) options.rendersize = size;
+        if(size >= 1 && size <= 4096) options.rendersize = size;
       }
       if(key == "format") {
         if(value == "mix") options.hexformat = HF_MIX;
