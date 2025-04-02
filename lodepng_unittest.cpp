@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2024 Lode Vandevenne
+Copyright (c) 2005-2025 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -975,10 +975,10 @@ void testSize(unsigned w, unsigned h) {
   image.data.resize(w * h * 4);
   for(size_t y = 0; y < h; y++)
   for(size_t x = 0; x < w; x++) {
-    image.data[w * 4 * y + 4 * x + 0] = x % 256;
-    image.data[w * 4 * y + 4 * x + 0] = y % 256;
-    image.data[w * 4 * y + 4 * x + 0] = 255;
-    image.data[w * 4 * y + 4 * x + 0] = 255;
+    image.data[w * 4 * y + 4 * x + 0] = x & 255;
+    image.data[w * 4 * y + 4 * x + 1] = y & 255;
+    image.data[w * 4 * y + 4 * x + 2] = 255;
+    image.data[w * 4 * y + 4 * x + 3] = 255;
   }
 
   doCodecTest(image);
@@ -1107,8 +1107,8 @@ void testColorConvert2() {
     mode_in.bitdepth = combos[i].bitdepth;
 
     for(size_t j = 0; j < 15; j++) {
-      mode_out.colortype = combos[i].colortype;
-      mode_out.bitdepth = combos[i].bitdepth;
+      mode_out.colortype = combos[j].colortype;
+      mode_out.bitdepth = combos[j].bitdepth;
 
       unsigned char eight[36] = {
           0,0,0,255, 255,255,255,255,
