@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2020 Lode Vandevenne
+Copyright (c) 2005-2025 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -29,19 +29,7 @@ freely, subject to the following restrictions:
 /*
 Utility program that shows a lot of information in the console about a PNG file,
 including color type, text chunks, the names and sizes of all chunks in the
-image, all the zlib compression blocks and symbols, etc...
-
-compression info:
-./pngdetail -sfczB image.png
-
-everything, 8-bit:
-./pngdetail -sPlLA#cfzB7 image.png
-
-everything, 16-bit:
-./pngdetail -sPlLA@cfzB7 image.png
-
-everything except huge output:
-./pngdetail -sPlAcfzB image.png
+image, exif, and ICC profile, etc...
 */
 
 #include "lodepng.h"
@@ -66,9 +54,11 @@ void showHelp() {
                "-o: show header summary on one line\n"
                "-H: show header info\n"
                "-p: show PNG file info\n"
-               "-e: analyze errors or warnings\n"
+               "-a: analyze errors or warnings\n"
+               "-e: show exif metadata (if the PNG has an eXIf chunk)\n"
+               "-E: show exif metadata hex bytes\n"
                "-i: show ICC profile details (if any)\n"
-               "-I: show ICC profile bytes\n"
+               "-I: show ICC profile hex bytes\n"
                "--format=<format>: display mode for -I:\n"
                "    hex: print bytes in hex\n"
                "    mix: print printable bytes as ASCII characters, hex for others\n"
@@ -87,9 +77,6 @@ void showHelp() {
                "-C: show PNG chunks (alternate format)\n"
                "-f: show PNG filters\n"
                "-z: show Zlib info\n"
-               "-b: show Zlib blocks\n"
-               "-B: show Zlib block symbol counts\n"
-               "-7: show all lz77 values (huge output)\n"
                "-v: be more verbose\n"
                "-t: expand long texts\n"
                "-x: print most integer numbers in hexadecimal (includes e.g. year, num unique colors, ...)\n"
@@ -118,6 +105,8 @@ struct Options {
   bool show_errors;
   bool show_icc_details; // show ICC color profile details
   bool show_icc_hex; // show ICC color profile in full
+  bool show_exif;
+  bool show_exif_hex;
   bool show_color_stats;
   bool show_png_info; //show things like filesize, width, height, palette size, ...
   bool show_palette; //show all palette values
@@ -132,26 +121,24 @@ struct Options {
   bool show_chunks; //show the PNG chunk names and their lengths
   bool show_chunks2; //alternate form to print chunks
   bool show_filters; //show the PNG filter of each scanline (not supported for interlaced PNGs currently)
-  bool zlib_info; //show basic zlib info
-  bool zlib_blocks; //show type, tree info, code length summaries and sizes for each zlib block
-  bool zlib_counts; //in addition to the zlib_blocks info, show counts of occurrences all symbols
-  bool zlib_full; //in addition to the zlib_blocks info, show all symbols, one per line (huge output)
+  bool show_zlib_info; //show basic zlib info
   bool use_hex; //show some sizes or positions in hexadecimal
 
   Options() : verbose(false), expand_long_texts(false),
               show_one_line_summary(false), show_header(false), show_errors(false),
-              show_icc_details(false), show_icc_hex(false),
+              show_icc_details(false), show_icc_hex(false), show_exif(false), show_exif_hex(false),
               show_color_stats(false), show_png_info(false),
               show_palette(false), show_palette_pixels(false),
               hexformat(HF_MIX), show_render(false), rendermode(RM_ASCII), rendersize(80),
               show_chunks(false), show_chunks2(false), show_filters(false),
-              zlib_info(false), zlib_blocks(false), zlib_counts(false), zlib_full(false), use_hex(false) {
+              show_zlib_info(false), use_hex(false) {
   }
 };
 
 unsigned inspect_chunk_by_name(const unsigned char* data, const unsigned char* end,
                                lodepng::State& state, const char type[5]) {
   const unsigned char* p = lodepng_chunk_find_const(data, end, type);
+  if(!p) return 0; // not found, but this is not considered an error
   return lodepng_inspect_chunk(&state, p - data, data, end - data);
 }
 
@@ -165,10 +152,11 @@ struct Data {
   lodepng::State state;
   unsigned error;
   bool inspected;
-  bool is_icc; // the file is a raw icc file, not a PNG, only -i and -I are useful
+  bool is_png; // not is_icc or is_exif
+  bool is_icc; // the file is a raw icc file, not a PNG, only options -i and -I are useful
+  bool is_exif; // the file is a raw exif file, not a PNG, only option -e is useful
 
-  Data(const std::string& filename) : filename(filename), error(0), inspected(false), is_icc(false) {}
-
+  Data(const std::string& filename) : filename(filename), error(0), inspected(false), is_png(false), is_icc(false), is_exif(false) {}
 
   // Load the file if not already loaded
   void loadFile() {
@@ -186,7 +174,7 @@ struct Data {
         && buffer[4] == 13 && buffer[5] == 10 && buffer[6] == 26 && buffer[7] == 10;
   }
 
-  // is probably an ICC profile
+  // is probably an ICC profile instead of a PNG image
   bool isIcc() {
     if(isPng()) return false;
     if(buffer.size() < 128) return false;
@@ -198,6 +186,13 @@ struct Data {
     if(buffer[39] != 'p') return false;
     return true;
   }
+  // is probably an EXIF file instead of a PNG image
+  bool isExif() {
+    if(buffer.size() < 8) return false;
+    if(buffer[0] == 'M' && buffer[1] == 'M' && buffer[2] == 0 && buffer[3] == 42) return true;
+    if(buffer[0] == 'I' && buffer[1] == 'I' && buffer[2] == 42 && buffer[3] == 0) return true;
+    return false;
+  }
 
   // Load header info (plus a few more nearby light chunks) if not already loaded, and the file if needed
   void loadInspect() {
@@ -205,11 +200,15 @@ struct Data {
     inspected = true;
     loadFile();
     if(error) return;
+    is_png = is_icc = is_exif = false;
     if(isIcc()) {
       lodepng_set_icc(&state.info_png, "<none>", &buffer[0], buffer.size());
       is_icc = true;
+    } else if(isExif()) {
+      lodepng_set_exif(&state.info_png, &buffer[0], buffer.size());
+      is_exif = true;
     } else {
-      is_icc = false;
+      is_png = true;
       const unsigned char* data = &buffer[0];
       error = lodepng_inspect(&w, &h, &state, data, buffer.size());
       if(error) return;
@@ -233,6 +232,8 @@ struct Data {
       error = inspect_chunk_by_name(data, end, state, "pHYs");
       if(error) return;
       error = inspect_chunk_by_name(data, end, state, "iCCP");
+      if(error) return;
+      error = inspect_chunk_by_name(data, end, state, "eXIf");
       if(error) return;
     }
   }
@@ -281,7 +282,8 @@ T strtoval(const std::string& s) {
 Display the names and sizes of all chunks in the PNG file.
 */
 void displayChunkNames(Data& data, const Options& options) {
-  if(data.is_icc) return;
+  data.loadInspect();
+  if(!data.is_png) return;
   data.loadFile();
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -454,8 +456,8 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
   if(smooth) {
     // box filter.
     std::vector<unsigned char> temp(w1 * h0 * numchannels);
-    for (int c = 0; c < numchannels; c++) {
-      for (int x = 0; x < w1; x++) {
+    for(int c = 0; c < numchannels; c++) {
+      for(int x = 0; x < w1; x++) {
         float xaf = x * 1.0 * w0 / w1;
         float xbf = (x + 1.0) * w0 / w1;
         int xa = (int)xaf;
@@ -463,10 +465,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (xbf - xaf);
         xaf -= std::floor(xaf);
         xbf -= std::floor(xbf);
-        for (int y = 0; y < h0; y++) {
+        for(int y = 0; y < h0; y++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int x0 = xa; x0 <= xb; x0++) {
+          for(int x0 = xa; x0 <= xb && x0 < w0; x0++) {
             int index0 = x0 * numchannels + y * w0 * numchannels;
             double v = 1;
             if(x0 == xa) v -= xaf;
@@ -476,7 +478,7 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
           temp[index1 + c] = val * norm;
         }
       }
-      for (int y = 0; y < h1; y++) {
+      for(int y = 0; y < h1; y++) {
         float yaf = y * 1.0 * h0 / h1;
         float ybf = (y + 1.0) * h0 / h1;
         int ya = (int)yaf;
@@ -484,10 +486,10 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
         double norm = 1.0 / (ybf - yaf);
         yaf -= std::floor(yaf);
         ybf -= std::floor(ybf);
-        for (int x = 0; x < w1; x++) {
+        for(int x = 0; x < w1; x++) {
           int index1 = x * numchannels + y * w1 * numchannels;
           double val = 0;
-          for(int y0 = ya; y0 <= yb; y0++) {
+          for(int y0 = ya; y0 <= yb && y0 < h0; y0++) {
             int index0 = x * numchannels + y0 * w1 * numchannels;
             double v = 1;
             if(y0 == ya) v -= yaf;
@@ -516,7 +518,7 @@ std::vector<unsigned char> rescale(const std::vector<unsigned char>& in,
 
 /*
 Show ASCII art preview of the image
-image is given in 16-bit big endian
+Image is given in 16-bit big endian (because only one format, with the max possible precision, is used throughout this)
 */
 void displayAsciiArt(const std::vector<unsigned char>& image, unsigned w, unsigned h, unsigned asciiw) {
   const std::vector<unsigned char>* imagep = &image;
@@ -687,145 +689,63 @@ void displayPalettePixels(const std::vector<unsigned char>& buffer, const Option
   }
 }
 
-void printZlibInfo(Data& data, const Options& options) {
+void printZlibInfo(Data& data) {
   data.loadFile();
-  if(data.error) return;
-  const std::vector<unsigned char>& in = data.buffer;
-  std::cout << (options.use_hex ? std::hex: std::dec);
+  if(data.error || !data.isPng()) return;
+  const std::vector<unsigned char>& png = data.buffer;
 
-  std::vector<lodepng::ZlibBlockInfo> zlibinfo;
-  lodepng::extractZlibInfo(zlibinfo, in);
+  //Read literal data from all IDAT chunks
+  const unsigned char *chunk, *begin, *end;
+  end = &png.back() + 1;
+  begin = chunk = &png.front() + 8;
 
-  if(options.zlib_info) {
-    //std::cout << "Zlib info: " << std::endl;
-    size_t compressed = 0;
-    size_t uncompressed = 0;
-    std::vector<size_t> boundaries_compressed;
-    std::vector<size_t> boundaries_uncompressed;
-    for(size_t i = 0; i < zlibinfo.size(); i++) {
-      compressed += zlibinfo[i].compressedbits / 8;
-      uncompressed += zlibinfo[i].uncompressedbytes;
-      boundaries_compressed.push_back(compressed);
-      boundaries_uncompressed.push_back(uncompressed);
+  std::vector<unsigned char> compressed;
+
+  while(chunk < end && end - chunk >= 8) {
+    char type[5];
+    lodepng_chunk_type(type, chunk);
+    if(std::string(type).size() != 4) {
+      std::cout << "invalid png" << std::endl;
+      return;
     }
 
-    std::cout << "IDAT zlib info: " << compressed << std::endl;
-    std::cout << "Compressed size: " << compressed << std::endl;
-    std::cout << "Uncompressed size: " << uncompressed << std::endl;
-    std::cout << "Amount of zlib blocks: " << zlibinfo.size() << std::endl;
-    if(zlibinfo.size() > 1) {
-      std::cout << "Block sizes (uncompressed): ";
-      for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << zlibinfo[i].uncompressedbytes << " ";
-      std::cout << std::endl;
-      std::cout << "Block sizes (compressed): ";
-      for(size_t i = 0; i < zlibinfo.size(); i++)
-          std::cout << (zlibinfo[i].compressedbits / 8) << " ";
-      std::cout << std::endl;
-      std::cout << "Block boundaries (uncompressed): ";
-      for(size_t i = 0; i + 1 < boundaries_uncompressed.size(); i++)
-          std::cout << boundaries_uncompressed[i] << " ";
-      std::cout << std::endl;
-      std::cout << "Block boundaries (compressed): ";
-      for(size_t i = 0; i + 1 < boundaries_compressed.size(); i++)
-          std::cout << boundaries_compressed[i] << " ";
-      std::cout << std::endl;
-    }
-  }
-
-  if(options.zlib_blocks) {
-    for(size_t i = 0; i < zlibinfo.size(); i++) {
-      const lodepng::ZlibBlockInfo& info = zlibinfo[i];
-
-      std::cout << "Zlib block " << i << ":" << std::endl;
-      std::cout << " block type: " << info.btype << std::endl;
-
-      size_t compressedsize = info.compressedbits / 8;
-      size_t uncompressedsize = info.uncompressedbytes;
-      std::cout << " block compressed: " << compressedsize << " (" << compressedsize / 1024 << "K) (" << info.compressedbits << " bits)" << std::endl;
-      std::cout << " block uncompressed: " << uncompressedsize << " (" << uncompressedsize / 1024 << "K)" << std::endl;
-
-      if(info.btype > 2) {
-        std::cout << "Error: Invalid Block Type" << std::endl;
+    if(std::string(type) == "IDAT") {
+      const unsigned char* cdata = lodepng_chunk_data_const(chunk);
+      unsigned clength = lodepng_chunk_length(chunk);
+      if(chunk + clength + 12 > end || clength > png.size() || chunk + clength + 12 < begin) {
+        std::cout << "corrupt chunk length" << std::endl;
         return;
       }
+      compressed.insert(compressed.end(), cdata, cdata + clength);
+    }
 
-      if(info.btype == 2) {
-        std::cout << " encoded trees size: " << info.treebits / 8 << " (" << info.treebits << " bits)" << std::endl;
-        std::cout << " HLIT: " << info.hlit << std::endl;
-        std::cout << " HDIST: " << info.hdist << std::endl;
-        std::cout << " HCLEN: " << info.hclen << std::endl;
-        std::cout << std::hex;
-        std::cout << " code length code lengths: "; for(size_t j = 0; j < 19; j++) std::cout << info.clcl[j]; std::cout << std::endl;
-        if(!options.use_hex) std::cout << std::dec;
-        if(options.zlib_full) {
-          for(size_t j = 0; j < info.treecodes.size(); j++) {
-            int code = info.treecodes[j];
-            if(code < 17) {
-               std::cout << " tree: " << code << std::endl;
-            } else {
-              j++;
-              std::cout << " tree: " << code << " rep: " << info.treecodes[j] << std::endl;
-            }
+    chunk = lodepng_chunk_next_const(chunk, end);
+  }
 
-          }
-        }
-
-        std::cout << std::hex;
-        std::cout << " lit code lengths 0-127  : "; for(size_t j = 0; j < 128; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " lit code lengths 128-255: "; for(size_t j = 128; j < 256; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " end code length         : "; std::cout << info.litlenlengths[256]; std::cout << std::endl;
-        std::cout << " len code lengths        : "; for(size_t j = 257; j < 288; j++) std::cout << info.litlenlengths[j]; std::cout << std::endl;
-        std::cout << " dist code lengths       : "; for(size_t j = 0; j < 32; j++) std::cout << info.distlengths[j]; std::cout << std::endl;
-        if(!options.use_hex) std::cout << std::dec;
-      }
-
-
-      if(info.btype != 0) {
-        std::cout << " code counts: lit: " << info.numlit << ", len/dist: " << info.numlen << ", total: " << (info.numlit + info.numlen + 1) << ", with dists: " << (info.numlit + 2 * info.numlen + 1) << std::endl;
-
-        if(options.zlib_full) {
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
-            int symbol = info.lz77_lcode[j];
-            if(symbol == 256) {
-              std::cout << " end" << std::endl;
-            } else if(symbol < 256) {
-              std::cout << " lit: " << symbol << std::endl;
-            } else {
-              std::cout << " len: " << info.lz77_lvalue[j] << ", dist: " << info.lz77_dvalue[j] << std::endl;
-            }
-          }
-        }
-
-        if(options.zlib_counts) {
-          std::vector<size_t> ll_count(288, 0);
-          std::vector<size_t> d_count(32, 0);
-          for(size_t j = 0; j < info.lz77_lcode.size(); j++) {
-            int symbol = info.lz77_lcode[j];
-            if(symbol <= 256) {
-              ll_count[symbol]++;
-            } else {
-              ll_count[symbol]++;
-              d_count[info.lz77_dcode[j]]++;
-            }
-          }
-          std::cout << " lit code 0-63 counts   : "; for(size_t j = 0; j < 64; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 64-127 counts : "; for(size_t j = 64; j < 128; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 128-191 counts: "; for(size_t j = 128; j < 192; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " lit code 192-255 counts: "; for(size_t j = 192; j < 256; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " end code count         : "; std::cout << ll_count[256] << " "; std::cout << std::endl;
-          std::cout << " len code counts        : "; for(size_t j = 257; j < 288; j++) std::cout << ll_count[j] << " "; std::cout << std::endl;
-          std::cout << " dist code counts       : "; for(size_t j = 0; j < 32; j++) std::cout << d_count[j] << " "; std::cout << std::endl;
-        }
-      }
+  if(compressed.size() >= 3) {
+    int bfinal = compressed[2] & 1;
+    int btype = (compressed[2] & 6) >> 1;
+    if(bfinal) {
+      std::cout << "zlib data stored in a single block, btype: " << btype << std::endl;
+    } else {
+      std::cout << "zlib data spread over multiple blocks. First block btype: " << btype << std::endl;
     }
   }
+
+  std::cout << "zlib compressed size: " << compressed.size() << std::endl;
+
+  //Decompress all IDAT data (if the while loop ended early, this might fail)
+  std::vector<unsigned char> uncompressed;
+  data.error = lodepng::decompress(uncompressed, compressed.empty() ? NULL : &compressed[0], compressed.size());
+  if(data.error) return;
+
+  std::cout << "zlib uncompressed size: " << uncompressed.size() << std::endl;
 }
 
 // returns number of unique RGBA colors in the image
 // also fills unique r, g, b, a counts in the output parameters
 // the input image is in 16-bit per channel color, so 8 chars per pixel
-size_t countColors(std::vector<unsigned char> image, unsigned w, unsigned h,
+size_t countColors(const std::vector<unsigned char>& image, unsigned w, unsigned h,
     size_t* ro, size_t* go, size_t* bo, size_t* ao) {
   typedef std::pair<std::pair<unsigned short, unsigned short>, std::pair<unsigned short, unsigned short> > RGBA;
   std::map<RGBA, size_t> rgbam;
@@ -931,6 +851,10 @@ void showSingleLineSummary(Data& data, const Options& options) {
   std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)";
   if(data.is_icc) {
     std::cout << ", not a PNG but an ICC profile, use -i to expand ICC profile info." << std::endl;
+    return;
+  }
+  if(data.is_exif) {
+    std::cout << ", not a PNG but an EXIF file, use -e to expand EXIF file info." << std::endl;
     return;
   }
 
@@ -1105,6 +1029,20 @@ void printICCDetails(const unsigned char* icc, size_t size, const std::string& i
   }
 }
 
+void showHex(const unsigned char* data, size_t size, const Options& options) {
+  for(size_t i = 0; i < size; i++) {
+    unsigned char c = data[i];
+    if(options.hexformat == HF_BIN) {
+      printf("%c", c);
+    } else {
+      if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
+      else printf("%02x ", c);
+      if(i % 32 == 31 && i + 1 != size) std::cout << std::endl;
+    }
+  }
+  if(options.hexformat != HF_BIN) std::cout << std::endl;
+}
+
 void showHeaderInfo(Data& data, const Options& options) {
   data.loadInspect();
   if(data.error) return;
@@ -1115,7 +1053,9 @@ void showHeaderInfo(Data& data, const Options& options) {
   if(options.show_header) {
     std::cout << "Filesize: " << data.buffer.size() << " (" << data.buffer.size() / 1024 << "K)" << std::endl;
     if(data.is_icc) {
-      std::cout << "Not a PNG but an ICC profile, use -i for more info." << std::endl;
+      std::cout << "Not a PNG but an ICC profile, use -i or -I for more info." << std::endl;
+    } else if(data.is_exif) {
+      std::cout << "Not a PNG but an EXIF file, use -e for more info." << std::endl;
     } else {
       std::cout << "Width: " << data.w << std::endl;
       std::cout << "Height: " << data.h << std::endl;
@@ -1139,7 +1079,7 @@ void showHeaderInfo(Data& data, const Options& options) {
       }
     }
   }
-  if(options.show_png_info && !data.is_icc) {
+  if(options.show_png_info && data.is_png) {
     if (color.colortype == LCT_PALETTE) {
       std::cout << "Palette size: " << color.palettesize << std::endl;
     }
@@ -1172,9 +1112,15 @@ void showHeaderInfo(Data& data, const Options& options) {
       std::cout << "sRGB defined: rendering intent: " << info.srgb_intent << std::endl;
     }
     if(info.iccp_defined) {
-      std::cout << "iCCP defined (" << info.iccp_profile_size << " bytes): name: " << info.iccp_name << std::endl;
+      std::cout << "ICC profile defined (" << info.iccp_profile_size << " bytes): name: " << info.iccp_name << std::endl;
       if(options.verbose && !options.show_icc_details && !options.show_icc_hex) {
         std::cout << "Use -i or -I to show ICC profile details or hex" << std::endl;
+      }
+    }
+    if(info.exif_defined) {
+      std::cout << "EXIF metadata defined (" << info.exif_size << " bytes)" << std::endl;
+      if(options.verbose && !options.show_exif && !options.show_exif_hex) {
+        std::cout << "Use -e or -E to show EXIF details or hex" << std::endl;
       }
     }
   }
@@ -1186,20 +1132,13 @@ void showHeaderInfo(Data& data, const Options& options) {
     std::cout << "end of ICC profile" << std::endl;
   }
   if(info.iccp_defined && options.show_icc_hex) {
-    for(size_t i = 0; i < info.iccp_profile_size; i++) {
-      unsigned char c = info.iccp_profile[i];
-      if(options.hexformat == HF_BIN) {
-        printf("%c", c);
-      } else {
-        if(c > 32 && c < 127 && options.hexformat == HF_MIX) printf(" %c ", c);
-        else printf("%02x ", c);
-        if(i % 32 == 31 && i + 1 != info.iccp_profile_size) std::cout << std::endl;
-      }
-    }
-    if(options.hexformat != HF_BIN) std::cout << std::endl;
+    showHex(info.iccp_profile, info.iccp_profile_size, options);
+  }
+  if(info.exif_defined && options.show_exif_hex) {
+    showHex(info.exif, info.exif_size, options);
   }
 
-  if(options.show_png_info && !data.is_icc) {
+  if(options.show_png_info && data.is_png) {
     if(options.verbose) std::cout << "Physics defined: " << info.phys_defined << std::endl;
     if(info.phys_defined) {
       std::cout << "Physics: X: " << info.phys_x << ", Y: " << info.phys_y << ", unit: " << info.phys_unit << std::endl;
@@ -1228,7 +1167,8 @@ std::string shortenText(const std::string& text, const Options& options) {
 
 // A bit more PNG info, which is from chunks that can come after IDAT. showHeaderInfo shows most other stuff.
 void showPNGInfo(Data& data, const Options& options) {
-  if(data.is_icc) return;
+  data.loadInspect();
+  if(!data.is_png) return;
   loadWithErrorRecovery(data, options, false);
   if(data.error) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
@@ -1258,7 +1198,8 @@ void showPNGInfo(Data& data, const Options& options) {
 }
 
 void showColorStats(Data& data, const Options& options) {
-  if(data.is_icc) return;
+  data.loadInspect();
+  if(!data.is_png) return;
   std::cout << (options.use_hex ? std::hex: std::dec);
   std::vector<unsigned char>& image = data.pixels;
   unsigned& w = data.w;
@@ -1303,6 +1244,175 @@ void showErrors(Data& data, const Options& options) {
   loadWithErrorRecovery(data2, options, true);
 }
 
+uint32_t readExifUint32(const unsigned char* exif, size_t size, size_t pos, bool big_endian) {
+  if(pos + 4 > size) return 0;
+  if(big_endian) {
+    return ((uint32_t)exif[pos + 0] << 24u) | ((uint32_t)exif[pos + 1] << 16u) | ((uint32_t)exif[pos + 2] << 8u) | (uint32_t)exif[pos + 3];
+  } else {
+    return ((uint32_t)exif[pos + 3] << 24u) | ((uint32_t)exif[pos + 2] << 16u) | ((uint32_t)exif[pos + 1] << 8u) | (uint32_t)exif[pos + 0];
+  }
+}
+
+uint32_t readExifUint16(const unsigned char* exif, size_t size, size_t pos, bool big_endian) {
+  if(pos + 2 > size) return 0;
+  if(big_endian) {
+    return ((uint32_t)exif[pos + 0] << 8u) | (uint32_t)exif[pos + 1];
+  } else {
+    return ((uint32_t)exif[pos + 1] << 8u) | (uint32_t)exif[pos + 0];
+  }
+}
+
+
+// shows all the information from 1 IFD from the exif file. If more IFDs are linked, recursively shows those too.
+void showExifIFD(const unsigned char* exif, size_t size, size_t ifd_pos, bool big_endian, bool is_thumbnail, bool is_sub) {
+  size_t pos = ifd_pos;
+  size_t sub_ifd = 0;
+  if(pos + 2 > size) {
+    std::cout << "EXIF IFD out of range: " << pos << std::endl;
+    return;
+  }
+  size_t num_entries = readExifUint16(exif, size, pos, big_endian);
+  if(is_sub) {
+    std::cout << "EXIF Sub-IFD at " << pos << ", num entries: " << num_entries << std::endl;
+  } else if(is_thumbnail) {
+    std::cout << "EXIF Thumbnail IFD at " << pos << ", num entries: " << num_entries << std::endl;
+  } else {
+    std::cout << "EXIF IFD at " << pos << ", num entries: " << num_entries << std::endl;
+  }
+  pos += 2;
+  for(size_t i = 0; i < num_entries; i++) {
+    if(pos + 12 > size) {
+      std::cout << "EXIF IFD entry out of range: " << pos << std::endl;
+      return;
+    }
+    uint32_t tag_number = readExifUint16(exif, size, pos, big_endian);
+    uint32_t format = readExifUint16(exif, size, pos + 2, big_endian);
+    uint32_t num = readExifUint32(exif, size, pos + 4, big_endian);
+    uint32_t offset = readExifUint32(exif, size, pos + 8, big_endian);
+    uint32_t component_size = 1;
+    if(format == 3 || format == 8) component_size = 2;
+    else if(format == 4 || format == 9 || format == 11) component_size = 4;
+    else if(format == 5 || format == 10 || format == 12) component_size = 8;
+    size_t len = num * component_size;
+    if(len <= 4) offset = pos + 8; // small value is stored in the offset itself
+    pos += 12;
+
+    if(format < 1 || format > 12) {
+      std::cout << "EXIF unknown entry format" << std::endl;
+      return;
+    }
+    if(is_thumbnail) std::cout << "EXIF tag (thumbnail): ";
+    else std::cout << "EXIF tag: ";
+    // Only show some common tags by full name
+    if(tag_number == 256) std::cout << "Umage Width";
+    else if(tag_number == 257) std::cout << "Image Height";
+    else if(tag_number == 259) std::cout << "Compression";
+    else if(tag_number == 269) std::cout << "Document Name";
+    else if(tag_number == 270) std::cout << "Image Description";
+    else if(tag_number == 274) std::cout << "Orientation";
+    else if(tag_number == 282) std::cout << "X Resolution";
+    else if(tag_number == 283) std::cout << "Y Resolution";
+    else if(tag_number == 296) std::cout << "Resolution Unit";
+    else if(tag_number == 513) std::cout << "Thumbnail Offset";
+    else if(tag_number == 514) std::cout << "Thumbnail Size";
+    else if(tag_number == 33434) std::cout << "Exposure Time";
+    else if(tag_number == 33432) std::cout << "Copyright";
+    else if(tag_number == 36864) std::cout << "Exif Version";
+    else if(tag_number == 37510) std::cout << "User Comment";
+    else std::cout << "#" << tag_number; // tag for which we don't show a name here
+    std::cout << ": ";
+
+    if(offset + len > size) {
+      std::cout << "EXIF data out of range" << std::endl;
+      return;
+    }
+    if(len == 0) {
+      std::cout << "[empty]" << std::endl;
+      continue;
+    }
+
+    if(format == 1) {
+      std::cout << (uint32_t)exif[offset];
+    } else if(format == 2) {
+      for(size_t j = 0; j < len; j++) {
+        if(!exif[offset + j]) break; // NULL terminator
+        std::cout << exif[offset + j];
+      }
+    } else if(format == 3) {
+      std::cout << readExifUint16(exif, size, offset, big_endian);
+    } else if(format == 4) {
+      if(tag_number == 34665) sub_ifd = readExifUint32(exif, size, offset, big_endian);
+      else std::cout << readExifUint32(exif, size, offset, big_endian);
+    } else if(format == 5) {
+      double n = readExifUint32(exif, size, offset, big_endian);
+      double d = readExifUint32(exif, size, offset + 4, big_endian);
+      std::cout << (n / d);
+    } else if(format == 7 && len > 8 && exif[offset + 0] == 'A' && exif[offset + 1] == 'S' &&
+              exif[offset + 2] == 'C' && exif[offset + 3] == 'I' && exif[offset + 4] == 'I') {
+      for(size_t j = 8; j < len; j++) std::cout << exif[offset + j];
+    } else if(format == 7 && len == 4 && tag_number == 36864) {
+      for(size_t j = 0; j < len; j++) std::cout << exif[offset + j];
+    } else if(format == 8) {
+      std::cout << (int32_t)readExifUint16(exif, size, offset, big_endian);
+    } else if(format == 9) {
+      std::cout << (int16_t)readExifUint32(exif, size, offset, big_endian);
+    } else if(format == 10) {
+      double n = (int32_t)readExifUint32(exif, size, offset, big_endian);
+      double d = (int32_t)readExifUint32(exif, size, offset + 4, big_endian);
+      std::cout << (n / d);
+    } else {
+      // Formats like double not handled here
+      std::cout << "[format " << format << ", len " << len << "]";
+    }
+    std::cout << std::endl;
+  }
+  if(pos + 4 > size) {
+    std::cout << "EXIF IFD footer out of range" << std::endl;
+    return;
+  }
+  size_t next_ifd = readExifUint32(exif, size, pos, big_endian);
+
+  // The > checks are to guarantee progress rather than infinity recursion, though it does mean
+  // that an odd EXIF that places later parts earlier in the file won't be supported correctly
+  if(sub_ifd && sub_ifd > ifd_pos && sub_ifd != next_ifd) {
+    showExifIFD(exif, size, sub_ifd, big_endian, is_thumbnail, true);
+  }
+  if(next_ifd && next_ifd > ifd_pos) {
+    showExifIFD(exif, size, sub_ifd, big_endian, true, is_sub);
+  }
+}
+
+// Shows information from the EXIF chunk in the PNG, this only shows the basics
+// and some primitive values of the EXIF, it's not a complete EXIF parser but
+// shows the most common tags by name to verify the EXIF chunk handling is working.
+void showExif(Data& data) {
+  data.loadInspect();
+  if(data.error) return;
+  if(!data.state.info_png.exif_defined) {
+    std::cout << "No EXIF data present in this PNG image" << std::endl;
+    return;
+  }
+  const unsigned char* exif = data.state.info_png.exif;
+  size_t size = data.state.info_png.exif_size;
+  if(size < 8) {
+    std::cout << "EXIF size too small: " << size << std::endl;
+    return;
+  }
+  std::cout << "EXIF size: " << size << std::endl;
+  bool big_endian = exif[0] == 'M' && exif[1] == 'M' && exif[2] == 0 && exif[3] == 42;
+  bool little_endian = exif[0] == 'I' && exif[1] == 'I' && exif[2] == 42 && exif[3] == 0;
+  if(big_endian) {
+    std::cout << "EXIF encoded using big endian (MM)" << std::endl;
+  } else if(little_endian) {
+    std::cout << "EXIF encoded using little endian (II)" << std::endl;
+  } else {
+    std::cout << "EXIF has invalid header, must start with MM or II" << std::endl;
+    return;
+  }
+  size_t ifd = readExifUint32(exif, size, 4, big_endian);
+  showExifIFD(exif, size, ifd, big_endian, false, false);
+}
+
 void showRender(Data& data, const Options& options) {
   data.loadPixels();
   if(data.error) return;
@@ -1327,16 +1437,15 @@ void showRender(Data& data, const Options& options) {
 void showInfos(Data& data, const Options& options) {
   if(options.show_one_line_summary) showSingleLineSummary(data, options);
   if(options.show_errors) showErrors(data, options);
-  if(options.show_header || options.show_icc_details || options.show_icc_hex) showHeaderInfo(data, options);
+  if(options.show_exif) showExif(data);
+  if(options.show_header || options.show_icc_details || options.show_icc_hex || options.show_exif_hex) showHeaderInfo(data, options);
   if(options.show_color_stats) showColorStats(data, options);
   if(options.show_png_info) showPNGInfo(data, options);
   if(options.show_palette) displayPalette(data, options);
   if(options.show_chunks || options.show_chunks2) displayChunkNames(data, options);
   if(options.show_filters) displayFilterTypes(data, options);
+  if(options.show_zlib_info) printZlibInfo(data);
   if(options.show_render) showRender(data, options);
-  if(options.zlib_info || options.zlib_blocks || options.zlib_counts || options.zlib_full) {
-    printZlibInfo(data, options);
-  }
 
   if(data.error) showError(data, options);
 }
@@ -1357,10 +1466,12 @@ int main(int argc, char *argv[]) {
         else if(c == 'H') options.show_header = true;
         else if(c == 'i') options.show_icc_details = true;
         else if(c == 'I') options.show_icc_hex = true;
+        else if(c == 'e') options.show_exif = true;
+        else if(c == 'E') options.show_exif_hex = true;
         else if(c == 'v') options.verbose = true;
         else if(c == 't') options.expand_long_texts = true;
         else if(c == 's') options.show_color_stats = true;
-        else if(c == 'e') options.show_errors = true;
+        else if(c == 'a') options.show_errors = true;
         else if(c == 'p') options.show_header = options.show_png_info = true;
         else if(c == 'r') options.show_render = true;
         else if(c == 'l') options.show_palette = true;
@@ -1368,16 +1479,7 @@ int main(int argc, char *argv[]) {
         else if(c == 'c') options.show_chunks = true;
         else if(c == 'C') options.show_chunks2 = true;
         else if(c == 'f') options.show_filters = true;
-        else if(c == 'z') options.zlib_info = true;
-        else if(c == 'b') options.zlib_blocks = true;
-        else if(c == 'B') {
-          options.zlib_blocks = true;
-          options.zlib_counts = true;
-        }
-        else if(c == '7') {
-          options.zlib_blocks = true;
-          options.zlib_full = true;
-        }
+        else if(c == 'z') options.show_zlib_info = true;
         else if(c == 'x') {
           options.use_hex = true;
           std::cout << std::hex;
@@ -1405,7 +1507,7 @@ int main(int argc, char *argv[]) {
       }
       if(key == "size") {
         int size = strtoval<int>(value);
-        if(options.rendersize >= 1 && options.rendersize <= 4096) options.rendersize = size;
+        if(size >= 1 && size <= 4096) options.rendersize = size;
       }
       if(key == "format") {
         if(value == "mix") options.hexformat = HF_MIX;

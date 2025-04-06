@@ -1,7 +1,7 @@
 /*
 LodePNG Utils
 
-Copyright (c) 2005-2022 Lode Vandevenne
+Copyright (c) 2005-2024 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -211,7 +211,7 @@ unsigned convertToXYZ(float* out, float whitepoint[3],
 
 /*
 Same as convertToXYZ but takes floating point input. Slower.
-The main black..white range in 0..1. Does not clip values that are outside that range.
+The main black..white range is 0..1. Does not clip values that are outside that range.
 */
 unsigned convertToXYZFloat(float* out, float whitepoint[3], const float* in,
                            unsigned w, unsigned h, const LodePNGState* state);
@@ -245,46 +245,12 @@ unsigned convertFromXYZ(unsigned char* out, const float* in, unsigned w, unsigne
 
 /*
 Same as convertFromXYZ but outputs the RGB colors in floating point.
-The main black..white range in 0..1. Does not clip values that are outside that range.
+The main black..white range is 0..1. Does not clip values that are outside that range.
 */
 unsigned convertFromXYZFloat(float* out, const float* in, unsigned w, unsigned h,
                              const LodePNGState* state,
                              const float whitepoint[3], unsigned rendering_intent);
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-
-/*
-The information for extractZlibInfo.
-*/
-struct ZlibBlockInfo {
-  int btype; //block type (0-2)
-  size_t compressedbits; //size of compressed block in bits
-  size_t uncompressedbytes; //size of uncompressed block in bytes
-
-  // only filled in for block type 2
-  size_t treebits; //encoded tree size in bits
-  int hlit; //the HLIT value that was filled in for this tree
-  int hdist; //the HDIST value that was filled in for this tree
-  int hclen; //the HCLEN value that was filled in for this tree
-  std::vector<int> clcl; //19 code length code lengths (compressed tree's tree)
-  std::vector<int> treecodes; //N tree codes, with values 0-18. Values 17 or 18 are followed by the repetition value.
-  std::vector<int> litlenlengths; //288 code lengths for lit/len symbols
-  std::vector<int> distlengths; //32 code lengths for dist symbols
-
-  // only filled in for block types 1 or 2
-  std::vector<int> lz77_lcode; //LZ77 codes. 0-255: literals. 256: end symbol. 257-285: length code of length/dist pairs
-  // the next vectors have the same size as lz77_lcode, but an element only has meaningful value if lz77_lcode contains a length code.
-  std::vector<int> lz77_dcode;
-  std::vector<int> lz77_lbits;
-  std::vector<int> lz77_dbits;
-  std::vector<int> lz77_lvalue;
-  std::vector<int> lz77_dvalue;
-  size_t numlit; //number of lit codes in this block
-  size_t numlen; //number of len codes in this block
-};
-
-//Extracts all info needed from a PNG file to reconstruct the zlib compression exactly.
-// Returns 0 if no error, non-zero value if error
-unsigned extractZlibInfo(std::vector<ZlibBlockInfo>& zlibinfo, const std::vector<unsigned char>& in);
 
 } // namespace lodepng
 
