@@ -23,6 +23,13 @@ freely, subject to the following restrictions:
     distribution.
 */
 
+/*
+This file has been altered from the original. Public lodepng_decode_chunks
+and lodepng_finish_decode functions have been added. With these new functions
+a user can separate decode of all the chunks, so as to learn all the details
+of the file, from decompression, and possible conversion, of the image data.
+Search for msc to see the changes.
+*/
 #ifndef LODEPNG_H
 #define LODEPNG_H
 
@@ -871,6 +878,24 @@ void lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
 #endif /* defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_ENCODER) */
 
 #ifdef LODEPNG_COMPILE_DECODER
+/*
+Read the PNG's chunks, updating the state and accumulating the iDAT chunks.
+idat_out will be set to point to the accumulated iDAT chunks.
+Added by msc.
+*/
+unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* w, unsigned* h,
+                               LodePNGState* state,
+                               const unsigned char* in, size_t insize);
+
+/*
+Inflate the idat accumulated by lodepng_decode_chunks, convert to match
+the state->info_raw color type, if necessary, and return the data in
+the memory pointed to by cbuffer.
+Added by msc.
+ */
+unsigned lodepng_finish_decode(unsigned char* cbuffer, size_t cbufsize,
+                               unsigned w, unsigned h,
+                               LodePNGState* state, void* idat_in, size_t idatsize_in);
 /*
 Same as lodepng_decode_memory, but uses a LodePNGState to allow custom settings and
 getting much more information about the PNG image and color mode.
