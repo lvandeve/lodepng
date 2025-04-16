@@ -27,19 +27,6 @@ freely, subject to the following restrictions:
 The manual and changelog are in the header file "lodepng.h"
 Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for C.
 */
-/*
-This file has been altered from the original. The decodeGeneric function has
-been split into the public lodepng_decode_chunks and static inflateIdat.
-decodeGeneric has been reimplemented by calling these 2 functions. A new
-public lodepng_finish_decode has been added. With the new public functions
-a user can separate decode of all the chunks, so as to learn all the details
-of the file, from decompression, and possible conversion, of the image data.
-Search for msc to see the changes.
-
-Additional warning disables have been added. 4267 for MS VC++ and the
-equivalent -Wshorten-64-to-32 for clang. "32-bit shift implicitly converted
-to 64 bits" warnings have been fixed by changing 1u constants to 1ull.
-*/
 
 #include "lodepng.h"
 
@@ -5298,8 +5285,8 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
   return error;
 }
 
-/*extracted from the original decodeGeneric by msc*/
 /*read the PNG's chunks, updating the state and accumulating the iDAT chunks*/
+/*extracted from previous version of decodeGeneric*/
 unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* w, unsigned* h,
                                LodePNGState* state,
                                const unsigned char* in, size_t insize) {
@@ -5478,7 +5465,7 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
   return state->error;
 }
 
-/*extracted from the original decodeGeneric by msc*/
+/*extracted from the previous version of decodeGeneric*/
 static unsigned inflateIdat(unsigned char** out,
                             unsigned char* directOut, size_t directOutSize,
                             unsigned w, unsigned h,
@@ -5544,7 +5531,6 @@ static unsigned inflateIdat(unsigned char** out,
   return state->error;
 }
 
-/*added by msc*/
 /*finishes decode by inflating the images captured from the idat chunks by lodepng_decode_chunks
 and converting them if info_raw differs from info_png.color. A buffer to receive the final
 image data is provided as a parameter.
@@ -5584,8 +5570,8 @@ unsigned lodepng_finish_decode(unsigned char* cbuffer, size_t cbufsize,
   return state->error;
 }
 
-/*reimplemented by msc.*/
 /*read a PNG, the result will be in the same color type as the PNG (hence "generic")*/
+/*reimplemented by calling the functions extracted from previous version*/
 static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
                           LodePNGState* state,
                           const unsigned char* in, size_t insize) {
@@ -7111,7 +7097,6 @@ const char* lodepng_error_text(unsigned code) {
     case 120: return "invalid cLLI chunk size";
     case 121: return "invalid chunk type name: may only contain [a-zA-Z]";
     case 122: return "invalid chunk type name: third character must be uppercase";
-    // Added for 'msc' changes
     case 123: return "destination buffer too small";
   }
   return "unknown error code";
