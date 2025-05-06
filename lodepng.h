@@ -1,7 +1,7 @@
 /*
-LodePNG version 20241228
+LodePNG version 20250506
 
-Copyright (c) 2005-2024 Lode Vandevenne
+Copyright (c) 2005-2025 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -670,7 +670,7 @@ typedef struct LodePNGInfo {
   unsigned cicp_video_full_range_flag; /* Video full range flag value */
 
   /*
-  mDCv chunk: Mastering Display Color Volume.
+  mDCV chunk: Mastering Display Color Volume.
   Optional, typically used in conjunction with certain HDR color spaces that can
   be represented by the cICP chunk.
   See the PNG specification, third edition, for more information on this chunk.
@@ -678,7 +678,7 @@ typedef struct LodePNGInfo {
   integers and therefore must be in range 0-65536. The min and max luminance
   values are 32-bit integers.
   */
-  unsigned mdcv_defined; /* Whether a mDCv chunk is present (0 = not present, 1 = present). */
+  unsigned mdcv_defined; /* Whether an mDCV chunk is present (0 = not present, 1 = present). */
   /* Mastering display color primary chromaticities (CIE 1931 x,y of R,G,B) */
   unsigned mdcv_red_x;   /* Red x times 50000 */
   unsigned mdcv_red_y;   /* Red y times 50000 */
@@ -694,13 +694,13 @@ typedef struct LodePNGInfo {
   unsigned mdcv_min_luminance; /* Min luminance in cd/m^2 times 10000 */
 
   /*
-  cLLi chunk: Content Light Level Information.
+  cLLI chunk: Content Light Level Information.
   Optional, typically used in conjunction with certain HDR color spaces that can
   be represented by the cICP chunk.
   See the PNG specification, third edition, for more information on this chunk.
   The clli_max_cll and clli_max_fall values are 32-bit integers.
   */
-  unsigned clli_defined; /* Whether a cLLi chunk is present (0 = not present, 1 = present). */
+  unsigned clli_defined; /* Whether a cLLI chunk is present (0 = not present, 1 = present). */
   unsigned clli_max_cll; /* Maximum Content Light Level (MaxCLL) in cd/m^2 times 10000 */
   unsigned clli_max_fall; /* Maximum Frame-Average Light Level (MaxFALL) in cd/m^2 times 10000 */
 
@@ -1263,7 +1263,7 @@ TODO:
 [X] converting color to 16-bit per channel types
 [X] support color profile chunk types (but never let them touch RGB values by default)
 [ ] support all second edition public PNG chunk types (almost done except sPLT and hIST)
-[X] support non-animation third edition public PNG chunk types: eXIf, cICP, mDCv, cLLi
+[X] support non-animation third edition public PNG chunk types: eXIf, cICP, mDCV, cLLI
 [ ] make sure encoder generates no chunks with size > (2^31)-1
 [ ] partial decoding (stream processing)
 [X] let the "isFullyOpaque" function check color keys and transparent palettes too
@@ -2003,6 +2003,10 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 6 may 2025: renamed mDCv to mDCV and cLLi to cLLI as per the recent rename
+   in the draft png third edition spec. Please note that while the third
+   edition is not finalized, backwards-incompatible changes to its features are
+   possible.
 *) 23 dec 2024: added support for the mDCv and cLLi chunks (for png third
    edition spec)
 *) 22 dec 2024: added support for the cICP chunk (for png third edition spec)
@@ -2013,7 +2017,7 @@ https://github.com/lvandeve/lodepng
 *) 27 jun 2021: added warnings that file reading/writing functions don't support
    wide-character filenames (support for this is not planned, opening files is
    not the core part of PNG decoding/decoding and is platform dependent).
-*) 17 okt 2020: prevent decoding too large text/icc chunks by default.
+*) 17 oct 2020: prevent decoding too large text/icc chunks by default.
 *) 06 mar 2020: simplified some of the dynamic memory allocations.
 *) 12 jan 2020: (!) added 'end' argument to lodepng_chunk_next to allow correct
    overflow checks.
@@ -2035,7 +2039,7 @@ https://github.com/lvandeve/lodepng
 *) 09 apr 2016: Fixed colorkey usage detection, and better file loading (within
    the limits of pure C90).
 *) 08 dec 2015: Made load_file function return error if file can't be opened.
-*) 24 okt 2015: Bugfix with decoding to palette output.
+*) 24 oct 2015: Bugfix with decoding to palette output.
 *) 18 apr 2015: Boundary PM instead of just package-merge for faster encoding.
 *) 24 aug 2014: Moved to github
 *) 23 aug 2014: Reduced needless memory usage of decoder.
@@ -2049,8 +2053,8 @@ https://github.com/lvandeve/lodepng
     prefix for the custom allocators and made it possible with a new #define to
     use custom ones in your project without needing to change lodepng's code.
 *) 28 jan 2013: Bugfix with color key.
-*) 27 okt 2012: Tweaks in text chunk keyword length error handling.
-*) 8 okt 2012: (!) Added new filter strategy (entropy) and new auto color mode.
+*) 27 oct 2012: Tweaks in text chunk keyword length error handling.
+*) 8 oct 2012: (!) Added new filter strategy (entropy) and new auto color mode.
     (no palette). Better deflate tree encoding. New compression tweak settings.
     Faster color conversions while decoding. Some internal cleanups.
 *) 23 sep 2012: Reduced warnings in Visual Studio a little bit.
@@ -2066,7 +2070,7 @@ https://github.com/lvandeve/lodepng
 *) 6 nov 2011: (!) By default, the encoder now automatically chooses the best
     PNG color model and bit depth, based on the amount and type of colors of the
     raw image. For this, autoLeaveOutAlphaChannel replaced by auto_choose_color.
-*) 9 okt 2011: simpler hash chain implementation for the encoder.
+*) 9 oct 2011: simpler hash chain implementation for the encoder.
 *) 8 sep 2011: lz77 encoder lazy matching instead of greedy matching.
 *) 23 aug 2011: tweaked the zlib compression parameters after benchmarking.
     A bug with the PNG filtertype heuristic was fixed, so that it chooses much
@@ -2081,8 +2085,8 @@ https://github.com/lvandeve/lodepng
 *) 13 nov 2010: added LodePNG_InfoColor_hasPaletteAlpha and
     LodePNG_InfoColor_canHaveAlpha functions for convenience.
 *) 7 nov 2010: added LodePNG_error_text function to get error code description.
-*) 30 okt 2010: made decoding slightly faster
-*) 26 okt 2010: (!) changed some C function and struct names (more consistent).
+*) 30 oct 2010: made decoding slightly faster
+*) 26 oct 2010: (!) changed some C function and struct names (more consistent).
      Reorganized the documentation and the declaration order in the header.
 *) 08 aug 2010: only changed some comments and external samples.
 *) 05 jul 2010: fixed bug thanks to warnings in the new gcc version.
@@ -2141,8 +2145,8 @@ https://github.com/lvandeve/lodepng
     Removed some code duplication in the decoder. Fixed little bug in an example.
 *) 09 dec 2006: (!) Placed output parameters of public functions as first parameter.
     Fixed a bug of the decoder with 16-bit per color.
-*) 15 okt 2006: Changed documentation structure
-*) 09 okt 2006: Encoder class added. It encodes a valid PNG image from the
+*) 15 oct 2006: Changed documentation structure
+*) 09 oct 2006: Encoder class added. It encodes a valid PNG image from the
     given image buffer, however for now it's not compressed.
 *) 08 sep 2006: (!) Changed to interface with a Decoder class
 *) 30 jul 2006: (!) LodePNG_InfoPng , width and height are now retrieved in different
