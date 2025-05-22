@@ -823,7 +823,6 @@ typedef struct LodePNGDecoderSettings {
      errors: srgb rendering intent value, size of content of ancillary chunks, more than 79 characters for some
      strings, placement/combination rules for ancillary chunks, crc of unknown chunks, allowed characters
      in string keys, invalid characters in chunk types names, etc... */
-
   unsigned color_convert; /*whether to convert the PNG to the color type you want. Default: yes*/
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
@@ -831,6 +830,9 @@ typedef struct LodePNGDecoderSettings {
 
   /*store all bytes from unknown chunks in the LodePNGInfo (off by default, useful for a png editor)*/
   unsigned remember_unknown_chunks;
+
+  unsigned ignore_invalid_name; /*ignore error when chunk names contain invalid characters*/
+  unsigned ignore_reserved_name; /*ignore error when chunk name has the reserved bit set*/
 
   /* maximum size for decompressed text chunks. If a text chunk's text is larger than this, an error is returned,
   unless reading text chunks is disabled or this limit is set higher or disabled. Set to 0 to allow any size.
@@ -931,11 +933,14 @@ typedef struct LodePNGEncoderSettings {
   NOTE: enabling this may worsen compression if auto_convert is used to choose
   optimal color mode, because it cannot use grayscale color modes in this case*/
   unsigned force_palette;
+  unsigned ignore_invalid_name; /*ignore error when chunk names contain invalid characters*/
+  unsigned ignore_reserved_name; /*ignore error when chunk name has the reserved bit set*/
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   /*add LodePNG identifier and version as a text chunk, for debugging*/
   unsigned add_id;
   /*encode text chunks as zTXt chunks instead of tEXt chunks, and use compression in iTXt chunks*/
   unsigned text_compression;
+
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 } LodePNGEncoderSettings;
 

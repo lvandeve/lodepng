@@ -5423,10 +5423,10 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     } else /*it's not an implemented chunk type, so ignore it: skip over the data*/ {
-      if(!lodepng_chunk_type_name_valid(chunk)) {
+      if(!state->decoder.ignore_invalid_name && !lodepng_chunk_type_name_valid(chunk)) {
         CERROR_BREAK(state->error, 121); /* invalid chunk type name */
       }
-      if(lodepng_chunk_reserved(chunk)) {
+      if(!state->decoder.ignore_reserved_name && lodepng_chunk_reserved(chunk)) {
         CERROR_BREAK(state->error, 122); /* invalid third lowercase character */
       }
 
@@ -5585,6 +5585,8 @@ void lodepng_decoder_settings_init(LodePNGDecoderSettings* settings) {
   settings->remember_unknown_chunks = 0;
   settings->max_text_size = 16777216;
   settings->max_icc_size = 16777216; /* 16MB is much more than enough for any reasonable ICC profile */
+  settings->ignore_invalid_name = 0;
+  settings->ignore_reserved_name = 0;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   settings->ignore_crc = 0;
   settings->ignore_critical = 0;
@@ -6868,9 +6870,12 @@ void lodepng_encoder_settings_init(LodePNGEncoderSettings* settings) {
   settings->auto_convert = 1;
   settings->force_palette = 0;
   settings->predefined_filters = 0;
+  settings->ignore_invalid_name = 0;
+  settings->ignore_reserved_name = 0;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   settings->add_id = 0;
   settings->text_compression = 1;
+
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 }
 
