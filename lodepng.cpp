@@ -2837,13 +2837,6 @@ unsigned lodepng_chunk_append(unsigned char** out, size_t* outsize, const unsign
   size_t total_chunk_length, new_length;
   unsigned char *chunk_start, *new_buffer;
 
-  if(!lodepng_chunk_type_name_valid(chunk)) {
-    return 121; /* invalid chunk type name */
-  }
-  if(lodepng_chunk_reserved(chunk)) {
-    return 122; /* invalid third lowercase character */
-  }
-
   if(lodepng_addofl(lodepng_chunk_length(chunk), 12, &total_chunk_length)) return 77;
   if(lodepng_addofl(*outsize, total_chunk_length, &new_length)) return 77;
 
@@ -6439,6 +6432,13 @@ static unsigned preProcessScanlines(unsigned char** out, size_t* outsize, const 
 static unsigned addUnknownChunks(ucvector* out, unsigned char* data, size_t datasize) {
   unsigned char* inchunk = data;
   while((size_t)(inchunk - data) < datasize) {
+    if(!lodepng_chunk_type_name_valid(inchunk)) {
+        return 121; /* invalid chunk type name */
+    }
+    if(lodepng_chunk_reserved(inchunk)) {
+        return 122; /* invalid third lowercase character */
+    }
+
     CERROR_TRY_RETURN(lodepng_chunk_append(&out->data, &out->size, inchunk));
     out->allocsize = out->size; /*fix the allocsize again*/
     inchunk = lodepng_chunk_next(inchunk, data + datasize);
