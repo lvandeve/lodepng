@@ -933,13 +933,13 @@ typedef struct LodePNGEncoderSettings {
   NOTE: enabling this may worsen compression if auto_convert is used to choose
   optimal color mode, because it cannot use grayscale color modes in this case*/
   unsigned force_palette;
-  unsigned ignore_invalid_name; /*ignore error when chunk names contain invalid characters*/
-  unsigned ignore_reserved_name; /*ignore error when chunk name has the reserved bit set*/
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   /*add LodePNG identifier and version as a text chunk, for debugging*/
   unsigned add_id;
   /*encode text chunks as zTXt chunks instead of tEXt chunks, and use compression in iTXt chunks*/
   unsigned text_compression;
+  unsigned ignore_invalid_name; /*ignore error when chunk names contain invalid characters*/
+  unsigned ignore_reserved_name; /*ignore error when chunk name has the reserved bit set*/
 
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 } LodePNGEncoderSettings;
