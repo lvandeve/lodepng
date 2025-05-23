@@ -2837,13 +2837,6 @@ unsigned lodepng_chunk_append(unsigned char** out, size_t* outsize, const unsign
   size_t total_chunk_length, new_length;
   unsigned char *chunk_start, *new_buffer;
 
-  if(!lodepng_chunk_type_name_valid(chunk)) {
-    return 121; /* invalid chunk type name */
-  }
-  if(lodepng_chunk_reserved(chunk)) {
-    return 122; /* invalid third lowercase character */
-  }
-
   if(lodepng_addofl(lodepng_chunk_length(chunk), 12, &total_chunk_length)) return 77;
   if(lodepng_addofl(*outsize, total_chunk_length, &new_length)) return 77;
 
@@ -5430,10 +5423,10 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       if(state->error) break;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     } else /*it's not an implemented chunk type, so ignore it: skip over the data*/ {
-      if(!lodepng_chunk_type_name_valid(chunk)) {
+      if(!state->decoder.ignore_invalid_name && !lodepng_chunk_type_name_valid(chunk)) {
         CERROR_BREAK(state->error, 121); /* invalid chunk type name */
       }
-      if(lodepng_chunk_reserved(chunk)) {
+      if(!state->decoder.ignore_reserved_name && lodepng_chunk_reserved(chunk)) {
         CERROR_BREAK(state->error, 122); /* invalid third lowercase character */
       }
 
@@ -5592,6 +5585,8 @@ void lodepng_decoder_settings_init(LodePNGDecoderSettings* settings) {
   settings->remember_unknown_chunks = 0;
   settings->max_text_size = 16777216;
   settings->max_icc_size = 16777216; /* 16MB is much more than enough for any reasonable ICC profile */
+  settings->ignore_invalid_name = 0;
+  settings->ignore_reserved_name = 0;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
   settings->ignore_crc = 0;
   settings->ignore_critical = 0;
@@ -6436,9 +6431,16 @@ static unsigned preProcessScanlines(unsigned char** out, size_t* outsize, const 
 }
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
-static unsigned addUnknownChunks(ucvector* out, unsigned char* data, size_t datasize) {
+static unsigned addUnknownChunks(ucvector* out, unsigned char* data, size_t datasize, unsigned ignore_invalid, unsigned ignore_reserved) {
   unsigned char* inchunk = data;
   while((size_t)(inchunk - data) < datasize) {
+    if(!ignore_invalid && !lodepng_chunk_type_name_valid(inchunk)) {
+        return 121; /* invalid chunk type name */
+    }
+    if(!ignore_reserved && lodepng_chunk_reserved(inchunk)) {
+        return 122; /* invalid third lowercase character */
+    }
+
     CERROR_TRY_RETURN(lodepng_chunk_append(&out->data, &out->size, inchunk));
     out->allocsize = out->size; /*fix the allocsize again*/
     inchunk = lodepng_chunk_next(inchunk, data + datasize);
@@ -6476,6 +6478,10 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   LodePNGInfo info;
   const LodePNGInfo* info_png = &state->info_png;
   LodePNGColorMode auto_color;
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+  unsigned ignore_invalid = state->encoder.ignore_invalid_name;
+  unsigned ignore_reserved = state->encoder.ignore_reserved_name;
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
   lodepng_info_init(&info);
   lodepng_color_mode_init(&auto_color);
@@ -6663,7 +6669,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     /*unknown chunks between IHDR and PLTE*/
     if(info.unknown_chunks_data[0]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[0], info.unknown_chunks_size[0]);
+      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[0], info.unknown_chunks_size[0], ignore_invalid, ignore_reserved);
       if(state->error) goto cleanup;
     }
     /*color profile chunks must come before PLTE */
@@ -6731,7 +6737,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
 
     /*unknown chunks between PLTE and IDAT*/
     if(info.unknown_chunks_data[1]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[1], info.unknown_chunks_size[1]);
+      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[1], info.unknown_chunks_size[1], ignore_invalid, ignore_reserved);
       if(state->error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -6798,7 +6804,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
 
     /*unknown chunks between IDAT and IEND*/
     if(info.unknown_chunks_data[2]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[2], info.unknown_chunks_size[2]);
+      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[2], info.unknown_chunks_size[2], ignore_invalid, ignore_reserved);
       if(state->error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -6871,6 +6877,9 @@ void lodepng_encoder_settings_init(LodePNGEncoderSettings* settings) {
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   settings->add_id = 0;
   settings->text_compression = 1;
+  settings->ignore_invalid_name = 0;
+  settings->ignore_reserved_name = 0;
+
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 }
 
