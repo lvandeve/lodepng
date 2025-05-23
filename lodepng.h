@@ -1964,6 +1964,8 @@ state.decoder.zlibsettings.custom_...: use custom inflate function
 state.decoder.ignore_crc: ignore CRC checksums
 state.decoder.ignore_critical: ignore unknown critical chunks
 state.decoder.ignore_end: ignore missing IEND chunk. May fail if this corruption causes other errors
+state.decoder.ignore_invalid_name: do not generate error on invalid names on chunk types
+state.decoder.ignore_reserved_name: do not generate error on reserved names on chunck types
 state.decoder.color_convert: convert internal PNG color to chosen one
 state.decoder.read_text_chunks: whether to read in text metadata chunks
 state.decoder.remember_unknown_chunks: whether to read in unknown chunks
@@ -1987,6 +1989,8 @@ state.encoder.filter_strategy: PNG filter strategy to encode with
 state.encoder.force_palette: add palette even if not encoding to one
 state.encoder.add_id: add LodePNG identifier and version as a text chunk
 state.encoder.text_compression: use compressed text chunks for metadata
+state.encoder.ignore_invalid_name: do not generate error on invalid names on chunk types
+state.encoder.ignore_reserved_name: do not generate error on reserved names on chunck types
 state.info_raw.colortype: color type of raw input image you provide
 state.info_raw.bitdepth: bit depth of raw input image you provide
 state.info_raw: more color settings, see struct LodePNGColorMode
