@@ -3219,6 +3219,7 @@ static void LodePNGIText_init(LodePNGInfo* info) {
   info->itext_langtags = NULL;
   info->itext_transkeys = NULL;
   info->itext_strings = NULL;
+  info->itext_sizes = NULL;
 }
 
 static void LodePNGIText_cleanup(LodePNGInfo* info) {
@@ -3233,6 +3234,7 @@ static void LodePNGIText_cleanup(LodePNGInfo* info) {
   lodepng_free(info->itext_langtags);
   lodepng_free(info->itext_transkeys);
   lodepng_free(info->itext_strings);
+  lodepng_free(info->itext_sizes);
 }
 
 static unsigned LodePNGIText_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
@@ -3241,10 +3243,11 @@ static unsigned LodePNGIText_copy(LodePNGInfo* dest, const LodePNGInfo* source) 
   dest->itext_langtags = NULL;
   dest->itext_transkeys = NULL;
   dest->itext_strings = NULL;
+  dest->itext_sizes = NULL;
   dest->itext_num = 0;
   for(i = 0; i != source->itext_num; ++i) {
-    CERROR_TRY_RETURN(lodepng_add_itext(dest, source->itext_keys[i], source->itext_langtags[i],
-                                        source->itext_transkeys[i], source->itext_strings[i]));
+    CERROR_TRY_RETURN(lodepng_add_itext_sized(dest, source->itext_keys[i], source->itext_langtags[i],
+                                        source->itext_transkeys[i], source->itext_strings[i], source->itext_sizes[i]));
   }
   return 0;
 }
@@ -3253,19 +3256,21 @@ void lodepng_clear_itext(LodePNGInfo* info) {
   LodePNGIText_cleanup(info);
 }
 
-static unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, const char* langtag,
+unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, const char* langtag,
                                         const char* transkey, const char* str, size_t size) {
   char** new_keys = (char**)(lodepng_realloc(info->itext_keys, sizeof(char*) * (info->itext_num + 1)));
   char** new_langtags = (char**)(lodepng_realloc(info->itext_langtags, sizeof(char*) * (info->itext_num + 1)));
   char** new_transkeys = (char**)(lodepng_realloc(info->itext_transkeys, sizeof(char*) * (info->itext_num + 1)));
   char** new_strings = (char**)(lodepng_realloc(info->itext_strings, sizeof(char*) * (info->itext_num + 1)));
+  size_t* new_sizes = (size_t*)(lodepng_realloc(info->itext_sizes, sizeof(size_t) * (info->itext_num + 1)));
 
   if(new_keys) info->itext_keys = new_keys;
   if(new_langtags) info->itext_langtags = new_langtags;
   if(new_transkeys) info->itext_transkeys = new_transkeys;
   if(new_strings) info->itext_strings = new_strings;
+  if(new_sizes) info->itext_sizes = new_sizes;
 
-  if(!new_keys || !new_langtags || !new_transkeys || !new_strings) return 83; /*alloc fail*/
+  if(!new_keys || !new_langtags || !new_transkeys || !new_strings || !new_sizes) return 83; /*alloc fail*/
 
   ++info->itext_num;
 
@@ -3273,6 +3278,7 @@ static unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, cons
   info->itext_langtags[info->itext_num - 1] = alloc_string(langtag);
   info->itext_transkeys[info->itext_num - 1] = alloc_string(transkey);
   info->itext_strings[info->itext_num - 1] = alloc_string_sized(str, size);
+  info->itext_sizes[info->itext_num - 1] = size;
 
   return 0;
 }
@@ -5800,12 +5806,11 @@ static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* te
 }
 
 static unsigned addChunk_iTXt(ucvector* out, unsigned compress, const char* keyword, const char* langtag,
-                              const char* transkey, const char* textstring, LodePNGCompressSettings* zlibsettings) {
+                              const char* transkey, const char* textstring, size_t textsize, LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* chunk = 0;
   unsigned char* compressed = 0;
   size_t compressedsize = 0;
-  size_t textsize = lodepng_strlen(textstring);
   size_t keysize = lodepng_strlen(keyword), langsize = lodepng_strlen(langtag), transsize = lodepng_strlen(transkey);
 
   if(keysize < 1 || keysize > 79) return 89; /*error: invalid keyword size*/
@@ -6797,7 +6802,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       state->error = addChunk_iTXt(
           &outv, state->encoder.text_compression,
           info.itext_keys[i], info.itext_langtags[i], info.itext_transkeys[i], info.itext_strings[i],
-          &state->encoder.zlibsettings);
+          info.itext_sizes[i], &state->encoder.zlibsettings);
       if(state->error) goto cleanup;
     }
 

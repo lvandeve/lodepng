@@ -550,6 +550,7 @@ typedef struct LodePNGInfo {
   char** itext_langtags; /*language tag for this text's language, ISO/IEC 646 string, e.g. ISO 639 language tag*/
   char** itext_transkeys; /*keyword translated to the international language - UTF-8 string*/
   char** itext_strings; /*the actual international text - UTF-8 string*/
+  size_t* itext_sizes; /*the actual size of the international text - UTF-8 string, including embedded NULL, excluding terminator NULL*/
 
   /*
   Optional exif metadata in exif_size bytes.
@@ -783,6 +784,8 @@ void lodepng_clear_text(LodePNGInfo* info); /*use this to clear the texts again 
 
 unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langtag,
                            const char* transkey, const char* str); /*push back the 4 texts of 1 chunk at once*/
+unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, const char* langtag,
+                           const char* transkey, const char* str, size_t size); /*push back the 4 texts of 1 chunk at once*/
 void lodepng_clear_itext(LodePNGInfo* info); /*use this to clear the itexts again after you filled them in*/
 
 /*replaces if exists*/

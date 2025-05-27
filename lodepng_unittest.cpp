@@ -1299,7 +1299,7 @@ void createComplexPNG(std::vector<unsigned char>& png, int compress) {
   lodepng_add_text_sized(&info, "key1", "string1\0string2", 15);
 
   lodepng_add_itext(&info, "ikey0", "ilangtag0", "itranskey0", "istring0");
-  lodepng_add_itext(&info, "ikey1", "ilangtag1", "itranskey1", "istring1");
+  lodepng_add_itext_sized(&info, "ikey1", "ilangtag1", "itranskey1", "istring1\0istring2", 17);
 
   info.time_defined = 1;
   info.time.year = 2012;
@@ -1388,7 +1388,7 @@ void testComplexPNGNoTextCompression() {
     ASSERT_STRING_EQUALS("ikey1", info.itext_keys[1]);
     ASSERT_STRING_EQUALS("ilangtag1", info.itext_langtags[1]);
     ASSERT_STRING_EQUALS("itranskey1", info.itext_transkeys[1]);
-    ASSERT_STRING_EQUALS("istring1", info.itext_strings[1]);
+    ASSERT_STRING_EQUALS(std::string("istring1\0istring2", 17), std::string(info.itext_strings[1], info.itext_sizes[1]));
 
 
     // TODO: test if unknown chunks listed too
@@ -1462,7 +1462,7 @@ void testComplexPNGTextCompression() {
     ASSERT_STRING_EQUALS("ikey1", info.itext_keys[1]);
     ASSERT_STRING_EQUALS("ilangtag1", info.itext_langtags[1]);
     ASSERT_STRING_EQUALS("itranskey1", info.itext_transkeys[1]);
-    ASSERT_STRING_EQUALS("istring1", info.itext_strings[1]);
+    ASSERT_STRING_EQUALS(std::string("istring1\0istring2", 17), std::string(info.itext_strings[1], info.itext_sizes[1]));
 
 
     // TODO: test if unknown chunks listed too
