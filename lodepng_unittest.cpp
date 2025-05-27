@@ -1271,7 +1271,7 @@ void testHuffmanCodeLengths() {
 Create a PNG image with all known chunks (except only one of tEXt or zTXt) plus
 unknown chunks, and a palette.
 */
-void createComplexPNG(std::vector<unsigned char>& png) {
+void createComplexPNG(std::vector<unsigned char>& png, int compress) {
   unsigned w = 16, h = 17;
   std::vector<unsigned char> image(w * h);
   for(size_t i = 0; i < w * h; i++) {
@@ -1285,7 +1285,7 @@ void createComplexPNG(std::vector<unsigned char>& png) {
   state.info_raw.colortype = LCT_PALETTE;
   state.info_raw.bitdepth = 8;
   state.encoder.auto_convert = false;
-  state.encoder.text_compression = 1;
+  state.encoder.text_compression = compress;
   state.encoder.add_id = 1;
   for(size_t i = 0; i < 256; i++) {
     lodepng_palette_add(&info.color, i, i, i, i);
@@ -1296,7 +1296,7 @@ void createComplexPNG(std::vector<unsigned char>& png) {
   info.background_r = 127;
 
   lodepng_add_text(&info, "key0", "string0");
-  lodepng_add_text(&info, "key1", "string1");
+  lodepng_add_text_sized(&info, "key1", "string1\0string2", 15);
 
   lodepng_add_itext(&info, "ikey0", "ilangtag0", "itranskey0", "istring0");
   lodepng_add_itext(&info, "ikey1", "ilangtag1", "itranskey1", "istring1");
@@ -1338,11 +1338,85 @@ std::string extractChunkNames(const std::vector<unsigned char>& png) {
   return result;
 }
 
-void testComplexPNG() {
+void testComplexPNGNoTextCompression() {
   std::cout << "testComplexPNG" << std::endl;
 
   std::vector<unsigned char> png;
-  createComplexPNG(png);
+  createComplexPNG(png, 0);
+ {
+    lodepng::State state;
+    LodePNGInfo& info = state.info_png;
+    unsigned w, h;
+    std::vector<unsigned char> image;
+    unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
+    ASSERT_NO_PNG_ERROR(error);
+
+    ASSERT_EQUALS(16, w);
+    ASSERT_EQUALS(17, h);
+    ASSERT_EQUALS(1, info.background_defined);
+    ASSERT_EQUALS(127, info.background_r);
+    ASSERT_EQUALS(1, info.time_defined);
+    ASSERT_EQUALS(2012, info.time.year);
+    ASSERT_EQUALS(1, info.time.month);
+    ASSERT_EQUALS(2, info.time.day);
+    ASSERT_EQUALS(3, info.time.hour);
+    ASSERT_EQUALS(4, info.time.minute);
+    ASSERT_EQUALS(5, info.time.second);
+    ASSERT_EQUALS(1, info.phys_defined);
+    ASSERT_EQUALS(1, info.phys_x);
+    ASSERT_EQUALS(2, info.phys_y);
+    ASSERT_EQUALS(1, info.phys_unit);
+
+    std::string chunknames = extractChunkNames(png);
+    std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME tEXt tEXt tEXt iTXt iTXt uNKc IEND";
+    //std::string expectednames = " IHDR uNKa uNKa PLTE tRNS bKGD pHYs uNKb IDAT tIME zTXt zTXt tEXt iTXt iTXt uNKc IEND";
+    ASSERT_EQUALS(expectednames, chunknames);
+
+    ASSERT_EQUALS(3, info.text_num);
+    ASSERT_STRING_EQUALS("key0", info.text_keys[0]);
+    ASSERT_STRING_EQUALS("string0", info.text_strings[0]);
+    ASSERT_STRING_EQUALS("key1", info.text_keys[1]);
+    ASSERT_STRING_EQUALS(std::string("string1\0string2", 15), std::string(info.text_strings[1], info.text_sizes[1]));
+    ASSERT_STRING_EQUALS("LodePNG", info.text_keys[2]);
+    ASSERT_STRING_EQUALS(LODEPNG_VERSION_STRING, info.text_strings[2]);
+
+    ASSERT_EQUALS(2, info.itext_num);
+    ASSERT_STRING_EQUALS("ikey0", info.itext_keys[0]);
+    ASSERT_STRING_EQUALS("ilangtag0", info.itext_langtags[0]);
+    ASSERT_STRING_EQUALS("itranskey0", info.itext_transkeys[0]);
+    ASSERT_STRING_EQUALS("istring0", info.itext_strings[0]);
+    ASSERT_STRING_EQUALS("ikey1", info.itext_keys[1]);
+    ASSERT_STRING_EQUALS("ilangtag1", info.itext_langtags[1]);
+    ASSERT_STRING_EQUALS("itranskey1", info.itext_transkeys[1]);
+    ASSERT_STRING_EQUALS("istring1", info.itext_strings[1]);
+
+
+    // TODO: test if unknown chunks listed too
+  }
+
+
+  // Test that if read_text_chunks is disabled, we do not get the texts
+  {
+    lodepng::State state;
+    state.decoder.read_text_chunks = 0;
+    unsigned w, h;
+    std::vector<unsigned char> image;
+    unsigned error = lodepng::decode(image, w, h, state, &png[0], png.size());
+    ASSERT_NO_PNG_ERROR(error);
+
+    ASSERT_EQUALS(0, state.info_png.text_num);
+    ASSERT_EQUALS(0, state.info_png.itext_num);
+
+    // But we should still get other values.
+    ASSERT_EQUALS(2012, state.info_png.time.year);
+  }
+}
+
+void testComplexPNGTextCompression() {
+  std::cout << "testComplexPNG" << std::endl;
+
+  std::vector<unsigned char> png;
+  createComplexPNG(png, 1);
  {
     lodepng::State state;
     LodePNGInfo& info = state.info_png;
@@ -1376,7 +1450,7 @@ void testComplexPNG() {
     ASSERT_STRING_EQUALS("key0", info.text_keys[0]);
     ASSERT_STRING_EQUALS("string0", info.text_strings[0]);
     ASSERT_STRING_EQUALS("key1", info.text_keys[1]);
-    ASSERT_STRING_EQUALS("string1", info.text_strings[1]);
+    ASSERT_STRING_EQUALS(std::string("string1\0string2", 15), std::string(info.text_strings[1], info.text_sizes[1]));
     ASSERT_STRING_EQUALS("LodePNG", info.text_keys[2]);
     ASSERT_STRING_EQUALS(LODEPNG_VERSION_STRING, info.text_strings[2]);
 
@@ -1389,6 +1463,7 @@ void testComplexPNG() {
     ASSERT_STRING_EQUALS("ilangtag1", info.itext_langtags[1]);
     ASSERT_STRING_EQUALS("itranskey1", info.itext_transkeys[1]);
     ASSERT_STRING_EQUALS("istring1", info.itext_strings[1]);
+
 
     // TODO: test if unknown chunks listed too
   }
@@ -1416,7 +1491,7 @@ void testInspectChunk() {
   std::cout << "testInspectChunk" << std::endl;
 
   std::vector<unsigned char> png;
-  createComplexPNG(png);
+  createComplexPNG(png, 1);
 
   const unsigned char* chunk;
   lodepng::State state;
@@ -1449,7 +1524,7 @@ void testPaletteFilterTypesZero() {
   std::cout << "testPaletteFilterTypesZero" << std::endl;
 
   std::vector<unsigned char> png;
-  createComplexPNG(png);
+  createComplexPNG(png, 1);
 
   std::vector<unsigned char> filterTypes;
   lodepng::getFilterTypes(filterTypes, png);
@@ -1604,7 +1679,7 @@ unsigned char flipBit(unsigned char c, int bitpos) {
 void testFuzzing() {
   std::cout << "testFuzzing" << std::endl;
   std::vector<unsigned char> png;
-  createComplexPNG(png);
+  createComplexPNG(png, 1);
   std::vector<unsigned char> broken = png;
   std::vector<unsigned char> result;
   std::map<unsigned, unsigned> errors;
@@ -1805,7 +1880,7 @@ void testCustomInflate() {
 void testChunkUtil() {
   std::cout << "testChunkUtil" << std::endl;
   std::vector<unsigned char> png;
-  createComplexPNG(png);
+  createComplexPNG(png, 1);
 
   std::vector<std::string> names[3];
   std::vector<std::vector<unsigned char> > chunks[3];
@@ -3940,7 +4015,8 @@ void doMain() {
   testErrorImages();
   testPNGCodec();
   testPaletteFilterTypesZero();
-  testComplexPNG();
+  testComplexPNGNoTextCompression();
+  testComplexPNGTextCompression();
   testInspectChunk();
   testPredefinedFilters();
   testFuzzing();

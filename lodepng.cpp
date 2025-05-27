@@ -3157,6 +3157,7 @@ static void LodePNGText_init(LodePNGInfo* info) {
   info->text_num = 0;
   info->text_keys = NULL;
   info->text_strings = NULL;
+  info->text_sizes = NULL;
 }
 
 static void LodePNGText_cleanup(LodePNGInfo* info) {
@@ -3167,33 +3168,38 @@ static void LodePNGText_cleanup(LodePNGInfo* info) {
   }
   lodepng_free(info->text_keys);
   lodepng_free(info->text_strings);
+  lodepng_free(info->text_sizes);
+}
+
+unsigned lodepng_add_text_sized(LodePNGInfo* info, const char* key, const char* str, size_t size) {
+  char** new_keys = (char**)(lodepng_realloc(info->text_keys, sizeof(char*) * (info->text_num + 1)));
+  char** new_strings = (char**)(lodepng_realloc(info->text_strings, sizeof(char*) * (info->text_num + 1)));
+  size_t* new_sizes = (size_t*)(lodepng_realloc(info->text_sizes, sizeof(size_t) * (info->text_num + 1)));
+
+  if(new_keys) info->text_keys = new_keys;
+  if(new_strings) info->text_strings = new_strings;
+  if(new_sizes) info->text_sizes = new_sizes;
+
+  if(!new_keys || !new_strings || !new_sizes) return 83; /*alloc fail*/
+
+  ++info->text_num;
+  info->text_keys[info->text_num - 1] = alloc_string(key);
+  info->text_strings[info->text_num - 1] = alloc_string_sized(str, size);
+  info->text_sizes[info->text_num - 1] = size;
+  if(!info->text_keys[info->text_num - 1] || !info->text_strings[info->text_num - 1]) return 83; /*alloc fail*/
+
+  return 0;
 }
 
 static unsigned LodePNGText_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
   size_t i = 0;
   dest->text_keys = NULL;
   dest->text_strings = NULL;
+  dest->text_sizes = NULL;
   dest->text_num = 0;
   for(i = 0; i != source->text_num; ++i) {
-    CERROR_TRY_RETURN(lodepng_add_text(dest, source->text_keys[i], source->text_strings[i]));
+    CERROR_TRY_RETURN(lodepng_add_text_sized(dest, source->text_keys[i], source->text_strings[i], source->text_sizes[i]));
   }
-  return 0;
-}
-
-static unsigned lodepng_add_text_sized(LodePNGInfo* info, const char* key, const char* str, size_t size) {
-  char** new_keys = (char**)(lodepng_realloc(info->text_keys, sizeof(char*) * (info->text_num + 1)));
-  char** new_strings = (char**)(lodepng_realloc(info->text_strings, sizeof(char*) * (info->text_num + 1)));
-
-  if(new_keys) info->text_keys = new_keys;
-  if(new_strings) info->text_strings = new_strings;
-
-  if(!new_keys || !new_strings) return 83; /*alloc fail*/
-
-  ++info->text_num;
-  info->text_keys[info->text_num - 1] = alloc_string(key);
-  info->text_strings[info->text_num - 1] = alloc_string_sized(str, size);
-  if(!info->text_keys[info->text_num - 1] || !info->text_strings[info->text_num - 1]) return 83; /*alloc fail*/
-
   return 0;
 }
 
@@ -4887,7 +4893,7 @@ static unsigned readChunk_tEXt(LodePNGInfo* info, const unsigned char* data, siz
     lodepng_memcpy(str, data + string2_begin, length);
     str[length] = 0;
 
-    error = lodepng_add_text(info, key, str);
+    error = lodepng_add_text_sized(info, key, str, length);
 
     break;
   }
@@ -5753,9 +5759,9 @@ static unsigned addChunk_IEND(ucvector* out) {
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 
-static unsigned addChunk_tEXt(ucvector* out, const char* keyword, const char* textstring) {
+static unsigned addChunk_tEXt(ucvector* out, const char* keyword, const char* textstring, size_t textsize) {
   unsigned char* chunk = 0;
-  size_t keysize = lodepng_strlen(keyword), textsize = lodepng_strlen(textstring);
+  size_t keysize = lodepng_strlen(keyword);
   size_t size = keysize + 1 + textsize;
   if(keysize < 1 || keysize > 79) return 89; /*error: invalid keyword size*/
   CERROR_TRY_RETURN(lodepng_chunk_init(&chunk, out, size, "tEXt"));
@@ -5766,13 +5772,12 @@ static unsigned addChunk_tEXt(ucvector* out, const char* keyword, const char* te
   return 0;
 }
 
-static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* textstring,
+static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* textstring, size_t textsize,
                               LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* chunk = 0;
   unsigned char* compressed = 0;
   size_t compressedsize = 0;
-  size_t textsize = lodepng_strlen(textstring);
   size_t keysize = lodepng_strlen(keyword);
   if(keysize < 1 || keysize > 79) return 89; /*error: invalid keyword size*/
 
@@ -6755,10 +6760,10 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
         goto cleanup;
       }
       if(state->encoder.text_compression) {
-        state->error = addChunk_zTXt(&outv, info.text_keys[i], info.text_strings[i], &state->encoder.zlibsettings);
+        state->error = addChunk_zTXt(&outv, info.text_keys[i], info.text_strings[i], info.text_sizes[i], &state->encoder.zlibsettings);
         if(state->error) goto cleanup;
       } else {
-        state->error = addChunk_tEXt(&outv, info.text_keys[i], info.text_strings[i]);
+        state->error = addChunk_tEXt(&outv, info.text_keys[i], info.text_strings[i], info.text_sizes[i]);
         if(state->error) goto cleanup;
       }
     }
@@ -6775,7 +6780,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
         }
       }
       if(already_added_id_text == 0) {
-        state->error = addChunk_tEXt(&outv, "LodePNG", LODEPNG_VERSION_STRING); /*it's shorter as tEXt than as zTXt chunk*/
+        state->error = addChunk_tEXt(&outv, "LodePNG", LODEPNG_VERSION_STRING, lodepng_strlen(LODEPNG_VERSION_STRING)); /*it's shorter as tEXt than as zTXt chunk*/
         if(state->error) goto cleanup;
       }
     }
