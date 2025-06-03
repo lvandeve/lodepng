@@ -5507,7 +5507,7 @@ static unsigned inflateIdat(unsigned char** out,
     If the decompressed size does not match the prediction, the image must be corrupt.*/
     if(state->info_png.interlace_method == 0) {
       unsigned bpp = lodepng_get_bpp(&state->info_png.color);
-      expected_size = lodepng_get_raw_size_idat(*w, *h, bpp);
+      expected_size = lodepng_get_raw_size_idat(w, h, bpp);
     } else {
       unsigned bpp = lodepng_get_bpp(&state->info_png.color);
       /*Adam-7 interlaced: expected size is the sum of the 7 sub-images sizes*/
