@@ -5304,7 +5304,7 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
                                LodePNGState* state,
                                const unsigned char* in, size_t insize) {
   unsigned char IEND = 0;
-  unsigned char* idat;
+  unsigned char* idat = 0;
   size_t idatsize = 0;
   const unsigned char* chunk; /*points to beginning of next chunk*/
 
@@ -5317,6 +5317,7 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
 
   /* safe output values in case error happens */
   *idat_out = 0;
+  *idatsize_out = 0; /* zlib compressor checks the size rather than for a null pointer. */
   *w = *h = 0;
 
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
@@ -5593,7 +5594,9 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   void* idat;
   size_t idatsize;
   (void)lodepng_decode_chunks(&idat, &idatsize, w, h, state, in, insize);
-  (void)inflateIdat(out, NULL, 0, *w, *h, state, idat, idatsize);
+  if (!state->error) {
+    (void)inflateIdat(out, NULL, 0, *w, *h, state, idat, idatsize);
+  }
 }
 
 unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
