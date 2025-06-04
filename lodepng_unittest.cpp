@@ -397,7 +397,7 @@ std::string md5sum(const unsigned char* data, size_t size) {
   md5sum(data, size, &a0, &b0, &c0, &d0);
   char result[33];
   //sprintf(result, "%8.8x%8.8x%8.8x%8.8x", a0, b0, c0, d0);
-  sprintf(result, "%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x",
+  snprintf(result, 33, "%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x%2.2x",
           a0 & 255, (a0 >> 8) & 255, (a0 >> 16) & 255, (a0 >> 24) & 255,
           b0 & 255, (b0 >> 8) & 255, (b0 >> 16) & 255, (b0 >> 24) & 255,
           c0 & 255, (c0 >> 8) & 255, (c0 >> 16) & 255, (c0 >> 24) & 255,
