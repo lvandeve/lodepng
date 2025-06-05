@@ -220,7 +220,7 @@ void testDecode(const std::vector<unsigned char>& png) {
 
 std::string getFilePart(const std::string& path) {
   if(path.empty()) return "";
-  int slash = path.size() - 1;
+  size_t slash = path.size() - 1;
   while(slash >= 0 && path[(size_t)slash] != '/') slash--;
   return path.substr((size_t)(slash + 1));
 }

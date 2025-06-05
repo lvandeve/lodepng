@@ -362,7 +362,7 @@ void md5sum(const unsigned char* in, size_t size, unsigned* a0, unsigned* b0, un
     unsigned c = *c0;
     unsigned d = *d0;
 
-    for(size_t j = 0; j < 64; j++) {
+    for(unsigned j = 0; j < 64; j++) {
       unsigned f, g;
       if(j <= 15u) {
         f = (b & c) | (~b & d);
@@ -817,8 +817,8 @@ void testOtherPattern1() {
   std::cout << "codec other pattern 1" << std::endl;
 
   Image image1;
-  size_t w = 192;
-  size_t h = 192;
+  unsigned w = 192;
+  unsigned h = 192;
   image1.width = w;
   image1.height = h;
   image1.colorType = LCT_RGBA;
@@ -840,8 +840,8 @@ void testOtherPattern2() {
   std::cout << "codec other pattern 2" << std::endl;
 
   Image image1;
-  size_t w = 192;
-  size_t h = 192;
+  unsigned w = 192;
+  unsigned h = 192;
   image1.width = w;
   image1.height = h;
   image1.colorType = LCT_RGBA;
@@ -1229,7 +1229,7 @@ void doTestHuffmanCodeLengths(const std::string& expectedstr, const std::string&
   std::vector<unsigned> count = strtovector(counts);
   std::cout << "doTestHuffmanCodeLengths: " << counts << std::endl;
   std::vector<unsigned> result(count.size());
-  unsigned error = lodepng_huffman_code_lengths(&result[0], &count[0], count.size(), bitlength);
+  unsigned error = lodepng_huffman_code_lengths(&result[0], &count[0], count.size(), (unsigned)bitlength);
   ASSERT_NO_PNG_ERROR_MSG(error, "errorcode");
   std::stringstream ss1, ss2;
   for(size_t i = 0; i < count.size(); i++) {
@@ -1486,7 +1486,7 @@ void testPaletteToPaletteConvert() {
 void doRGBAToPaletteTest(unsigned char* palette, size_t size, LodePNGColorType expectedType = LCT_PALETTE) {
   std::cout << "testRGBToPaletteConvert " << size << std::endl;
   unsigned error;
-  unsigned w = size, h = 257 /*LodePNG encodes no palette if image is too small*/;
+  unsigned w = (unsigned)size, h = 257 /*LodePNG encodes no palette if image is too small*/;
   std::vector<unsigned char> image(w * h * 4);
   for(size_t i = 0; i < image.size(); i++) image[i] = palette[i % (size * 4)];
   std::vector<unsigned char> png;
@@ -1900,7 +1900,7 @@ void test16bitColorEndianness() {
 }
 
 void testPredefinedFilters() {
-  size_t w = 32, h = 32;
+  unsigned w = 32, h = 32;
   std::cout << "testPredefinedFilters" << std::endl;
   Image image;
   generateTestImage(image, w, h, LCT_RGBA, 8);
@@ -2008,7 +2008,7 @@ void testAutoColorModel(const std::vector<unsigned char>& colors, unsigned inbit
   for(size_t i = 0; i < colors2.size(); i++) colors2[i] = colors[i % colors.size()];
 
   std::vector<unsigned char> png;
-  lodepng::encode(png, colors2, num, 1, LCT_RGBA, inbitdepth);
+  lodepng::encode(png, colors2, (unsigned)num, 1, LCT_RGBA, inbitdepth);
 
   // now extract the color type it chose
   unsigned w, h;
@@ -2451,7 +2451,7 @@ void testColorProfile() {
     lodepng::State state;
     std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
-    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), (unsigned)testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 
@@ -2478,7 +2478,7 @@ void testColorProfile() {
     lodepng::State state;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
-    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), (unsigned)testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 
@@ -2509,7 +2509,7 @@ void testColorProfile() {
     lodepng::State state;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
-    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), (unsigned)testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 
@@ -2535,7 +2535,7 @@ void testColorProfile() {
     lodepng::State state;
     std::string testprofile = "0123456789abcdefRGB fake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
-    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), (unsigned)testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 
@@ -2564,7 +2564,7 @@ void testColorProfile() {
     lodepng::State state;
     std::string testprofile = "0123456789abcdefGRAYfake iccp profile for testing";
     testprofile[0] = testprofile[1] = 0;
-    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), testprofile.size());
+    lodepng_set_icc(&state.info_png, "test", (const unsigned char*)testprofile.c_str(), (unsigned)testprofile.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NOT_EQUALS(0, error);  // must give error due to color image input with gray profile
   }
@@ -2593,7 +2593,7 @@ void testExif() {
     std::vector<unsigned char> png;
     lodepng::State state;
     std::string testexif = "MM  0123456789";
-    lodepng_set_exif(&state.info_png, (const unsigned char*)testexif.c_str(), testexif.size());
+    lodepng_set_exif(&state.info_png, (const unsigned char*)testexif.c_str(), (unsigned)testexif.size());
     error = lodepng::encode(png, &image[0], w, h, state);
     ASSERT_NO_PNG_ERROR(error);
 
@@ -3259,7 +3259,7 @@ void testICC() {
   std::vector<unsigned char> icc_near_srgb;
   fromBase64(icc_near_srgb, icc_near_srgb_base64);
   lodepng::State state_near_srgb;
-  lodepng_set_icc(&state_near_srgb.info_png, "near_srgb", icc_near_srgb.data(), icc_near_srgb.size());
+  lodepng_set_icc(&state_near_srgb.info_png, "near_srgb", icc_near_srgb.data(), (unsigned)icc_near_srgb.size());
 
   // a made up RGB model.
   // it causes (when converting from this to srgb) green to become softer green, blue to become softer blue, red to become orange.
@@ -3277,7 +3277,7 @@ void testICC() {
   std::vector<unsigned char> icc_orange;
   fromBase64(icc_orange, icc_orange_base64);
   lodepng::State state_orange;
-  lodepng_set_icc(&state_orange.info_png, "orange", icc_orange.data(), icc_orange.size());
+  lodepng_set_icc(&state_orange.info_png, "orange", icc_orange.data(), (unsigned)icc_orange.size());
 
   // A made up RGB model which is a superset of sRGB, and has R/G/B shifted around (so it greatly alters colors)
   // Since this is a superset of sRGB, converting from sRGB to this model, and then back, should be lossless, but the opposite not necessarily.
@@ -3293,7 +3293,7 @@ void testICC() {
   std::vector<unsigned char> icc_super;
   fromBase64(icc_super, icc_super_base64);
   lodepng::State state_super;
-  lodepng_set_icc(&state_super.info_png, "super", icc_super.data(), icc_super.size());
+  lodepng_set_icc(&state_super.info_png, "super", icc_super.data(), (unsigned)icc_super.size());
 
   // A made up RGB model which is a subset of sRGB, and has R/G/B shifted around (so it greatly alters colors)
   // Since this is a subset of sRGB, converting to sRGB from this model, and then back, should be lossless, but the opposite not necessarily.
@@ -3310,7 +3310,7 @@ void testICC() {
   std::vector<unsigned char> icc_sub;
   fromBase64(icc_sub, icc_sub_base64);
   lodepng::State state_sub;
-  lodepng_set_icc(&state_sub.info_png, "sub", icc_sub.data(), icc_sub.size());
+  lodepng_set_icc(&state_sub.info_png, "sub", icc_sub.data(), (unsigned)icc_sub.size());
 
   // make 8-pixel image with following colors: white, gray, red, darkred, green, darkgreen, blue, darkblue
   unsigned w = 4, h = 2;
@@ -3386,7 +3386,7 @@ void testICCGray() {
   fromBase64(icc22, icc22_base64);
   lodepng::State state22;
   state22.info_raw.colortype = LCT_GREY;
-  lodepng_set_icc(&state22.info_png, "gray22", icc22.data(), icc22.size());
+  lodepng_set_icc(&state22.info_png, "gray22", icc22.data(), (unsigned)icc22.size());
 
   // Grayscale, Gamma 2.9, custom whitepoint
   std::string icc29_base64 =
@@ -3400,7 +3400,7 @@ void testICCGray() {
   fromBase64(icc29, icc29_base64);
   lodepng::State state29;
   state29.info_raw.colortype = LCT_GREY;
-  lodepng_set_icc(&state29.info_png, "gray29", icc29.data(), icc29.size());
+  lodepng_set_icc(&state29.info_png, "gray29", icc29.data(), (unsigned)icc29.size());
 
   // Grayscale, Gamma 1.5, custom whitepoint
   std::string icc15_base64 =
@@ -3414,7 +3414,7 @@ void testICCGray() {
   fromBase64(icc15, icc15_base64);
   lodepng::State state15;
   state15.info_raw.colortype = LCT_GREY;
-  lodepng_set_icc(&state15.info_png, "gray15", icc15.data(), icc15.size());
+  lodepng_set_icc(&state15.info_png, "gray15", icc15.data(), (unsigned)icc15.size());
 
 
   // make 8-pixel grayscale image with different shades of gray
