@@ -1,0 +1,121 @@
+# Copyright 2025 The Khronos Group Inc.
+# SPDX-License-Identifier: Apache-2.0
+name: Build lodepng Utilities and Tests and Run Tests
+
+on:
+  # Trigger the workflow on a pull request,
+  pull_request:
+
+  push:
+    # And on pushes to main, which will occur when a PR is merged.
+    branches:
+      - main
+    # Also trigger on push of release tags to any branch. Useful
+    # for testing release builds before merging to main.
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - Makefile
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  build-lodepng:
+    name: Build lodepng utilities and tests
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+        include:
+          - generator: Ninja Multi-Config
+            os: macos-latest
+          - generator: Ninja Multi-Config
+            os: ubuntu-latest
+            # N M-C on Windows appears to result in the debug build linking with
+            # the non-debug CRT as there are unresolved references to the RTC
+            # (runtime check) functions from SDL_windows_main. I've been unable to
+            # debug as N M-C uses MingW and there is no MingW available for
+            # Windows/Arm64. GCC is already tested in the Ubuntu build. Trying a
+            # different compiler is a good thing.
+          - generator: Visual Studio 17 2022
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      BUILD_DIR: build
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # Fetch all history to make sure tags are
+        # included (used for version creation)
+        fetch-depth: 0
+
+    - name: Force fetch provoking tag's annotation.
+      # Work around https://github.com/actions/checkout/issues/290.
+      if: github.ref_type == 'tag'
+      run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
+
+    - name: Install vcpkg on macOS
+      if: matrix.os == 'macos-latest'
+      run: |
+        pushd $HOME
+        git clone https://github.com/microsoft/vcpkg
+        cd vcpkg && ./bootstrap-vcpkg.sh -disableMetrics && echo "VCPKG_ROOT=`pwd`" >> $GITHUB_ENV
+        popd
+
+    # vcpkg is pre-installed on Ubuntu and Windows runners.
+    - name: Export VCPKG_ROOT for Windows and Ubuntu
+      if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('VCPKG_ROOT', process.env.VCPKG_INSTALLATION_ROOT || '');
+
+    - name: Install libltdl
+      # Needed by libxcrypt which is needed by vcpkg.
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt install libltdl-dev
+
+    # vcpkg support the GitHub Actions Cache was removed when the GHA cache API
+    # was updated. Therefore restore and save the cache manually for now. Consider
+    # using the lukka/run-vcpkg action once it has been updated.
+    - name: Restore VCPKG cache
+      id: cache-vcpkg-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/vcpkg_cache
+        key: vcpkg-${{ matrix.os }}-${{ hashFiles('vcpkg.json') }}
+        restore-keys: vcpkg-${{ matrix.os }}-
+
+    - name: Build utilities and tests
+      run: |
+        echo "CMake Configure"
+        cmake -B ${{ env.BUILD_DIR }} -G "${{ matrix.generator }}" -D CMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
+        echo "Build Release"
+        cmake --build ${{ env.BUILD_DIR }} --config Release
+        echo "Build Debug"
+        cmake --build ${{ env.BUILD_DIR }} --config Debug
+        ls build
+
+    - name: Run tests
+      run: ${{ env.BUILD_DIR }}/Release/unittest
+
+    - name: Save vcpkg cache
+      id: cache-vcpkg-save
+      if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ github.workspace }}/vcpkg_cache
+        key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
+
+    - name: Upload compiled utilities and tests
+      uses: actions/upload-artifact@v4
+      with:
+        name: lodepng-${{ matrix.os }}
+        path: ${{ env.BUILD_DIR }}/Release
