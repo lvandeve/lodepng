@@ -41,13 +41,6 @@ elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU"
     # https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html has conflicting
     # information that it is the same as -Wextra and "The older name is still
     # supported". Do you really want to use it?
-    #
-    # WHEN BUILDING WITH XCODE THERE ARE A LOT OF WARNINGS ABOUT CONVERSION FROM
-    # size_t TO int IN lodepng_unittest.cpp. -Wno-conversion HAS BEEN ADDED TO SUPPRESS
-    # THESE BUT THE WARNINGS SHOULD REALLY BE FIXED. I FIXED THREE IN showpng.cpp.
-    # These warnings do no appear when building with gcc or clang from the command
-    # line. Presumably Xcode turns these warnings on by default.
-#    add_compile_options( -W -Wall -Wextra -ansi -pedantic -Wno-unused-function -Wno-conversion $<$<BOOL:${LODEPNG_WERROR}>:-Werror>)
     add_compile_options( -W -Wall -Wextra -ansi -pedantic -Wno-unused-function $<$<BOOL:${LODEPNG_WERROR}>:-Werror>)
     add_compile_options( $<IF:$<CONFIG:Debug>,-O0$<SEMICOLON>-g,-O3> )
     if(EMSCRIPTEN)
