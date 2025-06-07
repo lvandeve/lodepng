@@ -121,9 +121,16 @@ int showfile(const char* filename) {
 }
 
 int main(int argc, char* argv[]) {
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    std::cerr << argv[0] << ": SDL video initialization failed :"
+              << SDL_GetError() << std::endl;
+    return 1;
+  }
   if(argc <= 1) std::cout << "Please enter PNG file name(s) to display" << std::endl;
 
   for(int i = 1; i < argc; i++) {
     if(showfile(argv[i])) return 0;
   }
+
+  return 0;
 }

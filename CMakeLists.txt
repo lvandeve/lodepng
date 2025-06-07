@@ -19,6 +19,8 @@ set(VCPKG_MANIFEST_FEATURES sdl2)
 project(lodepng
     VERSION 20250506
     DESCRIPTION "Tests of and utilities using lodepng PNG codec."
+    HOMEPAGE_URL https://github.com/lvandeve/lodepng
+    LANGUAGES C;CXX
 )
 
 option( LODEPNG_WERROR "Make all warnings in lodepng code, errors." OFF)
@@ -28,7 +30,7 @@ option( LODEPNG_WERROR "Make all warnings in lodepng code, errors." OFF)
 # Global compile options
 if(MSVC)
     # Can't find an equivalent to -ansi (-std=c90, -std=c++98) in modern MSVC.
-    add_compile_options( /Wall;$<$<BOOL:${LODEPNG_WERROR}>:/WX> )
+    add_compile_options( /W4;$<$<BOOL:${LODEPNG_WERROR}>:/WX> )
     add_compile_options( $<IF:$<CONFIG:Debug>,/Gz,/O2> )
     # Enable UTF-8 support
     add_compile_options( $<$<C_COMPILER_ID:MSVC>:/utf-8> )
@@ -94,7 +96,10 @@ if(TARGET SDL2::SDL2)
   target_link_libraries(
     showpng
   PUBLIC
-    SDL2::SDL2
+    # Use SDL2_LIBRARIES because it includes SD2Lmain when on Windows. Using
+    # the targets directly would require an if(WIN32).
+    #SDL2::SDL2
+    ${SDL2_LIBRARIES}
   )
 
   add_executable(benchmark
@@ -115,9 +120,11 @@ if(TARGET SDL2::SDL2)
   target_link_libraries(
     benchmark
   PUBLIC
-    SDL2::SDL2
+    # Ditto libraries comment under showpng.
+    #SDL2::SDL2
+    ${SDL2_LIBRARIES}
   )
 else()
-  message(INFO "SDL2 not found. Install SDL2 or vcpkg to build targets showpng and benchmark.")
+  message(NOTICE "SDL2 not found. Install SDL2 or vcpkg to configure and build targets showpng and benchmark.")
 endif()
 
