@@ -25,8 +25,6 @@ project(lodepng
 
 option( LODEPNG_WERROR "Make all warnings in lodepng code, errors." OFF)
 
-#include(CTest)  # Must be after project
-
 # Global compile options
 if(MSVC)
     # Can't find an equivalent to -ansi (-std=c90, -std=c++98) in modern MSVC.
@@ -121,3 +119,11 @@ else()
   message(NOTICE "SDL2 not found. Install SDL2 or vcpkg to configure and build targets showpng and benchmark.")
 endif()
 
+include(CTest)  # Must be after project
+
+enable_testing()
+
+add_test(
+    NAME lodepng.unittest
+    COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/unittest
+)

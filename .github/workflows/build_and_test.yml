@@ -101,10 +101,9 @@ jobs:
         cmake --build ${{ env.BUILD_DIR }} --config Release
         echo "Build Debug"
         cmake --build ${{ env.BUILD_DIR }} --config Debug
-        ls build
 
     - name: Run tests
-      run: ${{ env.BUILD_DIR }}/Release/unittest
+      run: ctest -V --test-dir ${{ env.BUILD_DIR }} --build-config Release
 
     - name: Save vcpkg cache
       id: cache-vcpkg-save
