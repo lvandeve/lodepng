@@ -47,7 +47,7 @@ jobs:
 
     env:
       BUILD_DIR: build
-      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+      USERNAME: lvandeve
 
     steps:
     - uses: actions/checkout@v4
@@ -61,39 +61,61 @@ jobs:
       if: github.ref_type == 'tag'
       run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
 
-    - name: Install vcpkg on macOS
-      if: matrix.os == 'macos-latest'
-      run: |
-        pushd $HOME
-        git clone https://github.com/microsoft/vcpkg
-        cd vcpkg && ./bootstrap-vcpkg.sh -disableMetrics && echo "VCPKG_ROOT=`pwd`" >> $GITHUB_ENV
-        popd
+    - name: Install libldtl and mono on Ubuntu
+      # libldtl is needed by libxcrypt which is needed by vcpkg.
+      # mono is needed for adding NuGet sources for caching.
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get -qq install mono-complete libltdl-dev
 
-    # vcpkg is pre-installed on Ubuntu and Windows runners.
-    - name: Export VCPKG_ROOT for Windows and Ubuntu
-      if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
+    - name: Export environment variables for vcpkg binary caching
+      # actions/github-script is used because it is the only way to access
+      # VCPKG_INSTALLATION_ROOT outside of the runner's shell and the only
+      # portable way to programmatically set environment variables.
+      # NUGET_FEED_URL is set here to keep the vcpkg cache environment
+      # variables together.
       uses: actions/github-script@v7
       with:
+        # JSON in use here. #<comments> in the script will break it.
+        # Pre-installed vcpkg location is indicated by a non-standard env.
+        # var.
         script: |
           core.exportVariable('VCPKG_ROOT', process.env.VCPKG_INSTALLATION_ROOT || '');
+          core.exportVariable('VCPKG_EXE', process.env.VCPKG_INSTALLATION_ROOT + '/vcpkg' || '');
+          core.exportVariable('NUGET_FEED_URL', 'https://nuget.pkg.github.com/KhronosGroup/index.json' || '');
 
-    - name: Install libltdl
-      # Needed by libxcrypt which is needed by vcpkg.
-      if: matrix.os == 'ubuntu-latest'
-      run: sudo apt install libltdl-dev
+    - name: Add NuGet sources (macOS and Ubuntu)
+      if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
+          sources add \
+          -Source "${{ env.NUGET_FEED_URL }}" \
+          -StorePasswordInClearText \
+          -Name GitHubPackages \
+          -UserName "${{ env.USERNAME }}" \
+          -Password "${{ secrets.GH_PACKAGES_TOKEN }}"
+        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
+          setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" \
+          -Source "${{ env.NUGET_FEED_URL }}"
 
-    # vcpkg support the GitHub Actions Cache was removed when the GHA cache API
-    # was updated. Therefore restore and save the cache manually for now. Consider
-    # using the lukka/run-vcpkg action once it has been updated.
-    - name: Restore VCPKG cache
-      id: cache-vcpkg-restore
-      uses: actions/cache/restore@v4
-      with:
-        path: ${{ github.workspace }}/vcpkg_cache
-        key: vcpkg-${{ matrix.os }}-${{ hashFiles('vcpkg.json') }}
-        restore-keys: vcpkg-${{ matrix.os }}-
+    - name: Add NuGet sources (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        .$(${{ env.VCPKG_EXE }} fetch nuget) `
+          sources add `
+          -Source "${{ env.NUGET_FEED_URL }}" `
+          -StorePasswordInClearText `
+          -Name GitHubPackages `
+          -UserName "${{ env.USERNAME }}" `
+          -Password "${{ secrets.GH_PACKAGES_TOKEN }}"
+        .$(${{ env.VCPKG_EXE }} fetch nuget) `
+          setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" `
+          -Source "${{ env.NUGET_FEED_URL }}"
 
     - name: Build utilities and tests
+      env:
+        VCPKG_BINARY_SOURCES: clear;nuget,${{ env.NUGET_FEED_URL }},readwrite
       run: |
         echo "CMake Configure"
         cmake -B ${{ env.BUILD_DIR }} -G "${{ matrix.generator }}" -D CMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
@@ -104,14 +126,6 @@ jobs:
 
     - name: Run tests
       run: ctest -V --test-dir ${{ env.BUILD_DIR }} --build-config Release
-
-    - name: Save vcpkg cache
-      id: cache-vcpkg-save
-      if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ github.workspace }}/vcpkg_cache
-        key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
 
     - name: Upload compiled utilities and tests
       uses: actions/upload-artifact@v4
