@@ -5304,8 +5304,7 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
                                LodePNGState* state,
                                const unsigned char* in, size_t insize) {
   unsigned char IEND = 0;
-  unsigned char* idat = 0;
-  size_t idatsize = 0;
+  unsigned char* idat;
   const unsigned char* chunk; /*points to beginning of next chunk*/
 
   /*for unknown chunk order*/
@@ -5313,7 +5312,6 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   unsigned critical_pos = 1; /*1 = after IHDR, 2 = after PLTE, 3 = after IDAT*/
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-
 
   /* safe output values in case error happens */
   *idat_out = 0;
@@ -5328,8 +5326,9 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
   }
 
   /*the input filesize is a safe upper bound for the sum of idat chunks size*/
-  idat = (unsigned char*)lodepng_malloc(insize);
-  if(!idat) CERROR_RETURN_ERROR(state->error, 83); /*alloc fail*/
+  *idat_out = (unsigned char*)lodepng_malloc(insize);
+  if(!*idat_out) CERROR_RETURN_ERROR(state->error, 83); /*alloc fail*/
+  idat = *(unsigned char**)idat_out;
 
   chunk = &in[33]; /*first byte of the first chunk after the header*/
 
@@ -5365,12 +5364,10 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
     /*IDAT chunk, containing compressed image data*/
     if(lodepng_chunk_type_equals(chunk, "IDAT")) {
       size_t newsize;
-      if(lodepng_addofl(idatsize, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
+      if(lodepng_addofl(*idatsize_out, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
       if(newsize > insize) CERROR_BREAK(state->error, 95);
-      lodepng_memcpy(idat + idatsize, data, chunkLength);
-      idatsize += chunkLength;
-      *idat_out = idat;
-      *idatsize_out = idatsize;
+      lodepng_memcpy(idat + *idatsize_out, data, chunkLength);
+      *idatsize_out += chunkLength;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
       critical_pos = 3;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -5477,7 +5474,7 @@ unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* 
     if(!IEND) chunk = lodepng_chunk_next_const(chunk, in + insize);
   }
 
-  if (state->error) lodepng_free(idat);
+  if (state->error) lodepng_free(*idat_out);
   return state->error;
 }
 
@@ -5527,21 +5524,22 @@ static unsigned inflateIdat(unsigned char** out,
   if(!state->error && scanlines_size != expected_size) state->error = 91; /*decompressed size doesn't match prediction*/
   lodepng_free(idat);
 
-  if(state->error)
-    return state->error;
-
-  outsize = lodepng_get_raw_size(w, h, &state->info_png.color);
-  if (out) {
-    *out = (unsigned char*)lodepng_malloc(outsize);
-    if(!*out) CERROR_RETURN_ERROR(state->error, 83); /*alloc fail*/
-    dest = *out;
-  } else {
-    if(directOutSize < outsize) CERROR_RETURN_ERROR(state->error, 123); /* error: "destination buffer too small */
-    dest = directOut;
+  if (!state->error) {
+    outsize = lodepng_get_raw_size(w, h, &state->info_png.color);
+    if (out) {
+      *out = (unsigned char*)lodepng_malloc(outsize);
+      if(!*out) state->error = 83; /*alloc fail*/
+      dest = *out;
+    } else {
+      if(directOutSize < outsize) state->error = 123; /* error: "destination buffer too small */
+      dest = directOut;
+    }
   }
 
-  for(i = 0; i < outsize; i++) (dest)[i] = 0;
-  state->error = postProcessScanlines(dest, scanlines, w, h, &state->info_png);
+  if (!state->error) {
+    for(i = 0; i < outsize; i++) (dest)[i] = 0;
+    state->error = postProcessScanlines(dest, scanlines, w, h, &state->info_png);
+  }
   lodepng_free(scanlines);
   return state->error;
 }
