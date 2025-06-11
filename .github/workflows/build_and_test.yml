@@ -81,7 +81,7 @@ jobs:
         script: |
           core.exportVariable('VCPKG_ROOT', process.env.VCPKG_INSTALLATION_ROOT || '');
           core.exportVariable('VCPKG_EXE', process.env.VCPKG_INSTALLATION_ROOT + '/vcpkg' || '');
-          core.exportVariable('NUGET_FEED_URL', 'https://nuget.pkg.github.com/KhronosGroup/index.json' || '');
+          core.exportVariable('NUGET_FEED_URL', 'https://nuget.pkg.github.com/lvandeve/index.json' || '');
 
     - name: Add NuGet sources (macOS and Ubuntu)
       if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
