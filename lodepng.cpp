@@ -5491,7 +5491,7 @@ static unsigned inflateIdat(unsigned char** out,
 
   unsigned char* idat = (unsigned char*)idat_in;
   size_t idatsize = idatsize_in;
-  unsigned char* dest;
+  unsigned char* dest = directOut; // This initialization is to keep some compilers happy.
 
   if (!out && !directOut && directOutSize == 0)
       CERROR_RETURN_ERROR(state->error, 105);  /*no destination specified*/
