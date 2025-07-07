@@ -41,8 +41,12 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 
 #if defined(_MSC_VER) && (_MSC_VER >= 1310) /*Visual Studio: A few warning types are not desired here.*/
 #pragma warning( disable : 4244 ) /*implicit conversions: not warned by gcc -Wall -Wextra and requires too much casts*/
+#pragma warning( disable : 4267 ) /*size_t specific conversions to smaller type. Requires too much casts*/
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
+#if __clang__
+#pragma clang diagnostic ignored "-Wshorten-64-to-32" /*implicit conversions*/
+#endif
 
 const char* LODEPNG_VERSION_STRING = "20250506";
 
@@ -5281,17 +5285,14 @@ unsigned lodepng_inspect_chunk(LodePNGState* state, size_t pos,
   return error;
 }
 
-/*read a PNG, the result will be in the same color type as the PNG (hence "generic")*/
-static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
-                          LodePNGState* state,
-                          const unsigned char* in, size_t insize) {
+/*read the PNG's chunks, updating the state and accumulating the iDAT chunks*/
+/*extracted from previous version of decodeGeneric*/
+unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* w, unsigned* h,
+                               LodePNGState* state,
+                               const unsigned char* in, size_t insize) {
   unsigned char IEND = 0;
+  unsigned char* idat;
   const unsigned char* chunk; /*points to beginning of next chunk*/
-  unsigned char* idat; /*the data from idat chunks, zlib compressed*/
-  size_t idatsize = 0;
-  unsigned char* scanlines = 0;
-  size_t scanlines_size = 0, expected_size = 0;
-  size_t outsize = 0;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
@@ -5299,21 +5300,22 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   unsigned critical_pos = 1; /*1 = after IHDR, 2 = after PLTE, 3 = after IDAT*/
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
-
   /* safe output values in case error happens */
-  *out = 0;
+  *idat_out = 0;
+  *idatsize_out = 0; /* zlib compressor checks the size rather than for a null pointer. */
   *w = *h = 0;
 
   state->error = lodepng_inspect(w, h, state, in, insize); /*reads header and resets other parameters in state->info_png*/
-  if(state->error) return;
+  if(state->error) return state->error;
 
   if(lodepng_pixel_overflow(*w, *h, &state->info_png.color, &state->info_raw)) {
-    CERROR_RETURN(state->error, 92); /*overflow possible due to amount of pixels*/
+      CERROR_RETURN_ERROR(state->error, 92); /*overflow possible due to amount of pixels*/
   }
 
   /*the input filesize is a safe upper bound for the sum of idat chunks size*/
-  idat = (unsigned char*)lodepng_malloc(insize);
-  if(!idat) CERROR_RETURN(state->error, 83); /*alloc fail*/
+  *idat_out = (unsigned char*)lodepng_malloc(insize);
+  if(!*idat_out) CERROR_RETURN_ERROR(state->error, 83); /*alloc fail*/
+  idat = *(unsigned char**)idat_out;
 
   chunk = &in[33]; /*first byte of the first chunk after the header*/
 
@@ -5349,10 +5351,10 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     /*IDAT chunk, containing compressed image data*/
     if(lodepng_chunk_type_equals(chunk, "IDAT")) {
       size_t newsize;
-      if(lodepng_addofl(idatsize, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
+      if(lodepng_addofl(*idatsize_out, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
       if(newsize > insize) CERROR_BREAK(state->error, 95);
-      lodepng_memcpy(idat + idatsize, data, chunkLength);
-      idatsize += chunkLength;
+      lodepng_memcpy(idat + *idatsize_out, data, chunkLength);
+      *idatsize_out += chunkLength;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
       critical_pos = 3;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
@@ -5459,6 +5461,28 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(!IEND) chunk = lodepng_chunk_next_const(chunk, in + insize);
   }
 
+  if (state->error) lodepng_free(*idat_out);
+  return state->error;
+}
+
+/*extracted from the previous version of decodeGeneric*/
+static unsigned inflateIdat(unsigned char** out,
+                            unsigned char* directOut, size_t directOutSize,
+                            unsigned w, unsigned h,
+                            LodePNGState* state, void* idat_in, size_t idatsize_in) {
+  unsigned char* scanlines = 0;
+  size_t scanlines_size = 0;
+  size_t expected_size = 0;
+  size_t outsize = 0;
+  size_t i;
+
+  unsigned char* idat = (unsigned char*)idat_in;
+  size_t idatsize = idatsize_in;
+  unsigned char* dest = directOut; // This initialization is to keep some compilers happy.
+
+  if (!out && !directOut && directOutSize == 0)
+      CERROR_RETURN_ERROR(state->error, 105);  /*no destination specified*/
+
   if(!state->error && state->info_png.color.colortype == LCT_PALETTE && !state->info_png.color.palette) {
     state->error = 106; /* error: PNG file must have PLTE chunk if color type is palette */
   }
@@ -5468,18 +5492,18 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     If the decompressed size does not match the prediction, the image must be corrupt.*/
     if(state->info_png.interlace_method == 0) {
       unsigned bpp = lodepng_get_bpp(&state->info_png.color);
-      expected_size = lodepng_get_raw_size_idat(*w, *h, bpp);
+      expected_size = lodepng_get_raw_size_idat(w, h, bpp);
     } else {
       unsigned bpp = lodepng_get_bpp(&state->info_png.color);
       /*Adam-7 interlaced: expected size is the sum of the 7 sub-images sizes*/
       expected_size = 0;
-      expected_size += lodepng_get_raw_size_idat((*w + 7) >> 3, (*h + 7) >> 3, bpp);
-      if(*w > 4) expected_size += lodepng_get_raw_size_idat((*w + 3) >> 3, (*h + 7) >> 3, bpp);
-      expected_size += lodepng_get_raw_size_idat((*w + 3) >> 2, (*h + 3) >> 3, bpp);
-      if(*w > 2) expected_size += lodepng_get_raw_size_idat((*w + 1) >> 2, (*h + 3) >> 2, bpp);
-      expected_size += lodepng_get_raw_size_idat((*w + 1) >> 1, (*h + 1) >> 2, bpp);
-      if(*w > 1) expected_size += lodepng_get_raw_size_idat((*w + 0) >> 1, (*h + 1) >> 1, bpp);
-      expected_size += lodepng_get_raw_size_idat((*w + 0), (*h + 0) >> 1, bpp);
+      expected_size += lodepng_get_raw_size_idat((w + 7) >> 3, (h + 7) >> 3, bpp);
+      if(w > 4) expected_size += lodepng_get_raw_size_idat((w + 3) >> 3, (h + 7) >> 3, bpp);
+      expected_size += lodepng_get_raw_size_idat((w + 3) >> 2, (h + 3) >> 3, bpp);
+      if(w > 2) expected_size += lodepng_get_raw_size_idat((w + 1) >> 2, (h + 3) >> 2, bpp);
+      expected_size += lodepng_get_raw_size_idat((w + 1) >> 1, (h + 1) >> 2, bpp);
+      if(w > 1) expected_size += lodepng_get_raw_size_idat((w + 0) >> 1, (h + 1) >> 1, bpp);
+      expected_size += lodepng_get_raw_size_idat((w + 0), (h + 0) >> 1, bpp);
     }
 
     state->error = zlib_decompress(&scanlines, &scanlines_size, expected_size, idat, idatsize, &state->decoder.zlibsettings);
@@ -5487,16 +5511,76 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   if(!state->error && scanlines_size != expected_size) state->error = 91; /*decompressed size doesn't match prediction*/
   lodepng_free(idat);
 
-  if(!state->error) {
-    outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
-    *out = (unsigned char*)lodepng_malloc(outsize);
-    if(!*out) state->error = 83; /*alloc fail*/
+  if (!state->error) {
+    outsize = lodepng_get_raw_size(w, h, &state->info_png.color);
+    if (out) {
+      *out = (unsigned char*)lodepng_malloc(outsize);
+      if(!*out) state->error = 83; /*alloc fail*/
+      dest = *out;
+    } else {
+      if(directOutSize < outsize) state->error = 123; /* error: "destination buffer too small */
+      dest = directOut;
+    }
   }
-  if(!state->error) {
-    lodepng_memset(*out, 0, outsize);
-    state->error = postProcessScanlines(*out, scanlines, *w, *h, &state->info_png);
+
+  if (!state->error) {
+    for(i = 0; i < outsize; i++) (dest)[i] = 0;
+    state->error = postProcessScanlines(dest, scanlines, w, h, &state->info_png);
   }
   lodepng_free(scanlines);
+  return state->error;
+}
+
+/*finishes decode by inflating the images captured from the idat chunks by lodepng_decode_chunks
+and converting them if info_raw differs from info_png.color. A buffer to receive the final
+image data is provided as a parameter.
+ */
+unsigned lodepng_finish_decode(unsigned char* cbuffer, size_t cbufsize,
+                               unsigned w, unsigned h,
+                               LodePNGState* state, void* idat_in, size_t idatsize_in)
+{
+  if (!cbuffer || cbufsize == 0)
+      CERROR_RETURN_ERROR(state->error, 105);  /*no destination specified*/
+
+  if(!state->decoder.color_convert || lodepng_color_mode_equal(&state->info_raw, &state->info_png.color)) {
+    /*same color type, no copying or converting of data needed*/
+    /*store the info_png color settings on the info_raw so that the info_raw still reflects what colortype
+    the raw image has to the end user*/
+    if(!state->decoder.color_convert) {
+      state->error = lodepng_color_mode_copy(&state->info_raw, &state->info_png.color);
+      if(state->error) return state->error;
+    }
+    state->error = inflateIdat(NULL, cbuffer, cbufsize, w, h, state, idat_in, idatsize_in);
+  } else {
+    size_t outsize;
+    unsigned char* tbuf;
+
+    /*color conversion needed. Have lodepng_inflate_idat create a temporary buffer for the unconverted data*/
+    state->error = inflateIdat(&tbuf, NULL, 0, w, h, state, idat_in, idatsize_in);
+    if(!(state->info_raw.colortype == LCT_RGB || state->info_raw.colortype == LCT_RGBA)
+      && !(state->info_raw.bitdepth == 8)) {
+      return 56; /*unsupported color mode conversion*/
+    }
+    outsize = lodepng_get_raw_size(w, h, &state->info_raw);
+    if(cbufsize < outsize) CERROR_RETURN_ERROR(state->error, 123); /* error: "destination buffer too small */
+    state->error = lodepng_convert(cbuffer, tbuf, &state->info_raw,
+                                   &state->info_png.color, w, h);
+    lodepng_free(tbuf);
+  }
+  return state->error;
+}
+
+/*read a PNG, the result will be in the same color type as the PNG (hence "generic")*/
+/*reimplemented by calling the functions extracted from previous version*/
+static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
+                          LodePNGState* state,
+                          const unsigned char* in, size_t insize) {
+  void* idat;
+  size_t idatsize;
+  (void)lodepng_decode_chunks(&idat, &idatsize, w, h, state, in, insize);
+  if (!state->error) {
+    (void)inflateIdat(out, NULL, 0, *w, *h, state, idat, idatsize);
+  }
 }
 
 unsigned lodepng_decode(unsigned char** out, unsigned* w, unsigned* h,
@@ -7013,6 +7097,7 @@ const char* lodepng_error_text(unsigned code) {
     case 120: return "invalid cLLI chunk size";
     case 121: return "invalid chunk type name: may only contain [a-zA-Z]";
     case 122: return "invalid chunk type name: third character must be uppercase";
+    case 123: return "destination buffer too small";
   }
   return "unknown error code";
 }
