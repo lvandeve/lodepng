@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Build lodepng Utilities and Tests and Run Tests
 
+permissions:
+  packages: write
+
 on:
   # Trigger the workflow on a pull request,
   pull_request:
@@ -93,9 +96,9 @@ jobs:
           -StorePasswordInClearText \
           -Name GitHubPackages \
           -UserName "${{ env.USERNAME }}" \
-          -Password "${{ secrets.GH_PACKAGES_TOKEN }}"
+          -Password "${{ secrets.GITHUB_TOKEN }}"
         mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
-          setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" \
+          setapikey "${{ secrets.GITHUB_TOKEN }}" \
           -Source "${{ env.NUGET_FEED_URL }}"
 
     - name: Add NuGet sources (Windows)
@@ -108,9 +111,9 @@ jobs:
           -StorePasswordInClearText `
           -Name GitHubPackages `
           -UserName "${{ env.USERNAME }}" `
-          -Password "${{ secrets.GH_PACKAGES_TOKEN }}"
+          -Password "${{ secrets.GITHUB_TOKEN }}"
         .$(${{ env.VCPKG_EXE }} fetch nuget) `
-          setapikey "${{ secrets.GH_PACKAGES_TOKEN }}" `
+          setapikey "${{ secrets.GITHUB_TOKEN }}" `
           -Source "${{ env.NUGET_FEED_URL }}"
 
     - name: Build utilities and tests
