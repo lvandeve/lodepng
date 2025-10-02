@@ -301,7 +301,7 @@ int main(int argc, char *argv[]) {
   if(!do_encode) decode_encoded = false;
 
   if(files.empty()) {
-    std::cout << "must give .png filenames to benchamrk" << std::endl;
+    std::cout << "must give .png filenames to benchmark" << std::endl;
     showHelp(argc, argv);
     return 1;
   }
