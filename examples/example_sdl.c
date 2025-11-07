@@ -31,7 +31,7 @@ gcc lodepng.c example_sdl.c -ansi -pedantic -Wall -Wextra -lSDL2 -O3 -o showpng
 
 /*
 LodePNG SDL example
-This example displays a PNG with a checkerboard pattern to show tranparency.
+This example displays a PNG with a checkerboard pattern to show transparency.
 It requires the SDL2 library to compile and run.
 If multiple filenames are given to the command line, it shows all of them.
 Press any key to see next image, or esc to quit.

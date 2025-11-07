@@ -1641,7 +1641,7 @@ void testFuzzing() {
   std::cout << std::endl;
 }
 
-int custom_proof = 0; // global variable for nested function to call. Of course when this test is switched to modern C++ we can use a lamba instead.
+int custom_proof = 0; // global variable for nested function to call. Of course when this test is switched to modern C++ we can use a lambda instead.
 
 void testCustomZlibCompress() {
   std::cout << "testCustomZlibCompress" << std::endl;
@@ -3350,7 +3350,7 @@ void testICC() {
     assertNoError(convertRGBModel(im3.data(), im2.data(), w, h, &state_sub, &state_near_srgb, 3));
     // im3 should be same as im (allow some numerical errors), because we converted from a subset of sRGB to sRGB
     // and then back.
-    // If state_super was used here instead (with a superset RGB color model), the test below would faill due to
+    // If state_super was used here instead (with a superset RGB color model), the test below would fail due to
     // the clipping of the values in the 8-bit chars (due to the superset being out of range for sRGB)
     for(size_t i = 0; i < im.size(); i++) {
       // due to the gamma (trc), small values are very imprecise (due to the 8-bit char step in between), so allow more distance there
