@@ -965,6 +965,22 @@ void lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
 
 #ifdef LODEPNG_COMPILE_DECODER
 /*
+Read the PNG's chunks, updating the state and accumulating the iDAT chunks.
+idat_out will be set to point to the accumulated iDAT chunks.
+*/
+unsigned lodepng_decode_chunks(void** idat_out, size_t* idatsize_out, unsigned* w, unsigned* h,
+                               LodePNGState* state,
+                               const unsigned char* in, size_t insize);
+
+/*
+Inflate the idat accumulated by lodepng_decode_chunks, convert to match
+the state->info_raw color type, if necessary, and return the data in
+the memory pointed to by cbuffer.
+ */
+unsigned lodepng_finish_decode(unsigned char* cbuffer, size_t cbufsize,
+                               unsigned w, unsigned h,
+                               LodePNGState* state, void* idat_in, size_t idatsize_in);
+/*
 Same as lodepng_decode_memory, but uses a LodePNGState to allow custom settings and
 getting much more information about the PNG image and color mode.
 */
@@ -2003,6 +2019,9 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
+*) 19 may 2025: Separated chunk decoding from image decoding and expansion.
+   A user can now first decode all the chunks to learn details of the image
+   then decompress and, possibly, convert the image data.
 *) 6 may 2025: renamed mDCv to mDCV and cLLi to cLLI as per the recent rename
    in the draft png third edition spec. Please note that while the third
    edition is not finalized, backwards-incompatible changes to its features are
