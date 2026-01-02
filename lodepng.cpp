@@ -1,7 +1,7 @@
 /*
-LodePNG version 20250506
+LodePNG version 20260102
 
-Copyright (c) 2005-2025 Lode Vandevenne
+Copyright (c) 2005-2026 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20250506";
+const char* LODEPNG_VERSION_STRING = "20260102";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -296,12 +296,6 @@ static ucvector ucvector_init(unsigned char* buffer, size_t size) {
 
 #ifdef LODEPNG_COMPILE_PNG
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
-
-/*free string pointer and set it to NULL*/
-static void string_cleanup(char** out) {
-  lodepng_free(*out);
-  *out = NULL;
-}
 
 /*also appends null termination character*/
 static char* alloc_string_sized(const char* in, size_t insize) {
@@ -3162,8 +3156,8 @@ static void LodePNGText_init(LodePNGInfo* info) {
 static void LodePNGText_cleanup(LodePNGInfo* info) {
   size_t i;
   for(i = 0; i != info->text_num; ++i) {
-    string_cleanup(&info->text_keys[i]);
-    string_cleanup(&info->text_strings[i]);
+    lodepng_free(info->text_keys[i]);
+    lodepng_free(info->text_strings[i]);
   }
   lodepng_free(info->text_keys);
   lodepng_free(info->text_strings);
@@ -3203,6 +3197,8 @@ unsigned lodepng_add_text(LodePNGInfo* info, const char* key, const char* str) {
 
 void lodepng_clear_text(LodePNGInfo* info) {
   LodePNGText_cleanup(info);
+  /*cleanup only deconstructs, need to init again to set appropriate pointers to NULL*/
+  LodePNGText_init(info);
 }
 
 /******************************************************************************/
@@ -3218,10 +3214,10 @@ static void LodePNGIText_init(LodePNGInfo* info) {
 static void LodePNGIText_cleanup(LodePNGInfo* info) {
   size_t i;
   for(i = 0; i != info->itext_num; ++i) {
-    string_cleanup(&info->itext_keys[i]);
-    string_cleanup(&info->itext_langtags[i]);
-    string_cleanup(&info->itext_transkeys[i]);
-    string_cleanup(&info->itext_strings[i]);
+    lodepng_free(info->itext_keys[i]);
+    lodepng_free(info->itext_langtags[i]);
+    lodepng_free(info->itext_transkeys[i]);
+    lodepng_free(info->itext_strings[i]);
   }
   lodepng_free(info->itext_keys);
   lodepng_free(info->itext_langtags);
@@ -3245,6 +3241,8 @@ static unsigned LodePNGIText_copy(LodePNGInfo* dest, const LodePNGInfo* source) 
 
 void lodepng_clear_itext(LodePNGInfo* info) {
   LodePNGIText_cleanup(info);
+  /*cleanup only deconstructs, need to init again to set appropriate pointers to NULL*/
+  LodePNGIText_init(info);
 }
 
 static unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, const char* langtag,
@@ -3279,7 +3277,7 @@ unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langt
 unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned char* profile, unsigned profile_size) {
   if(info->iccp_defined) lodepng_clear_icc(info);
 
-  if(profile_size == 0) return 100; /*invalid ICC profile size*/
+  if(profile_size == 0) return 123; /*invalid ICC profile size*/
 
   info->iccp_name = alloc_string(name);
   if(!info->iccp_name) return 83; /*alloc fail*/
@@ -3297,12 +3295,17 @@ unsigned lodepng_set_icc(LodePNGInfo* info, const char* name, const unsigned cha
   return 0; /*ok*/
 }
 
-void lodepng_clear_icc(LodePNGInfo* info) {
-  string_cleanup(&info->iccp_name);
-  lodepng_free(info->iccp_profile);
+static void lodepng_init_icc(LodePNGInfo* info) {
+  info->iccp_defined = 0;
+  info->iccp_name = NULL;
   info->iccp_profile = NULL;
   info->iccp_profile_size = 0;
-  info->iccp_defined = 0;
+}
+
+void lodepng_clear_icc(LodePNGInfo* info) {
+  lodepng_free(info->iccp_name);
+  lodepng_free(info->iccp_profile);
+  lodepng_init_icc(info);
 }
 
 unsigned lodepng_set_exif(LodePNGInfo* info, const unsigned char* exif, unsigned exif_size) {
@@ -3318,11 +3321,15 @@ unsigned lodepng_set_exif(LodePNGInfo* info, const unsigned char* exif, unsigned
   return 0; /*ok*/
 }
 
-void lodepng_clear_exif(LodePNGInfo* info) {
-  lodepng_free(info->exif);
+static void lodepng_init_exif(LodePNGInfo* info) {
+  info->exif_defined = 0;
   info->exif = NULL;
   info->exif_size = 0;
-  info->exif_defined = 0;
+}
+
+void lodepng_clear_exif(LodePNGInfo* info) {
+  lodepng_free(info->exif);
+  lodepng_init_exif(info);
 }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
 
@@ -3337,6 +3344,8 @@ void lodepng_info_init(LodePNGInfo* info) {
 
   LodePNGText_init(info);
   LodePNGIText_init(info);
+  lodepng_init_icc(info);
+  lodepng_init_exif(info);
 
   info->time_defined = 0;
   info->phys_defined = 0;
@@ -3344,9 +3353,6 @@ void lodepng_info_init(LodePNGInfo* info) {
   info->gama_defined = 0;
   info->chrm_defined = 0;
   info->srgb_defined = 0;
-  info->iccp_defined = 0;
-  info->iccp_name = NULL;
-  info->iccp_profile = NULL;
   info->cicp_defined = 0;
   info->cicp_color_primaries = 0;
   info->cicp_transfer_function = 0;
@@ -3366,10 +3372,6 @@ void lodepng_info_init(LodePNGInfo* info) {
   info->clli_defined = 0;
   info->clli_max_cll = 0;
   info->clli_max_fall = 0;
-
-  info->exif_defined = 0;
-  info->exif = NULL;
-  info->exif_size = 0;
 
   info->sbit_defined = 0;
   info->sbit_r = info->sbit_g = info->sbit_b = info->sbit_a = 0;
@@ -3394,24 +3396,30 @@ void lodepng_info_cleanup(LodePNGInfo* info) {
 unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source) {
   lodepng_info_cleanup(dest);
   lodepng_memcpy(dest, source, sizeof(LodePNGInfo));
-  lodepng_color_mode_init(&dest->color);
-  CERROR_TRY_RETURN(lodepng_color_mode_copy(&dest->color, &source->color));
 
+  /*ensure to initialize all fields pointing to allocated data to NULL first*/
+  lodepng_color_mode_init(&dest->color);
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
+  LodePNGText_init(dest);
+  LodePNGIText_init(dest);
+  lodepng_init_icc(dest);
+  lodepng_init_exif(dest);
+  LodePNGUnknownChunks_init(dest);
+#endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
+
+  CERROR_TRY_RETURN(lodepng_color_mode_copy(&dest->color, &source->color));
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
   CERROR_TRY_RETURN(LodePNGText_copy(dest, source));
   CERROR_TRY_RETURN(LodePNGIText_copy(dest, source));
   if(source->iccp_defined) {
-    dest->iccp_defined = 0; /*the memcpy above set this to 1 while it shouldn't*/
     CERROR_TRY_RETURN(lodepng_set_icc(dest, source->iccp_name, source->iccp_profile, source->iccp_profile_size));
   }
   if(source->exif_defined) {
-    dest->exif_defined = 0; /*the memcpy above set this to 1 while it shouldn't*/
     CERROR_TRY_RETURN(lodepng_set_exif(dest, source->exif, source->exif_size));
   }
-
-  LodePNGUnknownChunks_init(dest);
   CERROR_TRY_RETURN(LodePNGUnknownChunks_copy(dest, source));
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
+
   return 0;
 }
 
@@ -5102,7 +5110,6 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* 
   unsigned length, string2_begin;
 
   if(info->iccp_defined) lodepng_clear_icc(info);
-  info->iccp_defined = 1;
 
   for(length = 0; length < chunkLength && data[length] != 0; ++length) ;
   if(length + 2 >= chunkLength) return 75; /*no null termination, corrupt?*/
@@ -5127,7 +5134,9 @@ static unsigned readChunk_iCCP(LodePNGInfo* info, const LodePNGDecoderSettings* 
   /*error: ICC profile larger than decoder->max_icc_size*/
   if(error && size > zlibsettings.max_output_size) error = 113;
   info->iccp_profile_size = (unsigned)size;
-  if(!error && !info->iccp_profile_size) error = 100; /*invalid ICC profile size*/
+  if(!error && !info->iccp_profile_size) error = 123; /*invalid ICC profile size*/
+
+  if(!error) info->iccp_defined = 1;
   return error;
 }
 
@@ -6509,7 +6518,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   if(state->error) goto cleanup; /*error: invalid color type given*/
 
   /* color convert and compute scanline filter types */
-  lodepng_info_copy(&info, &state->info_png);
+  CERROR_TRY_RETURN(lodepng_info_copy(&info, &state->info_png));
   if(state->encoder.auto_convert) {
     LodePNGColorStats stats;
     unsigned allow_convert = 1;
@@ -6956,7 +6965,7 @@ const char* lodepng_error_text(unsigned code) {
     case 68: return "tried to encode a PLTE chunk with a palette that has less than 1 or more than 256 colors";
     case 69: return "unknown chunk type with 'critical' flag encountered by the decoder";
     case 71: return "invalid interlace mode given to encoder (must be 0 or 1)";
-    case 72: return "while decoding, invalid compression method encountering in zTXt or iTXt chunk (it must be 0)";
+    case 72: return "while decoding, invalid compression method encountered in zTXt, iTXt or iCCP chunk (it must be 0)";
     case 73: return "invalid tIME chunk size";
     case 74: return "invalid pHYs chunk size";
     /*length could be wrong, or data chopped off*/
@@ -7013,6 +7022,7 @@ const char* lodepng_error_text(unsigned code) {
     case 120: return "invalid cLLI chunk size";
     case 121: return "invalid chunk type name: may only contain [a-zA-Z]";
     case 122: return "invalid chunk type name: third character must be uppercase";
+    case 123: return "invalid ICC profile size";
   }
   return "unknown error code";
 }

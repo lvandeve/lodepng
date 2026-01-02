@@ -1,7 +1,7 @@
 /*
 LodePNG pngdetail
 
-Copyright (c) 2005-2025 Lode Vandevenne
+Copyright (c) 2005-2026 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -797,41 +797,37 @@ void loadWithErrorRecovery(Data& data, const Options& options, bool show_errors_
 
   data.loadPixels();
 
-  if(show_errors_mode) {
-    if(!error) std::cout << "No errors or warnings" << std::endl;
+  if(show_errors_mode && !error) {
+    std::cout << "No errors or warnings" << std::endl;
     return;
   }
 
   // In case of checksum errors and some other ignorable errors, report it but ignore it and retry
   while(error) {
+    showError(data, options);
     // Not showing regular error here, is shown at end of program.
     unsigned error2 = error;
     if(error == 57) {
-      showError(data, options);
       if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_crc" << std::endl;
       state.decoder.ignore_crc = 1;
       data.reloadPixels();
     } else if(error == 58) {
-      showError(data, options);
       if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_adler32" << std::endl;
       state.decoder.zlibsettings.ignore_adler32 = 1;
       data.reloadPixels();
     } else if(error == 69) {
-      showError(data, options);
       if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_critical" << std::endl;
       state.decoder.ignore_critical = 1;
       data.reloadPixels();
     } else if(error == 30 || error == 63) {
-      showError(data, options);
       if(!show_errors_mode) std::cerr << "Ignoring the error: enabling ignore_end" << std::endl;
       state.decoder.ignore_end = 1;
       data.reloadPixels();
     } else {
-      showError(data, options);
-      if(!show_errors_mode) std::cerr << "This error is unrecoverable" << std::endl;
+      if(!show_errors_mode) std::cerr << "This error is not recoverable" << std::endl;
       break;  // other error that we cannot ignore
     }
-    if(!show_errors_mode) if(error == 0) std::cerr << "Successfully ignored the error" << std::endl;
+    if(!show_errors_mode && error == 0) std::cerr << "Successfully ignored the error" << std::endl;
     if(error == error2) {
       if(!show_errors_mode) std::cerr << "Failed to ignore the error" << std::endl;
       break; // avoid infinite loop if ignoring did not fix the error code
@@ -1238,7 +1234,7 @@ void showColorStats(Data& data, const Options& options) {
   }
 }
 
-void showErrors(Data& data, const Options& options) {
+void showErrors(const Data& data, const Options& options) {
   std::cout << "Error report: " << std::endl;
   Data data2(data.filename);
   loadWithErrorRecovery(data2, options, true);
