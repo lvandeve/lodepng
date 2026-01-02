@@ -369,7 +369,7 @@ char HueToLetter(int h) {
   if(h < 11 || h >= 244) hl = 'R';  // red
   else if(h >= 11 && h < 32) hl = 'O';  // orange
   else if(h >= 32 && h < 53) hl = 'Y';  // yellow
-  else if(h >= 53 && h < 74) hl = 'L';  // lime (officialy "chartreuse" but c is for cyan)
+  else if(h >= 53 && h < 74) hl = 'L';  // lime (officially "chartreuse" but c is for cyan)
   else if(h >= 74 && h < 96) hl = 'G';  // green
   else if(h >= 96 && h < 117) hl = 'T';  // turquoise (officially "spring green" but that name overlaps green)
   else if(h >= 117 && h < 138) hl = 'C';  // cyan
@@ -1012,7 +1012,7 @@ void printICCDetails(const unsigned char* icc, size_t size, const std::string& i
     }
     if(datatype == "text" || datatype == "mluc" || datatype == "desc") {
       // TODO: this is a bit of a simplification of the parse for now, e.g.
-      // ignoring UTF-16, instead implicitely skipping non-ASCII bytes, and
+      // ignoring UTF-16, instead implicitly skipping non-ASCII bytes, and
       // potentially printing things multiple times in a row if multiple
       // variants are in desc or mluc.
       std::cout << ": ";
