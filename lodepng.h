@@ -528,13 +528,14 @@ typedef struct LodePNGInfo {
   longer than 79 characters for texts.
 
   Don't allocate these text buffers yourself. Use the init/cleanup functions
-  correctly and use lodepng_add_text and lodepng_clear_text.
+  correctly and use lodepng_add_text, lodepng_add_text_sized and lodepng_clear_text.
 
   Standard text chunk keywords and strings are encoded using Latin-1.
   */
   size_t text_num; /*the amount of texts in these char** buffers (there may be more texts in itext)*/
   char** text_keys; /*the keyword of a text chunk (e.g. "Comment")*/
   char** text_strings; /*the actual text*/
+  size_t* text_sizes; /*the actual size of the text, including embedded NULL, excluding terminator NULL*/
 
   /*
   International text chunks (iTXt)
@@ -549,6 +550,7 @@ typedef struct LodePNGInfo {
   char** itext_langtags; /*language tag for this text's language, ISO/IEC 646 string, e.g. ISO 639 language tag*/
   char** itext_transkeys; /*keyword translated to the international language - UTF-8 string*/
   char** itext_strings; /*the actual international text - UTF-8 string*/
+  size_t* itext_sizes; /*the actual size of the international text - UTF-8 string, including embedded NULL, excluding terminator NULL*/
 
   /*
   Optional exif metadata in exif_size bytes.
@@ -778,10 +780,13 @@ unsigned lodepng_info_copy(LodePNGInfo* dest, const LodePNGInfo* source);
 
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 unsigned lodepng_add_text(LodePNGInfo* info, const char* key, const char* str); /*push back both texts at once*/
+unsigned lodepng_add_text_sized(LodePNGInfo* info, const char* key, const char* str, size_t size); /*push back both texts at once*/
 void lodepng_clear_text(LodePNGInfo* info); /*use this to clear the texts again after you filled them in*/
 
 unsigned lodepng_add_itext(LodePNGInfo* info, const char* key, const char* langtag,
                            const char* transkey, const char* str); /*push back the 4 texts of 1 chunk at once*/
+unsigned lodepng_add_itext_sized(LodePNGInfo* info, const char* key, const char* langtag,
+                           const char* transkey, const char* str, size_t size); /*push back the 4 texts of 1 chunk at once*/
 void lodepng_clear_itext(LodePNGInfo* info); /*use this to clear the itexts again after you filled them in*/
 
 /*replaces if exists*/
