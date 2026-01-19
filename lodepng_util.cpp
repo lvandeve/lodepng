@@ -907,7 +907,7 @@ static unsigned getICCChrm(float m[9], float whitepoint[3], const LodePNGICC* ic
     /* output the unity matrix, for doing no transform */
     m[0] = m[4] = m[8] = 1;
     m[1] = m[2] = m[3] = m[5] = m[6] = m[7] = 0;
-    /* grayscale, don't do anything. That means we are implicitely using equal energy whitepoint "E", indicate
+    /* grayscale, don't do anything. That means we are implicitly using equal energy whitepoint "E", indicate
     this to the output. */
     whitepoint[0] = whitepoint[1] = whitepoint[2] = 1;
   }
