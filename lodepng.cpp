@@ -1,5 +1,5 @@
 /*
-LodePNG version 20260102
+LodePNG version 20260119
 
 Copyright (c) 2005-2026 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20260102";
+const char* LODEPNG_VERSION_STRING = "20260119";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -192,8 +192,8 @@ Example: if(!uivector_resize(&lz77_encoded, datasize)) ERROR_BREAK(83);
 
 /*Try the code, if it returns error, also return the error.*/
 #define CERROR_TRY_RETURN(call){\
-  unsigned error = call;\
-  if(error) return error;\
+  unsigned error_ = call;\
+  if(error_) return error_;\
 }
 
 /*Set error var to the error code, and return from the void function.*/
@@ -5629,13 +5629,15 @@ void lodepng_state_cleanup(LodePNGState* state) {
   lodepng_info_cleanup(&state->info_png);
 }
 
-void lodepng_state_copy(LodePNGState* dest, const LodePNGState* source) {
+unsigned lodepng_state_copy(LodePNGState* dest, const LodePNGState* source) {
   lodepng_state_cleanup(dest);
   *dest = *source;
   lodepng_color_mode_init(&dest->info_raw);
   lodepng_info_init(&dest->info_png);
-  dest->error = lodepng_color_mode_copy(&dest->info_raw, &source->info_raw); if(dest->error) return;
-  dest->error = lodepng_info_copy(&dest->info_png, &source->info_png); if(dest->error) return;
+  dest->error = lodepng_color_mode_copy(&dest->info_raw, &source->info_raw);
+  if(dest->error) return dest->error;
+  dest->error = lodepng_info_copy(&dest->info_png, &source->info_png);
+  return dest->error;
 }
 
 #endif /* defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_ENCODER) */
@@ -5734,7 +5736,7 @@ static unsigned addChunk_tRNS(ucvector* out, const LodePNGColorMode* info) {
 }
 
 static unsigned addChunk_IDAT(ucvector* out, const unsigned char* data, size_t datasize,
-                              LodePNGCompressSettings* zlibsettings) {
+                              const LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* zlib = 0;
   size_t pos = 0;
@@ -5776,7 +5778,7 @@ static unsigned addChunk_tEXt(ucvector* out, const char* keyword, const char* te
 }
 
 static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* textstring,
-                              LodePNGCompressSettings* zlibsettings) {
+                              const LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* chunk = 0;
   unsigned char* compressed = 0;
@@ -5804,7 +5806,7 @@ static unsigned addChunk_zTXt(ucvector* out, const char* keyword, const char* te
 }
 
 static unsigned addChunk_iTXt(ucvector* out, unsigned compress, const char* keyword, const char* langtag,
-                              const char* transkey, const char* textstring, LodePNGCompressSettings* zlibsettings) {
+                              const char* transkey, const char* textstring, const LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* chunk = 0;
   unsigned char* compressed = 0;
@@ -5921,7 +5923,7 @@ static unsigned addChunk_sRGB(ucvector* out, const LodePNGInfo* info) {
   return lodepng_chunk_createv(out, 1, "sRGB", &data);
 }
 
-static unsigned addChunk_iCCP(ucvector* out, const LodePNGInfo* info, LodePNGCompressSettings* zlibsettings) {
+static unsigned addChunk_iCCP(ucvector* out, const LodePNGInfo* info, const LodePNGCompressSettings* zlibsettings) {
   unsigned error = 0;
   unsigned char* chunk = 0;
   unsigned char* compressed = 0;
@@ -6485,6 +6487,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   LodePNGInfo info;
   const LodePNGInfo* info_png = &state->info_png;
   LodePNGColorMode auto_color;
+  unsigned error = 0;
 
   lodepng_info_init(&info);
   lodepng_color_mode_init(&auto_color);
@@ -6492,7 +6495,6 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
   /*provide some proper output values if error will happen*/
   *out = 0;
   *outsize = 0;
-  state->error = 0;
 
   /*check input values validity*/
   if((info_png->color.colortype == LCT_PALETTE || state->encoder.force_palette)
@@ -6501,21 +6503,21 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     generate the palette by itself: while allowing this could be possible in theory,
     it may complicate the code or edge cases, and always requiring to give a palette
     when setting this color type is a simpler contract*/
-    state->error = 68; /*invalid palette size, it is only allowed to be 1-256*/
+    error = 68; /*invalid palette size, it is only allowed to be 1-256*/
     goto cleanup;
   }
   if(state->encoder.zlibsettings.btype > 2) {
-    state->error = 61; /*error: invalid btype*/
+    error = 61; /*error: invalid btype*/
     goto cleanup;
   }
   if(info_png->interlace_method > 1) {
-    state->error = 71; /*error: invalid interlace mode*/
+    error = 71; /*error: invalid interlace mode*/
     goto cleanup;
   }
-  state->error = checkColorValidity(info_png->color.colortype, info_png->color.bitdepth);
-  if(state->error) goto cleanup; /*error: invalid color type given*/
-  state->error = checkColorValidity(state->info_raw.colortype, state->info_raw.bitdepth);
-  if(state->error) goto cleanup; /*error: invalid color type given*/
+  error = checkColorValidity(info_png->color.colortype, info_png->color.bitdepth);
+  if(error) goto cleanup; /*error: invalid color type given*/
+  error = checkColorValidity(state->info_raw.colortype, state->info_raw.bitdepth);
+  if(error) goto cleanup; /*error: invalid color type given*/
 
   /* color convert and compute scanline filter types */
   CERROR_TRY_RETURN(lodepng_info_copy(&info, &state->info_png));
@@ -6536,8 +6538,8 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       stats.allow_greyscale = 0;
     }
 #endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
-    state->error = lodepng_compute_color_stats(&stats, image, w, h, &state->info_raw);
-    if(state->error) goto cleanup;
+    error = lodepng_compute_color_stats(&stats, image, w, h, &state->info_raw);
+    if(error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     if(info_png->background_defined) {
       /*the background chunk's color must be taken into account as well*/
@@ -6545,12 +6547,12 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       LodePNGColorMode mode16 = lodepng_color_mode_make(LCT_RGB, 16);
       lodepng_convert_rgb(&r, &g, &b,
           info_png->background_r, info_png->background_g, info_png->background_b, &mode16, &info_png->color);
-      state->error = lodepng_color_stats_add(&stats, r, g, b, 65535);
-      if(state->error) goto cleanup;
+      error = lodepng_color_stats_add(&stats, r, g, b, 65535);
+      if(error) goto cleanup;
     }
 #endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
-    state->error = auto_choose_color(&auto_color, &state->info_raw, &stats);
-    if(state->error) goto cleanup;
+    error = auto_choose_color(&auto_color, &state->info_raw, &stats);
+    if(error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     if(info_png->sbit_defined) {
       /*if sbit is defined, due to strict requirements of which sbit values can be present for which color modes,
@@ -6616,7 +6618,7 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
       if(info_png->background_defined) {
         if(lodepng_convert_rgb(&info.background_r, &info.background_g, &info.background_b,
             info_png->background_r, info_png->background_g, info_png->background_b, &info.color, &info_png->color)) {
-          state->error = 104;
+          error = 104;
           goto cleanup;
         }
       }
@@ -6629,13 +6631,13 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     unsigned rgb_icc = isRGBICCProfile(info_png->iccp_profile, info_png->iccp_profile_size);
     unsigned gray_png = info.color.colortype == LCT_GREY || info.color.colortype == LCT_GREY_ALPHA;
     if(!gray_icc && !rgb_icc) {
-      state->error = 100; /* Disallowed profile color type for PNG */
+      error = 100; /* Disallowed profile color type for PNG */
       goto cleanup;
     }
     if(gray_icc != gray_png) {
       /*Not allowed to use RGB/RGBA/palette with GRAY ICC profile or vice versa,
       or in case of auto_convert, it wasn't possible to find appropriate model*/
-      state->error = state->encoder.auto_convert ? 102 : 101;
+      error = state->encoder.auto_convert ? 102 : 101;
       goto cleanup;
     }
   }
@@ -6645,18 +6647,18 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     size_t size = ((size_t)w * (size_t)h * (size_t)lodepng_get_bpp(&info.color) + 7u) / 8u;
 
     converted = (unsigned char*)lodepng_malloc(size);
-    if(!converted && size) state->error = 83; /*alloc fail*/
-    if(!state->error) {
-      state->error = lodepng_convert(converted, image, &info.color, &state->info_raw, w, h);
+    if(!converted && size) error = 83; /*alloc fail*/
+    if(!error) {
+      error = lodepng_convert(converted, image, &info.color, &state->info_raw, w, h);
     }
-    if(!state->error) {
-      state->error = preProcessScanlines(&data, &datasize, converted, w, h, &info, &state->encoder);
+    if(!error) {
+      error = preProcessScanlines(&data, &datasize, converted, w, h, &info, &state->encoder);
     }
     lodepng_free(converted);
-    if(state->error) goto cleanup;
+    if(error) goto cleanup;
   } else {
-    state->error = preProcessScanlines(&data, &datasize, image, w, h, &info, &state->encoder);
-    if(state->error) goto cleanup;
+    error = preProcessScanlines(&data, &datasize, image, w, h, &info, &state->encoder);
+    if(error) goto cleanup;
   }
 
   /* output all PNG chunks */ {
@@ -6664,111 +6666,111 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
     size_t i;
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     /*write signature and chunks*/
-    state->error = writeSignature(&outv);
-    if(state->error) goto cleanup;
+    error = writeSignature(&outv);
+    if(error) goto cleanup;
     /*IHDR*/
-    state->error = addChunk_IHDR(&outv, w, h, info.color.colortype, info.color.bitdepth, info.interlace_method);
-    if(state->error) goto cleanup;
+    error = addChunk_IHDR(&outv, w, h, info.color.colortype, info.color.bitdepth, info.interlace_method);
+    if(error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     /*unknown chunks between IHDR and PLTE*/
     if(info.unknown_chunks_data[0]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[0], info.unknown_chunks_size[0]);
-      if(state->error) goto cleanup;
+      error = addUnknownChunks(&outv, info.unknown_chunks_data[0], info.unknown_chunks_size[0]);
+      if(error) goto cleanup;
     }
     /*color profile chunks must come before PLTE */
     if(info.cicp_defined) {
-      state->error = addChunk_cICP(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_cICP(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.mdcv_defined) {
-      state->error = addChunk_mDCV(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_mDCV(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.clli_defined) {
-      state->error = addChunk_cLLI(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_cLLI(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.iccp_defined) {
-      state->error = addChunk_iCCP(&outv, &info, &state->encoder.zlibsettings);
-      if(state->error) goto cleanup;
+      error = addChunk_iCCP(&outv, &info, &state->encoder.zlibsettings);
+      if(error) goto cleanup;
     }
     if(info.srgb_defined) {
-      state->error = addChunk_sRGB(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_sRGB(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.gama_defined) {
-      state->error = addChunk_gAMA(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_gAMA(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.chrm_defined) {
-      state->error = addChunk_cHRM(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_cHRM(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info_png->sbit_defined) {
-      state->error = addChunk_sBIT(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_sBIT(&outv, &info);
+      if(error) goto cleanup;
     }
     if(info.exif_defined) {
-      state->error = addChunk_eXIf(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_eXIf(&outv, &info);
+      if(error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     /*PLTE*/
     if(info.color.colortype == LCT_PALETTE) {
-      state->error = addChunk_PLTE(&outv, &info.color);
-      if(state->error) goto cleanup;
+      error = addChunk_PLTE(&outv, &info.color);
+      if(error) goto cleanup;
     }
     if(state->encoder.force_palette && (info.color.colortype == LCT_RGB || info.color.colortype == LCT_RGBA)) {
       /*force_palette means: write suggested palette for truecolor in PLTE chunk*/
-      state->error = addChunk_PLTE(&outv, &info.color);
-      if(state->error) goto cleanup;
+      error = addChunk_PLTE(&outv, &info.color);
+      if(error) goto cleanup;
     }
     /*tRNS (this will only add if when necessary) */
-    state->error = addChunk_tRNS(&outv, &info.color);
-    if(state->error) goto cleanup;
+    error = addChunk_tRNS(&outv, &info.color);
+    if(error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     /*bKGD (must come between PLTE and the IDAt chunks*/
     if(info.background_defined) {
-      state->error = addChunk_bKGD(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_bKGD(&outv, &info);
+      if(error) goto cleanup;
     }
     /*pHYs (must come before the IDAT chunks)*/
     if(info.phys_defined) {
-      state->error = addChunk_pHYs(&outv, &info);
-      if(state->error) goto cleanup;
+      error = addChunk_pHYs(&outv, &info);
+      if(error) goto cleanup;
     }
 
     /*unknown chunks between PLTE and IDAT*/
     if(info.unknown_chunks_data[1]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[1], info.unknown_chunks_size[1]);
-      if(state->error) goto cleanup;
+      error = addUnknownChunks(&outv, info.unknown_chunks_data[1], info.unknown_chunks_size[1]);
+      if(error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
     /*IDAT (multiple IDAT chunks must be consecutive)*/
-    state->error = addChunk_IDAT(&outv, data, datasize, &state->encoder.zlibsettings);
-    if(state->error) goto cleanup;
+    error = addChunk_IDAT(&outv, data, datasize, &state->encoder.zlibsettings);
+    if(error) goto cleanup;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
     /*tIME*/
     if(info.time_defined) {
-      state->error = addChunk_tIME(&outv, &info.time);
-      if(state->error) goto cleanup;
+      error = addChunk_tIME(&outv, &info.time);
+      if(error) goto cleanup;
     }
     /*tEXt and/or zTXt*/
     for(i = 0; i != info.text_num; ++i) {
       if(lodepng_strlen(info.text_keys[i]) > 79) {
-        state->error = 66; /*text chunk too large*/
+        error = 66; /*text chunk too large*/
         goto cleanup;
       }
       if(lodepng_strlen(info.text_keys[i]) < 1) {
-        state->error = 67; /*text chunk too small*/
+        error = 67; /*text chunk too small*/
         goto cleanup;
       }
       if(state->encoder.text_compression) {
-        state->error = addChunk_zTXt(&outv, info.text_keys[i], info.text_strings[i], &state->encoder.zlibsettings);
-        if(state->error) goto cleanup;
+        error = addChunk_zTXt(&outv, info.text_keys[i], info.text_strings[i], &state->encoder.zlibsettings);
+        if(error) goto cleanup;
       } else {
-        state->error = addChunk_tEXt(&outv, info.text_keys[i], info.text_strings[i]);
-        if(state->error) goto cleanup;
+        error = addChunk_tEXt(&outv, info.text_keys[i], info.text_strings[i]);
+        if(error) goto cleanup;
       }
     }
     /*LodePNG version id in text chunk*/
@@ -6784,35 +6786,35 @@ unsigned lodepng_encode(unsigned char** out, size_t* outsize,
         }
       }
       if(already_added_id_text == 0) {
-        state->error = addChunk_tEXt(&outv, "LodePNG", LODEPNG_VERSION_STRING); /*it's shorter as tEXt than as zTXt chunk*/
-        if(state->error) goto cleanup;
+        error = addChunk_tEXt(&outv, "LodePNG", LODEPNG_VERSION_STRING); /*it's shorter as tEXt than as zTXt chunk*/
+        if(error) goto cleanup;
       }
     }
     /*iTXt*/
     for(i = 0; i != info.itext_num; ++i) {
       if(lodepng_strlen(info.itext_keys[i]) > 79) {
-        state->error = 66; /*text chunk too large*/
+        error = 66; /*text chunk too large*/
         goto cleanup;
       }
       if(lodepng_strlen(info.itext_keys[i]) < 1) {
-        state->error = 67; /*text chunk too small*/
+        error = 67; /*text chunk too small*/
         goto cleanup;
       }
-      state->error = addChunk_iTXt(
+      error = addChunk_iTXt(
           &outv, state->encoder.text_compression,
           info.itext_keys[i], info.itext_langtags[i], info.itext_transkeys[i], info.itext_strings[i],
           &state->encoder.zlibsettings);
-      if(state->error) goto cleanup;
+      if(error) goto cleanup;
     }
 
     /*unknown chunks between IDAT and IEND*/
     if(info.unknown_chunks_data[2]) {
-      state->error = addUnknownChunks(&outv, info.unknown_chunks_data[2], info.unknown_chunks_size[2]);
-      if(state->error) goto cleanup;
+      error = addUnknownChunks(&outv, info.unknown_chunks_data[2], info.unknown_chunks_size[2]);
+      if(error) goto cleanup;
     }
 #endif /*LODEPNG_COMPILE_ANCILLARY_CHUNKS*/
-    state->error = addChunk_IEND(&outv);
-    if(state->error) goto cleanup;
+    error = addChunk_IEND(&outv);
+    if(error) goto cleanup;
   }
 
 cleanup:
@@ -6824,7 +6826,9 @@ cleanup:
   *out = outv.data;
   *outsize = outv.size;
 
-  return state->error;
+  state->error = error; /*TODO: remove this and make input state const*/
+
+  return error;
 }
 
 unsigned lodepng_encode_memory(unsigned char** out, size_t* outsize, const unsigned char* image,
@@ -6836,8 +6840,7 @@ unsigned lodepng_encode_memory(unsigned char** out, size_t* outsize, const unsig
   state.info_raw.bitdepth = bitdepth;
   state.info_png.color.colortype = colortype;
   state.info_png.color.bitdepth = bitdepth;
-  lodepng_encode(out, outsize, image, w, h, &state);
-  error = state.error;
+  error = lodepng_encode(out, outsize, image, w, h, &state);
   lodepng_state_cleanup(&state);
   return error;
 }

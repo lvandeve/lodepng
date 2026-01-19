@@ -1,5 +1,5 @@
 /*
-LodePNG version 20260102
+LodePNG version 20260119
 
 Copyright (c) 2005-2026 Lode Vandevenne
 
@@ -965,14 +965,15 @@ typedef struct LodePNGState {
 #endif /*LODEPNG_COMPILE_ENCODER*/
   LodePNGColorMode info_raw; /*specifies the format in which you would like to get the raw pixel buffer*/
   LodePNGInfo info_png; /*info of the PNG image obtained after decoding*/
-  unsigned error;
+  unsigned error; /*deprecated, use the return value of the encode/decode functions to check errors instead*/
 } LodePNGState;
 
 /*init, cleanup and copy functions to use with this struct*/
 void lodepng_state_init(LodePNGState* state);
 /*destructs the LodePNGState and brings it to invalid state, requiring lodepng_info_init again before reusing it*/
 void lodepng_state_cleanup(LodePNGState* state);
-void lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
+/*return value is error code (0 means no error)*/
+unsigned lodepng_state_copy(LodePNGState* dest, const LodePNGState* source);
 #endif /* defined(LODEPNG_COMPILE_DECODER) || defined(LODEPNG_COMPILE_ENCODER) */
 
 #ifdef LODEPNG_COMPILE_DECODER
@@ -2017,10 +2018,10 @@ symbol.
 Not all changes are listed here, the commit history in github lists more:
 https://github.com/lvandeve/lodepng
 
-*) 6 may 2025: renamed mDCv to mDCV and cLLi to cLLI as per the recent rename
-   in the draft png third edition spec. Please note that while the third
-   edition is not finalized, backwards-incompatible changes to its features are
-   possible.
+*) 6 may 2025 (!): renamed mDCv to mDCV and cLLi to cLLI as per the recent
+   rename in the draft png third edition spec. Please note that as long as the
+   third edition is not finalized, backwards-incompatible changes to its
+   features are possible.
 *) 23 dec 2024: added support for the mDCv and cLLi chunks (for png third
    edition spec)
 *) 22 dec 2024: added support for the cICP chunk (for png third edition spec)
