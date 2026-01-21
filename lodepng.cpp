@@ -3932,6 +3932,9 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
   return error;
 }
 
+#ifdef LODEPNG_COMPILE_ENCODER
+
+#ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
 
 /* Converts a single rgb color without alpha from one type to another, color bits truncated to
 their bitdepth. In case of single channel (gray or palette), only the r channel is used. Slow
@@ -3939,7 +3942,7 @@ function, do not use to process all pixels of an image. Alpha channel not suppor
 this is for bKGD, supporting alpha may prevent it from finding a color in the palette, from the
 specification it looks like bKGD should ignore the alpha values of the palette since it can use
 any palette index but doesn't have an alpha channel. Idem with ignoring color key. */
-unsigned lodepng_convert_rgb(
+static unsigned lodepng_convert_rgb(
     unsigned* r_out, unsigned* g_out, unsigned* b_out,
     unsigned r_in, unsigned g_in, unsigned b_in,
     const LodePNGColorMode* mode_out, const LodePNGColorMode* mode_in) {
@@ -3989,7 +3992,7 @@ unsigned lodepng_convert_rgb(
   return 0;
 }
 
-#ifdef LODEPNG_COMPILE_ENCODER
+#endif /* LODEPNG_COMPILE_ANCILLARY_CHUNKS */
 
 void lodepng_color_stats_init(LodePNGColorStats* stats) {
   /*stats*/
