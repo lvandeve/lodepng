@@ -28,6 +28,9 @@ freely, subject to the following restrictions:
 
 #include <string.h> /*for size_t*/
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern const char* LODEPNG_VERSION_STRING;
 
 /*
@@ -102,6 +105,10 @@ or comment out LODEPNG_COMPILE_CRC below*/
 #define LODEPNG_COMPILE_CRC
 #endif
 
+#ifdef __cplusplus
+}
+#endif
+
 /*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
 #ifdef __cplusplus
 #ifndef LODEPNG_NO_COMPILE_CPP
@@ -115,6 +122,10 @@ or comment out LODEPNG_COMPILE_CPP below*/
 #include <vector>
 #include <string>
 #endif /*LODEPNG_COMPILE_CPP*/
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifdef LODEPNG_COMPILE_PNG
 /*The PNG color types (also used for raw image).*/
@@ -246,6 +257,9 @@ unsigned lodepng_encode24_file(const char* filename,
 #endif /*LODEPNG_COMPILE_DISK*/
 #endif /*LODEPNG_COMPILE_ENCODER*/
 
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef LODEPNG_COMPILE_CPP
 namespace lodepng {
@@ -302,6 +316,10 @@ unsigned encode(const std::string& filename,
 } /* namespace lodepng */
 #endif /*LODEPNG_COMPILE_CPP*/
 #endif /*LODEPNG_COMPILE_PNG*/
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifdef LODEPNG_COMPILE_ERROR_TEXT
 /*Returns an English description of the numerical error code.*/
@@ -1191,6 +1209,10 @@ to handle such files and encode in-memory
 */
 unsigned lodepng_save_file(const unsigned char* buffer, size_t buffersize, const char* filename);
 #endif /*LODEPNG_COMPILE_DISK*/
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef LODEPNG_COMPILE_CPP
 /* The LodePNG C++ wrapper uses std::vectors instead of manually allocated memory buffers. */

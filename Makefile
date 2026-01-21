@@ -8,11 +8,12 @@
 
 CC ?= gcc
 CXX ?= g++
+AR ?= ar
 
-override CFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 -Wno-unused-function $(CFLAGS)
-override CXXFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 $(CXXFLAGS)
+override CFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 -Wno-unused-function -fPIC $(CFLAGS)
+override CXXFLAGS := -W -Wall -Wextra -ansi -pedantic -O3 -fPIC $(CXXFLAGS)
 
-all: unittest benchmark pngdetail showpng
+all: unittest benchmark pngdetail showpng liblodepng.so liblodepng.a
 
 %.o: %.cpp
 	@mkdir -p `dirname $@`
@@ -29,6 +30,12 @@ pngdetail: lodepng.o lodepng_util.o pngdetail.o
 
 showpng: lodepng.o examples/example_sdl.o
 	$(CXX) -I ./ $^ $(CXXFLAGS) -lSDL2 -o $@
+
+liblodepng.so: lodepng.o
+	$(CXX) $(CXXFLAGS) $^ -shared -o $@
+
+liblodepng.a: lodepng.o
+	$(AR) rcs $@ $^
 
 clean:
 	rm -f unittest benchmark pngdetail showpng lodepng_unittest.o lodepng_benchmark.o lodepng.o lodepng_util.o pngdetail.o examples/example_sdl.o
