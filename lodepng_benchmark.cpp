@@ -220,8 +220,8 @@ void testDecode(const std::vector<unsigned char>& png) {
 
 std::string getFilePart(const std::string& path) {
   if(path.empty()) return "";
-  int slash = path.size() - 1;
-  while(slash >= 0 && path[(size_t)slash] != '/') slash--;
+  size_t slash = path.size();
+  do { slash--; } while(path[slash] != '/' && slash > 0);
   return path.substr((size_t)(slash + 1));
 }
 
@@ -284,6 +284,12 @@ int main(int argc, char *argv[]) {
 
   std::vector<std::string> files;
 
+  if (SDL_Init(SDL_INIT_TIMER) < 0) {
+      std::cerr << argv[0] << ": SDL timer initialization failed :"
+          << SDL_GetError() << std::endl;
+      return 1;
+  }
+ 
   for(int i = 1; i < argc; i++) {
     std::string arg = argv[i];
     if(arg == "-v") verbose = true;
@@ -350,4 +356,5 @@ int main(int argc, char *argv[]) {
               << " compressed bytes (" << ((total_raw_in_size/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MB/s, "
               << ((total_pixels/1024.0/1024.0)/(total_dec_time/NUM_DECODE)) << " MP/s)" << std::endl;
   }
+  return 0;
 }
