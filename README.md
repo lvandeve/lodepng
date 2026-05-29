@@ -73,3 +73,18 @@ way to use that one is to include its source files in your program. The Makefile
 only builds development and testing utilities. It can be used as follows:
 
 `make -j`
+
+### CMakeLists.txt
+
+There is a CMakeLists.txt but, like the Makefile is not intended for using LodePNG itself and builds only development and testing utilities. It can be used as follows
+
+```bash
+cmake -B build -D LODEPNG_WERROR=ON
+cmake --build build [--target <benchmark|pngdetail|showpng|unittest>]
+```
+
+If SDL2 is not installed the `benchmark` and `showpng` targets will not be configured into the build. Use your system package manager to install the `sdl2` package or you can install [vcpkg](https://github.com/microsoft/vcpkg) and let it automatically build and install SDL2. To use vcpkg add the following to the first `cmake` command above:
+
+```bash
+-D CMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+```
