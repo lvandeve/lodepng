@@ -6144,7 +6144,7 @@ static unsigned filter(unsigned char* out, const unsigned char* in, unsigned w, 
 
   if(bpp == 0) return 31; /*error: invalid color type*/
 
-  if(strategy >= LFS_ZERO && strategy <= LFS_FOUR) {
+  if(strategy <= LFS_FOUR) {
     unsigned char type = (unsigned char)strategy;
     for(y = 0; y != h; ++y) {
       size_t outindex = (1 + linebytes) * y; /*the extra filterbyte added to each row*/
