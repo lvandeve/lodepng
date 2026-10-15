@@ -3995,6 +3995,7 @@ int main() {
     std::cout << std::endl;
     std::cout << "caught error!" << std::endl;
     std::cout << "*** TEST FAILED ***" << std::endl;
+    return 1;
   }
 
   return 0;
