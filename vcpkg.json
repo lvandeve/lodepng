@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "lodepng",
+  "features": {
+    "sdl2": {
+      "description": "Simple Direct Media Layer",
+      "dependencies": [
+        {
+          "name": "sdl2",
+          "default-features": true
+        }
+      ]
+    }
+  }
+}
+

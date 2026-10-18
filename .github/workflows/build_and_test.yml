@@ -1,0 +1,137 @@
+# Copyright 2025 The Khronos Group Inc.
+# SPDX-License-Identifier: Apache-2.0
+name: Build lodepng Utilities and Tests and Run Tests
+
+permissions:
+  packages: write
+
+on:
+  # Trigger the workflow on a pull request,
+  pull_request:
+
+  push:
+    # And on pushes to main, which will occur when a PR is merged.
+    branches:
+      - main
+    # Also trigger on push of release tags to any branch. Useful
+    # for testing release builds before merging to main.
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - Makefile
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  build-lodepng:
+    name: Build lodepng utilities and tests
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+        include:
+          - generator: Ninja Multi-Config
+            os: macos-latest
+          - generator: Ninja Multi-Config
+            os: ubuntu-latest
+            # N M-C on Windows appears to result in the debug build linking with
+            # the non-debug CRT as there are unresolved references to the RTC
+            # (runtime check) functions from SDL_windows_main. I've been unable to
+            # debug as N M-C uses MingW and there is no MingW available for
+            # Windows/Arm64. GCC is already tested in the Ubuntu build. Trying a
+            # different compiler is a good thing.
+          - generator: Visual Studio 17 2022
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      BUILD_DIR: build
+      USERNAME: lvandeve
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        # Fetch all history to make sure tags are
+        # included (used for version creation)
+        fetch-depth: 0
+
+    - name: Force fetch provoking tag's annotation.
+      # Work around https://github.com/actions/checkout/issues/290.
+      if: github.ref_type == 'tag'
+      run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
+
+    - name: Install libldtl and mono on Ubuntu
+      # libldtl is needed by libxcrypt which is needed by vcpkg.
+      # mono is needed for adding NuGet sources for caching.
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get -qq install mono-complete libltdl-dev
+
+    - name: Export environment variables for vcpkg binary caching
+      # actions/github-script is used because it is the only way to access
+      # VCPKG_INSTALLATION_ROOT outside of the runner's shell and the only
+      # portable way to programmatically set environment variables.
+      # NUGET_FEED_URL is set here to keep the vcpkg cache environment
+      # variables together.
+      uses: actions/github-script@v7
+      with:
+        # JSON in use here. #<comments> in the script will break it.
+        # Pre-installed vcpkg location is indicated by a non-standard env.
+        # var.
+        script: |
+          core.exportVariable('VCPKG_ROOT', process.env.VCPKG_INSTALLATION_ROOT || '');
+          core.exportVariable('VCPKG_EXE', process.env.VCPKG_INSTALLATION_ROOT + '/vcpkg' || '');
+          core.exportVariable('NUGET_FEED_URL', 'https://nuget.pkg.github.com/lvandeve/index.json' || '');
+
+    - name: Add NuGet sources (macOS and Ubuntu)
+      if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
+          sources add \
+          -Source "${{ env.NUGET_FEED_URL }}" \
+          -StorePasswordInClearText \
+          -Name GitHubPackages \
+          -UserName "${{ env.USERNAME }}" \
+          -Password "${{ secrets.GITHUB_TOKEN }}"
+        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
+          setapikey "${{ secrets.GITHUB_TOKEN }}" \
+          -Source "${{ env.NUGET_FEED_URL }}"
+
+    - name: Add NuGet sources (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        .$(${{ env.VCPKG_EXE }} fetch nuget) `
+          sources add `
+          -Source "${{ env.NUGET_FEED_URL }}" `
+          -StorePasswordInClearText `
+          -Name GitHubPackages `
+          -UserName "${{ env.USERNAME }}" `
+          -Password "${{ secrets.GITHUB_TOKEN }}"
+        .$(${{ env.VCPKG_EXE }} fetch nuget) `
+          setapikey "${{ secrets.GITHUB_TOKEN }}" `
+          -Source "${{ env.NUGET_FEED_URL }}"
+
+    - name: Build utilities and tests
+      env:
+        VCPKG_BINARY_SOURCES: clear;nuget,${{ env.NUGET_FEED_URL }},readwrite
+      run: |
+        echo "CMake Configure"
+        cmake -B ${{ env.BUILD_DIR }} -G "${{ matrix.generator }}" -D CMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
+        echo "Build Release"
+        cmake --build ${{ env.BUILD_DIR }} --config Release
+        echo "Build Debug"
+        cmake --build ${{ env.BUILD_DIR }} --config Debug
+
+    - name: Run tests
+      run: ctest -V --test-dir ${{ env.BUILD_DIR }} --build-config Release
+
+    - name: Upload compiled utilities and tests
+      uses: actions/upload-artifact@v4
+      with:
+        name: lodepng-${{ matrix.os }}
+        path: ${{ env.BUILD_DIR }}/Release
