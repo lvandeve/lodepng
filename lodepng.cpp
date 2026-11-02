@@ -1,5 +1,5 @@
 /*
-LodePNG version 20261101
+LodePNG version 20261102
 
 Copyright (c) 2005-2026 Lode Vandevenne
 
@@ -44,7 +44,7 @@ Rename this file to lodepng.cpp to use it for C++, or to lodepng.c to use it for
 #pragma warning( disable : 4996 ) /*VS does not like fopen, but fopen_s is not standard C so unusable here*/
 #endif /*_MSC_VER */
 
-const char* LODEPNG_VERSION_STRING = "20261101";
+const char* LODEPNG_VERSION_STRING = "20261102";
 
 /*
 This source file is divided into the following large parts. The code sections
@@ -2999,19 +2999,27 @@ LodePNGColorMode lodepng_color_mode_make(LodePNGColorType colortype, unsigned bi
   return result;
 }
 
+/* checks if two color modes are equal. colortype and bitdepth are always checked, but color key and
+palette are only checked if explicitely given on both sides. If empty on one side, it's assumed to
+mean 'same as the other side'. This function is used to check when a color mode conversion on the
+pixel data is needed, and it should support e.g. asking to decode to 1-bit palette without providing
+the palette color data by only providing 'LCT_PALETTE, 1' as arguments to the decode function)*/
 static int lodepng_color_mode_equal(const LodePNGColorMode* a, const LodePNGColorMode* b) {
-  size_t i;
   if(a->colortype != b->colortype) return 0;
   if(a->bitdepth != b->bitdepth) return 0;
-  if(a->key_defined != b->key_defined) return 0;
-  if(a->key_defined) {
+  /*only check color key if explicitely given on both sides.*/
+  if(a->key_defined && b->key_defined) {
     if(a->key_r != b->key_r) return 0;
     if(a->key_g != b->key_g) return 0;
     if(a->key_b != b->key_b) return 0;
   }
-  if(a->palettesize != b->palettesize) return 0;
-  for(i = 0; i != a->palettesize * 4; ++i) {
-    if(a->palette[i] != b->palette[i]) return 0;
+  /*only check palette values if a palette is explicitely given on both sides.*/
+  if(a->palettesize != 0 && b->palettesize != 0) {
+    size_t i;
+    if(a->palettesize != b->palettesize) return 0;
+    for(i = 0; i != a->palettesize * 4; ++i) {
+      if(a->palette[i] != b->palette[i]) return 0;
+    }
   }
   return 1;
 }

@@ -1,7 +1,7 @@
 /*
 LodePNG Unit Test
 
-Copyright (c) 2005-2025 Lode Vandevenne
+Copyright (c) 2005-2026 Lode Vandevenne
 
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -3533,6 +3533,17 @@ void testBase64Image(const std::string& png64, bool expect_error, unsigned expec
       rgb8[i * 3 + 2] = rgb16[i * 6 + 4];
     }
     ASSERT_EQUALS(expected_rgb, rgb8);
+  }
+
+  // test decoding with color type conversion to the same color type the PNG has inside, which should always work without errors
+  // about unconverted color conversion
+  {
+    std::vector<unsigned char> image;
+    lodepng::State state;
+    lodepng_inspect(0, 0, &state, png.data(), png.size());
+    ASSERT_NO_PNG_ERROR(lodepng::decode(image, w, h, png, state.info_png.color.colortype, state.info_png.color.bitdepth));
+    ASSERT_EQUALS(expect_w, w);
+    ASSERT_EQUALS(expect_h, h);
   }
 
   // test encode/decode
