@@ -1062,7 +1062,7 @@ static unsigned generateFixedDistanceTree(HuffmanTree* tree) {
 /*
 returns the code. The bit reader must already have been ensured at least 15 bits
 */
-static unsigned huffmanDecodeSymbol(LodePNGBitReader* reader, const HuffmanTree* codetree) {
+static LODEPNG_INLINE unsigned huffmanDecodeSymbol(LodePNGBitReader* reader, const HuffmanTree* codetree) {
   unsigned short code = peekBits(reader, FIRSTBITS);
   unsigned short l = codetree->table_len[code];
   unsigned short value = codetree->table_value[code];
