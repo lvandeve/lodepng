@@ -3717,7 +3717,9 @@ static void getPixelColorsRGBA8(unsigned char* LODEPNG_RESTRICT buffer, size_t n
   } else if(mode->colortype == LCT_RGB) {
     if(mode->bitdepth == 8) {
       for(i = 0; i != numpixels; ++i, buffer += num_channels) {
-        lodepng_memcpy(buffer, &in[i * 3], 3);
+        buffer[0] = in[i * 3 + 0];
+        buffer[1] = in[i * 3 + 1];
+        buffer[2] = in[i * 3 + 2];
         buffer[3] = 255;
       }
       if(mode->key_defined) {
